@@ -159,6 +159,26 @@ impl FromStr for Identifier {
     }
 }
 
+impl std::fmt::Display for Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Identifier::Uri(u) => write!(f, "{}", u.0),
+            Identifier::Curie(c) => write!(f, "{}", c.0),
+            Identifier::Name(n) => write!(f, "{}", n),
+        }
+    }
+}
+
+impl From<Identifier> for String {
+    fn from(id: Identifier) -> Self {
+        match id {
+            Identifier::Uri(u) => u.0,
+            Identifier::Curie(c) => c.0,
+            Identifier::Name(n) => n,
+        }
+    }
+}
+
 /// Build a [`Converter`] from one or more [`SchemaDefinition`]s.
 ///
 /// All prefixes declared in the schemas are added to the converter. Duplicate
