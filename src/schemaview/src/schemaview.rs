@@ -109,7 +109,8 @@ impl SchemaView {
         let conv = converter_from_schema(&schema);
         self.index_schema_classes(&schema_uri, &schema, &conv)
             .map_err(|e| format!("{:?}", e))?;
-        self.schema_definitions.insert(schema_uri.to_string(), schema);
+        self.schema_definitions
+            .insert(schema_uri.to_string(), schema);
         if self.primary_schema.is_none() {
             self.primary_schema = Some(schema_uri.to_string());
         }
@@ -127,9 +128,7 @@ impl SchemaView {
             let default_uri = Identifier::new(&format!("{}:{}", default_prefix, class_name))
                 .to_uri(conv)
                 .map(|u| u.0)
-                .unwrap_or_else(|_| {
-                    format!("{}/{}", schema.id.trim_end_matches('/'), class_name)
-                });
+                .unwrap_or_else(|_| format!("{}/{}", schema.id.trim_end_matches('/'), class_name));
 
             if let Some(curi) = &class_def.class_uri {
                 let explicit_uri = Identifier::new(curi).to_uri(conv)?.0;
