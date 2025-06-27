@@ -47,6 +47,34 @@ pub enum LinkMLValue<'a> {
 }
 
 impl<'a> LinkMLValue<'a> {
+    fn find_scalar_slot_for_inlined_map(
+        class: &ClassView<'a>,
+        key_slot_name: &str,
+        sv: &'a SchemaView,
+        conv: &Converter,
+    ) -> Option<SlotView<'a>> {
+        for s in class.slots() {
+            if s.name == key_slot_name {
+                continue;
+            }
+            let def = s.definition();
+            if def.multivalued.unwrap_or(false) {
+                continue;
+            }
+            if let Some(r) = &def.range {
+                if sv
+                    .get_class(&Identifier::new(r), conv)
+                    .ok()
+                    .flatten()
+                    .is_some()
+                {
+                    continue;
+                }
+            }
+            return Some(s.clone());
+        }
+        None
+    }
     fn select_class(
         map: &serde_json::Map<String, JsonValue>,
         base: &ClassView<'a>,
@@ -171,15 +199,31 @@ impl<'a> LinkMLValue<'a> {
                             .clone();
                         let mut values = Vec::new();
                         for (k, v) in map.into_iter() {
-                            let m = match v {
+                            let mut m = match v {
                                 JsonValue::Object(m) => m,
                                 other => {
-                                    return Err(LinkMLError(format!(
-                                        "mapping values for slot `{}` must be objects, found {:?}",
-                                        sl.name, other
-                                    )));
+                                    let chosen = sv
+                                        .get_class(&Identifier::new(range_cv.name()), conv)
+                                        .ok()
+                                        .flatten()
+                                        .unwrap_or_else(|| range_cv.clone());
+                                    let scalar_slot = LinkMLValue::find_scalar_slot_for_inlined_map(
+                                        &chosen,
+                                        &key_slot.name,
+                                        sv,
+                                        conv,
+                                    )
+                                    .ok_or_else(|| {
+                                        LinkMLError(
+                                            "no scalar slot available for inlined mapping".to_string(),
+                                        )
+                                    })?;
+                                    let mut tmp = serde_json::Map::new();
+                                    tmp.insert(scalar_slot.name.clone(), other);
+                                    tmp
                                 }
                             };
+                            m.insert(key_slot.name.clone(), JsonValue::String(k.clone()));
                             let chosen = sv
                                 .get_class(&Identifier::new(range_cv.name()), conv)
                                 .ok()
@@ -194,15 +238,6 @@ impl<'a> LinkMLValue<'a> {
                                     LinkMLValue::from_json(cv, None, slot_tmp, sv, conv, true)?,
                                 );
                             }
-                            child_values.insert(
-                                key_slot.name.clone(),
-                                LinkMLValue::Scalar {
-                                    value: JsonValue::String(k),
-                                    slot: key_slot.clone(),
-                                    class: None,
-                                    sv,
-                                },
-                            );
                             values.push(LinkMLValue::Map {
                                 values: child_values,
                                 class: chosen.clone(),
