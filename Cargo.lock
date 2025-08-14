@@ -913,6 +913,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "linkml-core-wasm"
+version = "0.1.0"
+dependencies = [
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "linkml_meta"
 version = "0.0.0"
 dependencies = [

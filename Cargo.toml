@@ -4,5 +4,6 @@ members=[
     "src/metamodel",
     "src/schemaview",
     "src/runtime",
+    "src/wasm",
 ]
 resolver = "2"
