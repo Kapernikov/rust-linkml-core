@@ -1,7 +1,14 @@
+#[cfg(all(feature = "serde", feature = "pyo3"))]
+use pyo3::prelude::*;
+#[cfg(all(feature = "serde", feature = "pyo3"))]
+use pyo3::types::{PyAny, PyDict, PyList, PyTuple};
 #[cfg(feature = "serde")]
 use serde::de::Error;
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Deserializer};
+use serde::{
+    de::{DeserializeOwned, IntoDeserializer},
+    Deserialize, Deserializer,
+};
 #[cfg(feature = "serde")]
 use serde_value::{Value, ValueDeserializer};
 #[cfg(feature = "serde")]
@@ -199,5 +206,117 @@ where
             )?;
             Ok(Some(d))
         }
+    }
+}
+
+#[cfg(all(feature = "serde", feature = "pyo3"))]
+fn py_any_to_value(bound: &Bound<'_, PyAny>) -> PyResult<Value> {
+    if bound.is_none() {
+        return Ok(Value::Unit);
+    }
+
+    if let Ok(b) = bound.extract::<bool>() {
+        return Ok(Value::Bool(b));
+    }
+
+    if let Ok(i) = bound.extract::<i64>() {
+        return Ok(Value::I64(i));
+    }
+
+    if let Ok(f) = bound.extract::<f64>() {
+        return Ok(Value::F64(f));
+    }
+
+    if let Ok(s) = bound.extract::<String>() {
+        return Ok(Value::String(s));
+    }
+
+    if let Ok(dict_obj) = bound.getattr("__dict__") {
+        if let Ok(dict) = dict_obj.downcast::<PyDict>() {
+            let mut map: BTreeMap<Value, Value> = BTreeMap::new();
+            for (k, v) in dict.iter() {
+                let key_str: String = k.extract()?;
+                let val = py_any_to_value(&v)?;
+                map.insert(Value::String(key_str), val);
+            }
+            return Ok(Value::Map(map));
+        }
+    }
+
+    if let Ok(dict) = bound.downcast::<PyDict>() {
+        let mut map: BTreeMap<Value, Value> = BTreeMap::new();
+        for (k, v) in dict.iter() {
+            let key_str: String = k.extract()?;
+            let val = py_any_to_value(&v)?;
+            map.insert(Value::String(key_str), val);
+        }
+        return Ok(Value::Map(map));
+    }
+
+    if let Ok(list) = bound.downcast::<PyList>() {
+        let mut items = Vec::with_capacity(list.len());
+        for item in list.iter() {
+            items.push(py_any_to_value(&item)?);
+        }
+        return Ok(Value::Seq(items));
+    }
+
+    if let Ok(tuple) = bound.downcast::<PyTuple>() {
+        let mut items = Vec::with_capacity(tuple.len());
+        for item in tuple.iter() {
+            items.push(py_any_to_value(&item)?);
+        }
+        return Ok(Value::Seq(items));
+    }
+
+    Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+        "unsupported value type for conversion",
+    ))
+}
+
+#[cfg(all(feature = "serde", feature = "pyo3"))]
+pub fn deserialize_py_any<'py, T>(bound: &Bound<'py, PyAny>) -> PyResult<T>
+where
+    T: DeserializeOwned,
+{
+    let value = py_any_to_value(bound)?;
+    let de = value.into_deserializer();
+    match serde_path_to_error::deserialize(de) {
+        Ok(ok) => Ok(ok),
+        Err(err) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "at `{}`: {}",
+            err.path(),
+            err.inner()
+        ))),
+    }
+}
+
+#[cfg(feature = "pyo3")]
+pub struct PyValue<T>(pub T);
+
+#[cfg(feature = "pyo3")]
+impl<T> PyValue<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+#[cfg(all(feature = "pyo3", feature = "stubgen"))]
+impl<T> ::pyo3_stub_gen::PyStubType for PyValue<T>
+where
+    T: ::pyo3_stub_gen::PyStubType,
+{
+    fn type_output() -> ::pyo3_stub_gen::TypeInfo {
+        T::type_output()
+    }
+}
+
+#[cfg(all(feature = "pyo3", feature = "serde"))]
+impl<'py, T> FromPyObject<'py> for PyValue<T>
+where
+    T: DeserializeOwned,
+{
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        deserialize_py_any(ob).map(PyValue)
     }
 }
