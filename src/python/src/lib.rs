@@ -549,25 +549,6 @@ impl PyLinkMLInstance {
     pub fn new(value: LinkMLInstance, sv: Py<PySchemaView>) -> Self {
         Self { value, sv }
     }
-
-    /// Clone the underlying `LinkMLInstance` value for safe external use.
-    pub fn clone_value(&self) -> LinkMLInstance {
-        self.value.clone()
-    }
-
-    /// Clone the associated Python `SchemaView` handle.
-    pub fn clone_schema_view(&self, py: Python<'_>) -> Py<PySchemaView> {
-        self.sv.clone_ref(py)
-    }
-
-    /// Build a new `PyLinkMLInstance` wrapping `value` while reusing this instance's schema view.
-    pub fn wrap_with_value(
-        &self,
-        py: Python<'_>,
-        value: LinkMLInstance,
-    ) -> PyResult<Py<PyLinkMLInstance>> {
-        Py::new(py, PyLinkMLInstance::new(value, self.clone_schema_view(py)))
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -648,7 +629,7 @@ impl PyStubType for PyDeltaOp {
 #[pyclass(name = "Delta")]
 #[derive(Clone)]
 pub struct PyDelta {
-    inner: Delta,
+    pub inner: Delta,
 }
 
 impl From<Delta> for PyDelta {
@@ -658,11 +639,6 @@ impl From<Delta> for PyDelta {
 }
 
 impl PyDelta {
-    /// Returns a clone of the underlying Rust `Delta`.
-    pub fn clone_inner(&self) -> Delta {
-        self.inner.clone()
-    }
-
     /// Convert any iterator of `Delta` values into owned Python handles.
     pub fn from_deltas<I>(py: Python<'_>, deltas: I) -> PyResult<Vec<Py<PyDelta>>>
     where
@@ -1207,7 +1183,7 @@ fn py_patch(
     let mut deltas_vec = Vec::with_capacity(deltas.len());
     for delta in deltas {
         let bound = delta.bind(py);
-        deltas_vec.push(bound.borrow().clone_inner());
+        deltas_vec.push(bound.borrow().inner.clone());
     }
     let (new_value, trace) = patch_internal(
         &source.value,
