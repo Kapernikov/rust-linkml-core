@@ -1870,6 +1870,7 @@ impl<'py> IntoPyObject<'py> for Anything {
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         use pyo3::types::{PyAny, PyDict, PyList, PyString};
+        use pyo3::PyObject;
         use serde_value::Value;
 
         fn value_to_py<'py>(py: Python<'py>, v: &Value) -> pyo3::PyResult<Bound<'py, PyAny>> {
