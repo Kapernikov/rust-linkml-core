@@ -3,12 +3,12 @@ use linkml_runtime::diff::{
     diff as diff_internal, patch as patch_internal, Delta, DeltaOp, DiffOptions, PatchTrace,
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
-use linkml_runtime::{load_json_str, load_yaml_str, LinkMLInstance};
+use linkml_runtime::{load_json_str, load_yaml_str, LinkMLInstance, NodeId};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
 use linkml_schemaview::schemaview::SchemaView;
 use linkml_schemaview::{classview::ClassView, enumview::EnumView, slotview::SlotView};
-use pyo3::conversion::IntoPyObject;
+use pyo3::conversion::{IntoPyObject, IntoPyObjectExt};
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
@@ -57,7 +57,7 @@ fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "SchemaView")]
 pub struct PySchemaView {
-    inner: Arc<SchemaView>,
+    pub inner: Arc<SchemaView>,
 }
 
 impl PySchemaView {
@@ -536,12 +536,12 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "LinkMLInstance")]
 pub struct PyLinkMLInstance {
-    value: LinkMLInstance,
-    sv: Py<PySchemaView>,
+    pub value: LinkMLInstance,
+    pub sv: Py<PySchemaView>,
 }
 
 impl PyLinkMLInstance {
-    fn new(value: LinkMLInstance, sv: Py<PySchemaView>) -> Self {
+    pub fn new(value: LinkMLInstance, sv: Py<PySchemaView>) -> Self {
         Self { value, sv }
     }
 }
@@ -624,7 +624,7 @@ impl PyStubType for PyDeltaOp {
 #[pyclass(name = "Delta")]
 #[derive(Clone)]
 pub struct PyDelta {
-    inner: Delta,
+    pub inner: Delta,
 }
 
 impl From<Delta> for PyDelta {
@@ -634,8 +634,15 @@ impl From<Delta> for PyDelta {
 }
 
 impl PyDelta {
-    fn clone_inner(&self) -> Delta {
-        self.inner.clone()
+    /// Convert any iterator of `Delta` values into owned Python handles.
+    pub fn from_deltas<I>(py: Python<'_>, deltas: I) -> PyResult<Vec<Py<PyDelta>>>
+    where
+        I: IntoIterator<Item = Delta>,
+    {
+        deltas
+            .into_iter()
+            .map(|delta| Py::new(py, PyDelta::from(delta)))
+            .collect()
     }
 }
 
@@ -740,6 +747,19 @@ fn py_to_json_value(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<JsonValu
     let json_mod = PyModule::import(py, "json")?;
     let s: String = json_mod.call_method1("dumps", (obj,))?.extract()?;
     serde_json::from_str(&s).map_err(|e| PyException::new_err(e.to_string()))
+}
+
+/// Convert a mapping of `NodeId` keys into a Python dictionary.
+pub fn node_map_into_pydict<V, I>(py: Python<'_>, entries: I) -> PyResult<Py<PyDict>>
+where
+    I: IntoIterator<Item = (NodeId, V)>,
+    V: for<'py> IntoPyObject<'py>,
+{
+    let dict = PyDict::new(py);
+    for (node_id, value) in entries {
+        dict.set_item(node_id, value.into_py_any(py)?)?;
+    }
+    Ok(dict.into())
 }
 
 impl Clone for PyLinkMLInstance {
@@ -1158,7 +1178,7 @@ fn py_patch(
     let mut deltas_vec = Vec::with_capacity(deltas.len());
     for delta in deltas {
         let bound = delta.bind(py);
-        deltas_vec.push(bound.borrow().clone_inner());
+        deltas_vec.push(bound.borrow().inner.clone());
     }
     let (new_value, trace) = patch_internal(
         &source.value,

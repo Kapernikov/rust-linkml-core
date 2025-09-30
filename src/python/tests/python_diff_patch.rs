@@ -74,10 +74,11 @@ assert result.trace.failed == []
 
 # roundtrip through Python-side serialization and constructor
 serialized = [d.to_dict() for d in deltas]
-rebuilt = [
-    lr.Delta(item['path'], item['op'], old=item['old'], new=item['new'])
-    for item in serialized
-]
+rebuilt = []
+for item in serialized:
+    rebuilt.append(
+        lr.Delta(item['path'], item['op'], old=item['old'], new=item['new'])
+    )
 result2 = lr.patch(older, rebuilt)
 assert result2.value['age'].as_python() == 33
 assert result2.value['internal_id'].as_python() == 'id1'
