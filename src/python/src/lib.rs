@@ -57,17 +57,12 @@ fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "SchemaView")]
 pub struct PySchemaView {
-    inner: Arc<SchemaView>,
+    pub inner: Arc<SchemaView>,
 }
 
 impl PySchemaView {
     pub fn as_rust(&self) -> &SchemaView {
         self.inner.as_ref()
-    }
-
-    /// Obtain a shared reference-counted handle to the underlying `SchemaView`.
-    pub fn shared_arc(&self) -> Arc<SchemaView> {
-        Arc::clone(&self.inner)
     }
 }
 
