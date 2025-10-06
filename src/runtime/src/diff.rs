@@ -384,7 +384,7 @@ fn apply_delta_linkml_inner(
     if path.is_empty() {
         return match op {
             DeltaOp::Add => {
-                let v = newv.expect("add delta must supply new value");
+                let v = newv.unwrap_or_else(|| &JsonValue::Null);
                 let (class_opt, slot_opt) = match current {
                     LinkMLInstance::Object { class, .. } => (Some(class.clone()), None),
                     LinkMLInstance::List { class, slot, .. } => (class.clone(), Some(slot.clone())),
@@ -455,7 +455,7 @@ fn apply_delta_linkml_inner(
             if path.len() == 1 {
                 return match op {
                     DeltaOp::Add | DeltaOp::Update => {
-                        let v = newv.expect("change/add delta must supply new value");
+                        let v = newv.unwrap_or_else(|| &JsonValue::Null);
                         let conv = schema_view.converter();
                         let slot = class.slots().iter().find(|s| s.name == *key).cloned();
                         let new_child = LinkMLInstance::from_json(
@@ -529,7 +529,7 @@ fn apply_delta_linkml_inner(
             if path.len() == 1 {
                 return match op {
                     DeltaOp::Add | DeltaOp::Update => {
-                        let v = newv.expect("change/add delta must supply new value");
+                        let v = newv.unwrap_or_else(|| &JsonValue::Null);
                         let conv = schema_view.converter();
                         let new_child = LinkMLInstance::build_mapping_entry_for_slot(
                             slot,
@@ -603,7 +603,7 @@ fn apply_delta_linkml_inner(
             if path.len() == 1 {
                 return match op {
                     DeltaOp::Add | DeltaOp::Update => {
-                        let v = newv.expect("change/add delta must supply new value");
+                        let v = newv.unwrap_or_else(|| &JsonValue::Null);
                         if let Some(idx) = idx_opt.filter(|i| *i < values.len()) {
                             let conv = schema_view.converter();
                             let new_child = LinkMLInstance::build_list_item_for_slot(
