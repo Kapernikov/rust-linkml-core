@@ -227,11 +227,27 @@ impl PySchemaView {
             .map(|cv| PyClassView { inner: cv }))
     }
 
+    fn get_class_view_by_uri(&self, uri: &str) -> PyResult<Option<PyClassView>> {
+        Ok(self
+            .inner
+            .get_class_by_uri(uri)
+            .map_err(|e| PyException::new_err(format!("{:?}", e)))?
+            .map(|cv| PyClassView { inner: cv }))
+    }
+
     fn get_slot_view(&self, id: &str) -> PyResult<Option<PySlotView>> {
         let conv = self.inner.converter();
         Ok(self
             .inner
             .get_slot(&Identifier::new(id), &conv)
+            .map_err(|e| PyException::new_err(format!("{:?}", e)))?
+            .map(|svw| PySlotView { inner: svw }))
+    }
+
+    fn get_slot_view_by_uri(&self, uri: &str) -> PyResult<Option<PySlotView>> {
+        Ok(self
+            .inner
+            .get_slot_by_uri(uri)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))?
             .map(|svw| PySlotView { inner: svw }))
     }
@@ -410,6 +426,14 @@ impl PySlotView {
     #[getter]
     pub fn definition(&self) -> SlotDefinition {
         self.inner.definition().clone()
+    }
+
+    fn schema_id(&self) -> String {
+        self.inner.schema_id().to_string()
+    }
+
+    fn canonical_uri(&self) -> String {
+        self.inner.canonical_uri().to_string()
     }
 
     fn range_class(&self) -> Option<PyClassView> {
@@ -782,12 +806,7 @@ impl PyLinkMLInstance {
     }
     #[getter]
     fn slot_name(&self) -> Option<String> {
-        match &self.value {
-            LinkMLInstance::Scalar { slot, .. } => Some(slot.name.clone()),
-            LinkMLInstance::List { slot, .. } => Some(slot.name.clone()),
-            LinkMLInstance::Null { slot, .. } => Some(slot.name.clone()),
-            _ => None,
-        }
+        self.value.slot().map(|slot| slot.name.clone())
     }
 
     #[getter]

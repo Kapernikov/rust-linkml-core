@@ -35,6 +35,9 @@ impl ClassViewData {
     }
 }
 
+/// Lightweight view over a LinkML class definition.
+///
+/// Cloning this type is cheap because it only clones an internal `Arc` handle.
 #[derive(Clone)]
 pub struct ClassView {
     data: Arc<ClassViewData>,
@@ -245,10 +248,29 @@ impl ClassView {
         Ok(vals)
     }
 
+    /// Returns the canonical URI for this class, preferring explicit
+    /// `class_uri` declarations when available.
     pub fn canonical_uri(&self) -> Identifier {
-        self.data
+        if let Some(explicit_uri) = &self.data.class.class_uri {
+            let id = Identifier::new(explicit_uri);
+            if let Some(conv) = self.data.sv.converter_for_schema(&self.data.schema_uri) {
+                if let Ok(uri) = id.to_uri(conv) {
+                    return Identifier::Uri(uri);
+                }
+            }
+            return id;
+        }
+
+        let fallback = self
+            .data
             .sv
-            .get_uri(&self.data.schema_uri, &self.data.class.name)
+            .get_uri(&self.data.schema_uri, &self.data.class.name);
+        if let Some(conv) = self.data.sv.converter_for_schema(&self.data.schema_uri) {
+            if let Ok(uri) = fallback.to_uri(conv) {
+                return Identifier::Uri(uri);
+            }
+        }
+        fallback
     }
 
     fn compute_descendant_identifiers(

@@ -24,6 +24,9 @@ impl EnumViewData {
     }
 }
 
+/// Lightweight view over a LinkML enum definition.
+///
+/// Cloning this type is cheap because it only clones an internal `Arc` handle.
 #[derive(Clone)]
 pub struct EnumView {
     data: Arc<EnumViewData>,

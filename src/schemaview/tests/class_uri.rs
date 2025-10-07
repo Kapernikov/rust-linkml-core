@@ -29,4 +29,27 @@ fn class_get_uri() {
         cv.get_uri(&conv, true, false).unwrap().to_string(),
         "personinfo:Person"
     );
+    assert_eq!(
+        cv.canonical_uri().to_string(),
+        "https://w3id.org/linkml/Person"
+    );
+}
+
+#[test]
+fn class_lookup_by_uri() {
+    let person_schema = from_yaml(Path::new(&data_path("person.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(person_schema.clone()).unwrap();
+
+    let class_by_uri = sv
+        .get_class_by_uri("https://w3id.org/linkml/Person")
+        .unwrap()
+        .expect("class not found by URI");
+    assert_eq!(class_by_uri.name(), "Person");
+
+    let class_by_curie = sv
+        .get_class_by_uri("linkml:Person")
+        .unwrap()
+        .expect("class not found by CURIE");
+    assert_eq!(class_by_curie.name(), "Person");
 }

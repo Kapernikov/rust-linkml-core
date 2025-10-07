@@ -74,6 +74,12 @@ assert s is not None and s.name == 'meta'
 c = sv.get_class_view('linkml:class_definition')
 print('class', c)
 assert c is not None and c.name == 'class_definition'
+cv_uri = sv.get_class_view_by_uri('https://w3id.org/linkml/ClassDefinition')
+assert cv_uri is not None and cv_uri.name == 'class_definition'
+slot = sv.get_slot_view_by_uri('skos:definition')
+assert slot is not None
+assert slot.schema_id() == 'https://w3id.org/linkml/meta'
+assert slot.canonical_uri() == 'http://www.w3.org/2004/02/skos/core#definition'
 "#
         );
     });

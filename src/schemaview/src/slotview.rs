@@ -174,6 +174,9 @@ pub struct SlotViewData {
     cached_range_info: OnceLock<Vec<RangeInfo>>,
 }
 
+/// Lightweight view over an effective LinkML slot definition.
+///
+/// Cloning this type is cheap because it only clones an internal `Arc` handle.
 #[derive(Clone)]
 pub struct SlotView {
     pub name: String,
@@ -229,6 +232,28 @@ impl SlotView {
 
     pub fn schema_id(&self) -> &str {
         &self.schema_uri
+    }
+
+    /// Returns the canonical URI for this slot, preferring explicit `slot_uri`
+    /// declarations when available.
+    pub fn canonical_uri(&self) -> Identifier {
+        if let Some(explicit_uri) = &self.definition().slot_uri {
+            let id = Identifier::new(explicit_uri);
+            if let Some(conv) = self.sv.converter_for_schema(&self.schema_uri) {
+                if let Ok(uri) = id.to_uri(conv) {
+                    return Identifier::Uri(uri);
+                }
+            }
+            return id;
+        }
+
+        let fallback = self.sv.get_uri(&self.schema_uri, &self.name);
+        if let Some(conv) = self.sv.converter_for_schema(&self.schema_uri) {
+            if let Ok(uri) = fallback.to_uri(conv) {
+                return Identifier::Uri(uri);
+            }
+        }
+        fallback
     }
 
     pub fn get_range_info(&self) -> &Vec<RangeInfo> {

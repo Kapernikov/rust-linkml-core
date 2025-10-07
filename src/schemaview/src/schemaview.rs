@@ -697,6 +697,25 @@ impl SchemaView {
             .collect::<Vec<String>>();
     }
 
+    /// Retrieve a [`ClassView`] by its expanded URI.
+    pub fn get_class_by_uri(&self, uri: &str) -> Result<Option<ClassView>, SchemaViewError> {
+        let location = {
+            let cache = self.cache();
+            cache.class_uri_index.get(uri).cloned()
+        };
+        if let Some((schema_uri, class_name)) = location {
+            return self.get_class_by_schema(&schema_uri, &class_name);
+        }
+        if uri.contains("://") {
+            return Ok(None);
+        }
+        let conv = self.converter();
+        if let Ok(expanded) = Identifier::new(uri).to_uri(&conv) {
+            return self.get_class_by_uri(expanded.0.as_str());
+        }
+        Ok(None)
+    }
+
     pub fn get_slot_ids(&self) -> Vec<String> {
         return self
             .cache()
@@ -704,6 +723,37 @@ impl SchemaView {
             .keys()
             .cloned()
             .collect::<Vec<String>>();
+    }
+
+    /// Retrieve a [`SlotView`] by its expanded URI.
+    pub fn get_slot_by_uri(&self, uri: &str) -> Result<Option<SlotView>, SchemaViewError> {
+        let location = {
+            let cache = self.cache();
+            cache.slot_uri_index.get(uri).cloned()
+        };
+        if let Some((schema_uri, slot_name)) = location {
+            if let Some(schema) = self.data.schema_definitions.get(&schema_uri) {
+                if let Some(defs) = &schema.slot_definitions {
+                    if let Some(slot) = defs.get(&slot_name) {
+                        return Ok(Some(SlotView::new(
+                            slot_name.clone(),
+                            vec![slot.clone()],
+                            &schema.id,
+                            self,
+                        )));
+                    }
+                }
+            }
+            return Ok(None);
+        }
+        if uri.contains("://") {
+            return Ok(None);
+        }
+        let conv = self.converter();
+        if let Ok(expanded) = Identifier::new(uri).to_uri(&conv) {
+            return self.get_slot_by_uri(expanded.0.as_str());
+        }
+        Ok(None)
     }
 
     /// Return all classes as [`ClassView`]s across every schema in the view.

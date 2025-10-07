@@ -28,6 +28,25 @@ fn slot_lookup_and_class_slots() {
         .unwrap()
         .is_some());
 
+    let slot_by_uri = sv
+        .get_slot_by_uri("http://www.w3.org/2004/02/skos/core#exactMatch")
+        .unwrap()
+        .expect("slot not found by URI");
+    assert_eq!(
+        slot_by_uri.canonical_uri().to_string(),
+        "http://www.w3.org/2004/02/skos/core#exactMatch"
+    );
+    assert_eq!(slot_by_uri.schema_id(), "https://w3id.org/linkml/mappings");
+
+    let slot_by_curie = sv
+        .get_slot_by_uri("skos:exactMatch")
+        .unwrap()
+        .expect("slot not found by CURIE");
+    assert_eq!(
+        slot_by_curie.canonical_uri().to_string(),
+        "http://www.w3.org/2004/02/skos/core#exactMatch"
+    );
+
     // class slots with slot_usage
     let class = sv
         .get_class(&Identifier::new("UnitOfMeasure"), &conv)

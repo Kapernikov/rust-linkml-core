@@ -160,6 +160,29 @@ impl LinkMLInstance {
             | LinkMLInstance::Object { sv, .. } => sv,
         }
     }
+
+    /// Returns the associated [`ClassView`], if any.
+    pub fn class(&self) -> Option<&ClassView> {
+        match self {
+            LinkMLInstance::Object { class, .. } => Some(class),
+            LinkMLInstance::Scalar { class, .. }
+            | LinkMLInstance::Null { class, .. }
+            | LinkMLInstance::List { class, .. }
+            | LinkMLInstance::Mapping { class, .. } => class.as_ref(),
+        }
+    }
+
+    /// Returns the associated [`SlotView`], if any.
+    pub fn slot(&self) -> Option<&SlotView> {
+        match self {
+            LinkMLInstance::Scalar { slot, .. }
+            | LinkMLInstance::Null { slot, .. }
+            | LinkMLInstance::List { slot, .. }
+            | LinkMLInstance::Mapping { slot, .. } => Some(slot),
+            LinkMLInstance::Object { .. } => None,
+        }
+    }
+
     /// Navigate the value by a path of strings, where each element is either
     /// a dictionary key (for maps) or a list index (for lists).
     /// Returns `Some(&LinkMLInstance)` if the full path can be resolved, otherwise `None`.
