@@ -982,6 +982,7 @@ dependencies = [
 name = "linkml_wasm"
 version = "0.1.0"
 dependencies = [
+ "schemaview",
  "wasm-bindgen",
 ]
 
@@ -1848,6 +1849,7 @@ dependencies = [
  "itertools 0.14.0",
  "linkml_meta",
  "reqwest",
+ "serde",
  "serde_path_to_error",
  "serde_yml",
  "thiserror 1.0.69",

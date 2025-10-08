@@ -354,11 +354,7 @@ impl ClassView {
             .data
             .descendants_index
             .get(&(recurse, include_mixins))
-            .ok_or_else(|| {
-                SchemaViewError::CacheMissing(format!(
-                    "descendants index missing entry for recurse={recurse}, include_mixins={include_mixins}"
-                ))
-            })?;
+            .expect("descendants index is initialized for all recurse/include_mixins combinations");
         let idx = if let Some(existing) = idx_lock.get() {
             existing
         } else {
@@ -374,11 +370,9 @@ impl ClassView {
             if let Err(res) = idx_lock.set(res) {
                 drop(res);
             }
-            idx_lock.get().ok_or_else(|| {
-                SchemaViewError::CacheMissing(
-                    "failed to initialize descendants index after computation".to_string(),
-                )
-            })?
+            idx_lock
+                .get()
+                .expect("descendants index should be initialized after computation")
         };
         idx.iter()
             .map(|(schema_uri, class_name)| {

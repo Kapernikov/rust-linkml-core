@@ -12,6 +12,17 @@ core linkml schema operations written in rust
 - linkml_runtime_python (`src/python`): PyO3 bindings and Python package (`linkml_runtime_rust._native`) exposing SchemaView and LinkMLInstance to Python; includes small Python helpers.
 - linkml_wasm (`src/wasm`): WASM build target (experimental).
 
+### SchemaView snapshots
+
+`SchemaView` instances can be serialized into a **snapshot**—a self-contained YAML payload that carries
+every loaded schema definition along with the resolved-import lineage and primary-schema pointer. The
+snapshot can be reconstructed into an equivalent `SchemaView` without contacting remote import targets,
+making it ideal for building views server-side and shipping them to Python, WASM, or browser clients.
+
+- Rust: `SchemaView::to_snapshot_yaml()` / `SchemaView::from_snapshot_yaml(...)`
+- Python: `SchemaView.to_snapshot_yaml()`, `SchemaView.from_snapshot_yaml(...)`
+- WASM/JS: `JsSchemaView::toSnapshotYaml()`, `schemaview_from_snapshot_yaml(...)`
+
 ## Regenerating the metamodel
 
 In order to regenerate the metamodel:

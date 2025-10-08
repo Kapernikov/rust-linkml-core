@@ -3013,6 +3013,7 @@ classes:
       - message
       - observation
     is_a: definition
+    class_uri: linkml:ClassDefinition
     slots:
       - slots
       - slot_usage

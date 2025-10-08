@@ -12,7 +12,7 @@ use pyo3::conversion::{IntoPyObject, IntoPyObjectExt};
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
-use pyo3::types::{PyAny, PyDict, PyModule, PyString};
+use pyo3::types::{PyAny, PyDict, PyModule, PyString, PyType};
 use pyo3::Bound;
 use pyo3::{wrap_pyfunction, wrap_pymodule};
 #[cfg(feature = "stubgen")]
@@ -216,6 +216,38 @@ impl PySchemaView {
 
     fn get_schema(&self, uri: &str) -> Option<SchemaDefinition> {
         self.inner.get_schema(uri).cloned()
+    }
+
+    #[classmethod]
+    #[pyo3(name = "from_snapshot_yaml")]
+    fn py_from_snapshot_yaml(_cls: &Bound<'_, PyType>, data: &str) -> PyResult<Self> {
+        let view = SchemaView::from_snapshot_yaml(data)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        Ok(Self {
+            inner: Arc::new(view),
+        })
+    }
+
+    #[classmethod]
+    #[pyo3(name = "from_snapshot_file")]
+    fn py_from_snapshot_file(_cls: &Bound<'_, PyType>, path: &str) -> PyResult<Self> {
+        let view = SchemaView::from_snapshot_file(path)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+        Ok(Self {
+            inner: Arc::new(view),
+        })
+    }
+
+    fn to_snapshot_yaml(&self) -> PyResult<String> {
+        self.inner
+            .to_snapshot_yaml()
+            .map_err(|e| PyException::new_err(e.to_string()))
+    }
+
+    fn to_snapshot_file(&self, path: &str) -> PyResult<()> {
+        self.inner
+            .to_snapshot_file(path)
+            .map_err(|e| PyException::new_err(e.to_string()))
     }
 
     fn get_class_view(&self, id: &str) -> PyResult<Option<PyClassView>> {
