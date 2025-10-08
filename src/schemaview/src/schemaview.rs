@@ -19,6 +19,8 @@ pub enum SchemaViewError {
     NoPrimarySchema(String),
     NotFound,
     NoConverterForSchema(String),
+    CacheMissing(String),
+    CachePoisoned(String),
 }
 
 impl From<IdentifierError> for SchemaViewError {
@@ -102,11 +104,15 @@ impl SchemaView {
     }
 
     fn cache(&self) -> RwLockReadGuard<'_, SchemaViewCache> {
-        self.cache.read().expect("SchemaView RwLock poisoned")
+        self.cache
+            .read()
+            .unwrap_or_else(|poison| poison.into_inner())
     }
 
     fn write_cache(&self) -> RwLockWriteGuard<'_, SchemaViewCache> {
-        self.cache.write().expect("SchemaView RwLock poisoned")
+        self.cache
+            .write()
+            .unwrap_or_else(|poison| poison.into_inner())
     }
 
     pub fn get_tree_root_or(&self, class_name: Option<&str>) -> Option<ClassView> {

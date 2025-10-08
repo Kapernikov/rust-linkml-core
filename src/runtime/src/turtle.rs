@@ -603,7 +603,8 @@ pub fn write_turtle<W: Write>(
     }
     let out_buf = formatter.finish()?;
     let mut out = String::from_utf8(out_buf).unwrap_or_default();
-    let iri_re = Regex::new(r"<([^>]+)>").unwrap();
+    let iri_re = Regex::new(r"<([^>]+)>")
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
     out = iri_re
         .replace_all(&out, |caps: &regex::Captures| {
             let iri = &caps[1];

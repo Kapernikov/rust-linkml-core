@@ -188,7 +188,7 @@ impl From<Identifier> for String {
 
 fn add_missing_prefix(prefix: &str, uri: &str, conv: &mut Converter) {
     if conv.find_by_prefix(prefix).is_err() {
-        conv.add_prefix(prefix, uri).unwrap();
+        let _ = conv.add_prefix(prefix, uri);
     }
 }
 

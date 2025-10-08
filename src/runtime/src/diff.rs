@@ -429,7 +429,10 @@ fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
                 .and_then(|child| match child {
                     LinkMLInstance::Scalar { value, .. } => match value {
                         JsonValue::String(s) => (s == key).then_some(i),
-                        other => (other.to_string() == key).then_some(i),
+                        other => {
+                            let key_json = JsonValue::String(key.to_string());
+                            (other == &key_json).then_some(i)
+                        }
                     },
                     _ => None,
                 })
@@ -481,6 +484,7 @@ const MAPPING_DELTA_CONFIG: HashmapDeltaConfig = HashmapDeltaConfig {
     skip_remove_null: true,
 };
 
+#[allow(clippy::too_many_arguments)]
 fn apply_hashmap_leaf_delta<F>(
     values: &mut std::collections::HashMap<String, LinkMLInstance>,
     key: &str,
@@ -715,6 +719,7 @@ fn apply_delta_root(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_delta_object(
     values: &mut std::collections::HashMap<String, LinkMLInstance>,
     class: &ClassView,
@@ -753,6 +758,7 @@ fn apply_delta_object(
     Ok(false)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_delta_mapping(
     values: &mut std::collections::HashMap<String, LinkMLInstance>,
     slot: &SlotView,
@@ -795,6 +801,7 @@ fn apply_delta_mapping(
     Ok(false)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_delta_list(
     values: &mut Vec<LinkMLInstance>,
     slot: &SlotView,

@@ -176,7 +176,12 @@ impl ClassView {
                 format!("{}:{}", default_prefix, self.data.class.name)
             }
         } else {
-            self.data.class.class_uri.as_ref().unwrap().clone()
+            self.data.class.class_uri.clone().ok_or_else(|| {
+                IdentifierError::NameNotResolvable(format!(
+                    "class {} missing URI",
+                    self.data.class.name
+                ))
+            })?
         };
 
         if expand {
@@ -345,24 +350,36 @@ impl ClassView {
         recurse: bool,
         include_mixins: bool,
     ) -> Result<Vec<ClassView>, SchemaViewError> {
-        let idx = self
+        let idx_lock = self
             .data
             .descendants_index
             .get(&(recurse, include_mixins))
-            .unwrap()
-            .get_or_init(|| {
-                let mut res = Vec::new();
-                self.compute_descendant_identifiers(
-                    recurse,
-                    include_mixins,
-                    &self.data.schema_uri,
-                    &self.canonical_uri(),
-                    self.name(),
-                    &mut res,
+            .ok_or_else(|| {
+                SchemaViewError::CacheMissing(format!(
+                    "descendants index missing entry for recurse={recurse}, include_mixins={include_mixins}"
+                ))
+            })?;
+        let idx = if let Some(existing) = idx_lock.get() {
+            existing
+        } else {
+            let mut res = Vec::new();
+            self.compute_descendant_identifiers(
+                recurse,
+                include_mixins,
+                &self.data.schema_uri,
+                &self.canonical_uri(),
+                self.name(),
+                &mut res,
+            )?;
+            if let Err(res) = idx_lock.set(res) {
+                drop(res);
+            }
+            idx_lock.get().ok_or_else(|| {
+                SchemaViewError::CacheMissing(
+                    "failed to initialize descendants index after computation".to_string(),
                 )
-                .unwrap(); // fix this with try_get_or_init once stable!
-                res
-            });
+            })?
+        };
         idx.iter()
             .map(|(schema_uri, class_name)| {
                 self.data
