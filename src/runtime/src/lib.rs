@@ -18,9 +18,14 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+pub mod blame;
 pub mod diff;
 #[cfg(feature = "ttl")]
 pub mod turtle;
+pub use blame::{
+    blame_map_to_paths, format_blame_map, format_blame_map_with, get_blame_info, patch_with_blame,
+    record_blame_from_trace,
+};
 pub use diff::{diff, patch, Delta, DiffOptions, PatchOptions, PatchTrace};
 #[derive(Debug)]
 pub struct LinkMLError(pub String);

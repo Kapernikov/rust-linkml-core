@@ -405,11 +405,14 @@ fn replace_child_subtree(
     new_child: LinkMLInstance,
     parent_id: NodeId,
     trace: &mut PatchTrace,
+    mark_parent: bool,
 ) {
     let old_snapshot = std::mem::replace(target, new_child);
     mark_deleted_subtree(&old_snapshot, trace);
     mark_added_subtree(target, trace);
-    trace.updated.push(parent_id);
+    if mark_parent {
+        trace.updated.push(parent_id);
+    }
 }
 
 fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
@@ -512,7 +515,7 @@ where
                     {
                         return Ok(true);
                     }
-                    replace_child_subtree(existing, new_child, owner_id, trace);
+                    replace_child_subtree(existing, new_child, owner_id, trace, false);
                     Ok(true)
                 }
                 Entry::Vacant(entry) => {
@@ -566,7 +569,7 @@ where
                 if try_update_scalar_in_place(existing, &new_child, trace) {
                     return Ok(true);
                 }
-                replace_child_subtree(existing, new_child, owner_id, trace);
+                replace_child_subtree(existing, new_child, owner_id, trace, false);
                 Ok(true)
             } else {
                 mark_added_subtree(&new_child, trace);
