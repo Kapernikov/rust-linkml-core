@@ -1,0 +1,32 @@
+id: https://w3id.org/linkml/examples/common_ancestors
+name: common_ancestors
+prefixes:
+  ex: https://example.org/common/
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+default_prefix: ex
+classes:
+  Thing:
+    tree_root: true
+  Transport:
+    is_a: Thing
+  Vehicle:
+    is_a: Transport
+  GroundVehicle:
+    is_a: Vehicle
+  AirVehicle:
+    is_a: Vehicle
+  Maintainable:
+    mixin: true
+    is_a: Thing
+  Car:
+    is_a: GroundVehicle
+    mixins:
+      - Maintainable
+  Tractor:
+    is_a: GroundVehicle
+  Airplane:
+    is_a: AirVehicle
+    mixins:
+      - Maintainable

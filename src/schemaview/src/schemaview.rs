@@ -31,6 +31,7 @@ pub enum SchemaViewError {
     Serialization(String),
     Deserialization(String),
     Io(String),
+    SchemaViewMismatch,
 }
 
 impl fmt::Display for SchemaViewError {
@@ -52,6 +53,9 @@ impl fmt::Display for SchemaViewError {
             SchemaViewError::Serialization(msg) => write!(f, "serialization error: {msg}"),
             SchemaViewError::Deserialization(msg) => write!(f, "deserialization error: {msg}"),
             SchemaViewError::Io(msg) => write!(f, "io error: {msg}"),
+            SchemaViewError::SchemaViewMismatch => {
+                write!(f, "class views originate from different schema views")
+            }
         }
     }
 }
@@ -130,6 +134,11 @@ impl SchemaView {
             data: Arc::new(SchemaViewData::new()),
             cache: Arc::new(RwLock::new(SchemaViewCache::new())),
         }
+    }
+
+    /// Check whether two views reference the same underlying schema data.
+    pub fn is_same(&self, other: &SchemaView) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
     }
 
     /// Build a serializable snapshot of this `SchemaView`.

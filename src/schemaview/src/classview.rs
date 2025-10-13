@@ -408,4 +408,134 @@ impl ClassView {
             .iter()
             .find(|s| s.definition().identifier.unwrap_or(false))
     }
+
+    fn collect_ancestors_map(
+        class_view: &ClassView,
+        include_mixins: bool,
+    ) -> Result<HashMap<String, (ClassView, usize)>, SchemaViewError> {
+        fn collect_recursive(
+            current: &ClassView,
+            depth: usize,
+            include_mixins: bool,
+            acc: &mut HashMap<String, (ClassView, usize)>,
+        ) -> Result<(), SchemaViewError> {
+            let key = current.canonical_uri().to_string();
+            let mut should_descend = false;
+            match acc.get_mut(&key) {
+                Some((_, existing_depth)) => {
+                    if depth < *existing_depth {
+                        *existing_depth = depth;
+                        should_descend = true;
+                    }
+                }
+                None => {
+                    acc.insert(key.clone(), (current.clone(), depth));
+                    should_descend = true;
+                }
+            }
+
+            if !should_descend {
+                return Ok(());
+            }
+
+            if let Some(parent) = current.parent_class()? {
+                collect_recursive(&parent, depth + 1, include_mixins, acc)?;
+            }
+
+            if include_mixins {
+                if let Some(mixins) = &current.data.class.mixins {
+                    let conv = current
+                        .data
+                        .sv
+                        .converter_for_schema(&current.data.schema_uri)
+                        .ok_or_else(|| {
+                            SchemaViewError::NoConverterForSchema(current.data.schema_uri.clone())
+                        })?;
+                    for mixin in mixins {
+                        if let Some(mixin_view) =
+                            current.data.sv.get_class(&Identifier::new(mixin), conv)?
+                        {
+                            collect_recursive(&mixin_view, depth + 1, include_mixins, acc)?;
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+
+        let mut acc = HashMap::new();
+        collect_recursive(class_view, 0, include_mixins, &mut acc)?;
+        Ok(acc)
+    }
+
+    /// Determine the most specific common ancestor across one or more class views.
+    pub fn most_specific_common_ancestor(
+        class_views: &[ClassView],
+        include_mixins: bool,
+    ) -> Result<Option<ClassView>, SchemaViewError> {
+        if class_views.is_empty() {
+            return Ok(None);
+        }
+
+        let reference_sv = &class_views[0].data.sv;
+        for cv in class_views.iter().skip(1) {
+            if !reference_sv.is_same(&cv.data.sv) {
+                return Err(SchemaViewError::SchemaViewMismatch);
+            }
+        }
+
+        let mut iter = class_views.iter();
+        let first = iter.next().expect("non-empty slice has a first element");
+
+        struct AncestorAggregate {
+            class_view: ClassView,
+            max_depth: usize,
+            total_depth: usize,
+        }
+
+        let mut common: HashMap<String, AncestorAggregate> =
+            Self::collect_ancestors_map(first, include_mixins)?
+                .into_iter()
+                .map(|(key, (class_view, depth))| {
+                    (
+                        key,
+                        AncestorAggregate {
+                            class_view,
+                            max_depth: depth,
+                            total_depth: depth,
+                        },
+                    )
+                })
+                .collect();
+
+        for other in iter {
+            let candidates = Self::collect_ancestors_map(other, include_mixins)?;
+            common.retain(|key, aggregate| {
+                if let Some((_, depth)) = candidates.get(key) {
+                    if *depth > aggregate.max_depth {
+                        aggregate.max_depth = *depth;
+                    }
+                    aggregate.total_depth += *depth;
+                    true
+                } else {
+                    false
+                }
+            });
+
+            if common.is_empty() {
+                return Ok(None);
+            }
+        }
+
+        Ok(common
+            .into_iter()
+            .min_by(|(_, a), (_, b)| {
+                a.max_depth
+                    .cmp(&b.max_depth)
+                    .then_with(|| a.total_depth.cmp(&b.total_depth))
+                    .then_with(|| a.class_view.name().cmp(b.class_view.name()))
+            })
+            .map(|(_, aggregate)| aggregate.class_view))
+    }
 }
