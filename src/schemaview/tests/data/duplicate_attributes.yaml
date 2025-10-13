@@ -1,0 +1,14 @@
+id: https://example.org/duplicate-attributes
+name: DuplicateAttributes
+prefixes:
+  dup: https://example.org/duplicate-attributes/
+default_prefix: dup
+classes:
+  Alpha:
+    attributes:
+      shared:
+        range: string
+  Beta:
+    attributes:
+      shared:
+        range: integer

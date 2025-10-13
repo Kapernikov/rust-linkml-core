@@ -20,6 +20,30 @@ pub use crate::classview::ClassView;
 pub use crate::enumview::EnumView;
 pub use crate::slotview::{SlotContainerMode, SlotInlineMode, SlotView};
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct SlotKey {
+    schema_uri: String,
+    owner: Option<String>,
+    name: String,
+}
+
+impl SlotKey {
+    fn new(schema_uri: impl Into<String>, owner: Option<String>, name: impl Into<String>) -> Self {
+        SlotKey {
+            schema_uri: schema_uri.into(),
+            owner,
+            name: name.into(),
+        }
+    }
+
+    fn scoped_identifier(&self) -> String {
+        match &self.owner {
+            Some(owner) => format!("{}::{}::{}", self.schema_uri, owner, self.name),
+            None => format!("{}::{}", self.schema_uri, self.name),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum SchemaViewError {
     IdentifierError(IdentifierError),
@@ -84,8 +108,9 @@ pub(crate) struct SchemaViewData {
 pub(crate) struct SchemaViewCache {
     pub(crate) class_uri_index: HashMap<String, (String, String)>,
     pub(crate) class_name_index: HashMap<String, (String, String)>,
-    pub(crate) slot_uri_index: HashMap<String, (String, String)>,
-    pub(crate) slot_name_index: HashMap<String, (String, String)>,
+    pub(crate) slot_uri_index: HashMap<String, Vec<SlotKey>>,
+    pub(crate) slot_name_index: HashMap<String, Vec<SlotKey>>,
+    pub(crate) slot_entries: HashMap<SlotKey, SlotView>,
     pub(crate) clas_view_cache: HashMap<(String, String), ClassView>,
     pub(crate) enum_uri_index: HashMap<String, (String, String)>,
     pub(crate) enum_name_index: HashMap<String, (String, String)>,
@@ -99,6 +124,7 @@ impl SchemaViewCache {
             slot_uri_index: HashMap::new(),
             clas_view_cache: HashMap::new(),
             slot_name_index: HashMap::new(),
+            slot_entries: HashMap::new(),
             enum_uri_index: HashMap::new(),
             enum_name_index: HashMap::new(),
         }
@@ -133,6 +159,32 @@ impl SchemaView {
         SchemaView {
             data: Arc::new(SchemaViewData::new()),
             cache: Arc::new(RwLock::new(SchemaViewCache::new())),
+        }
+    }
+
+    fn register_slot_view<I, J>(&self, key: SlotKey, slot_view: SlotView, names: I, uris: J)
+    where
+        I: IntoIterator<Item = String>,
+        J: IntoIterator<Item = String>,
+    {
+        let mut cache = self.write_cache();
+        cache.slot_entries.insert(key.clone(), slot_view);
+        for name in names {
+            let entry = cache.slot_name_index.entry(name).or_default();
+            if !entry.contains(&key) {
+                entry.push(key.clone());
+            }
+        }
+        for uri in uris {
+            let entry = cache.slot_uri_index.entry(uri).or_default();
+            if !entry.contains(&key) {
+                entry.push(key.clone());
+            }
+        }
+        let scoped = key.scoped_identifier();
+        let entry = cache.slot_uri_index.entry(scoped).or_default();
+        if !entry.contains(&key) {
+            entry.push(key);
         }
     }
 
@@ -402,6 +454,10 @@ impl SchemaView {
     ) -> Result<bool, String> {
         let schema_uri = schema.id.clone();
         let conv = converter_from_schema(&schema);
+        {
+            let d = Arc::make_mut(&mut self.data);
+            d.converters.insert(schema_uri.to_string(), conv.clone());
+        }
         self.index_schema_classes(&schema_uri, &schema, &conv)
             .map_err(|e| format!("{:?}", e))?;
         self.index_schema_slots(&schema_uri, &schema, &conv)
@@ -409,7 +465,6 @@ impl SchemaView {
         self.index_schema_enums(&schema_uri, &schema, &conv)
             .map_err(|e| format!("{:?}", e))?;
         let d = Arc::make_mut(&mut self.data); // &mut SchemaViewData
-        d.converters.insert(schema_uri.to_string(), conv.clone());
         import_reference.map(|x| {
             d.resolved_schema_imports
                 .insert((x.0, x.1), schema.id.clone())
@@ -537,6 +592,8 @@ impl SchemaView {
                         .entry(default_uri)
                         .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
                 }
+
+                self.index_class_attributes(schema_uri, schema, class_name, class_def);
             }
         }
         Ok(())
@@ -563,37 +620,63 @@ impl SchemaView {
                 let default_uri = default_id.to_uri(conv).map(|u| u.0).unwrap_or_else(|_| {
                     format!("{}/{}", schema.id.trim_end_matches('/'), slot_name)
                 });
-                self.write_cache()
-                    .slot_name_index
-                    .entry(slot_name.clone())
-                    .or_insert_with(|| (schema_uri.to_string(), slot_name.clone()));
-                /*if let Some(s) = &slot_def.alias {
-                    self.slot_name_index
-                        .entry(s.clone())
-                        .or_insert_with(|| (schema_uri.to_string(), slot_name.clone()));
-                }*/
 
+                let mut uris = Vec::new();
+                uris.push(default_uri.clone());
                 if let Some(suri) = &slot_def.slot_uri {
                     let explicit_uri = Identifier::new(suri).to_uri(conv)?.0;
-                    self.write_cache()
-                        .slot_uri_index
-                        .entry(explicit_uri.clone())
-                        .or_insert_with(|| (schema_uri.to_string(), slot_name.clone()));
-                    if explicit_uri != default_uri {
-                        self.write_cache()
-                            .slot_uri_index
-                            .entry(default_uri.clone())
-                            .or_insert_with(|| (schema_uri.to_string(), slot_name.clone()));
+                    if !uris.contains(&explicit_uri) {
+                        uris.push(explicit_uri);
                     }
-                } else {
-                    self.write_cache()
-                        .slot_uri_index
-                        .entry(default_uri)
-                        .or_insert_with(|| (schema_uri.to_string(), slot_name.clone()));
                 }
+
+                let slot_view =
+                    SlotView::new(slot_name.clone(), vec![slot_def.clone()], &schema.id, self);
+                let canonical_string = slot_view.canonical_uri().to_string();
+                if !uris.iter().any(|u| u == &canonical_string) {
+                    uris.push(canonical_string);
+                }
+                let key = SlotKey::new(schema_uri.to_string(), None, slot_name.clone());
+                self.register_slot_view(key, slot_view, vec![slot_name.clone()], uris);
             }
         }
         Ok(())
+    }
+
+    fn index_class_attributes(
+        &mut self,
+        schema_uri: &str,
+        schema: &SchemaDefinition,
+        class_name: &str,
+        class_def: &linkml_meta::ClassDefinition,
+    ) {
+        if let Some(attributes) = &class_def.attributes {
+            for (attr_name, attr_def) in attributes {
+                let mut defs = vec![*attr_def.clone()];
+                if let Some(slot_usage) = &class_def.slot_usage {
+                    if let Some(usage) = slot_usage.get(attr_name) {
+                        defs.push(*usage.clone());
+                    }
+                }
+
+                for def in &mut defs {
+                    def.owner = Some(class_name.to_string());
+                    if def.from_schema.is_none() {
+                        def.from_schema = Some(schema.id.clone());
+                    }
+                }
+
+                let slot_view = SlotView::new(attr_name.clone(), defs, schema_uri, self);
+                let key = SlotKey::new(
+                    schema_uri.to_string(),
+                    Some(class_name.to_string()),
+                    attr_name.clone(),
+                );
+                let canonical = slot_view.canonical_uri().to_string();
+                let uri_strings = vec![canonical];
+                self.register_slot_view(key, slot_view, vec![attr_name.clone()], uri_strings);
+            }
+        }
     }
 
     fn index_schema_enums(
@@ -906,34 +989,40 @@ impl SchemaView {
     }
 
     pub fn get_slot_ids(&self) -> Vec<String> {
-        return self
+        let mut ids: Vec<String> = self
             .cache()
-            .slot_uri_index
-            .keys()
-            .cloned()
-            .collect::<Vec<String>>();
+            .slot_entries
+            .values()
+            .map(|view| view.canonical_uri().to_string())
+            .collect();
+        ids.sort();
+        ids.dedup();
+        ids
     }
 
     /// Retrieve a [`SlotView`] by its expanded URI.
     pub fn get_slot_by_uri(&self, uri: &str) -> Result<Option<SlotView>, SchemaViewError> {
-        let location = {
+        let keys = {
             let cache = self.cache();
             cache.slot_uri_index.get(uri).cloned()
         };
-        if let Some((schema_uri, slot_name)) = location {
-            if let Some(schema) = self.data.schema_definitions.get(&schema_uri) {
-                if let Some(defs) = &schema.slot_definitions {
-                    if let Some(slot) = defs.get(&slot_name) {
-                        return Ok(Some(SlotView::new(
-                            slot_name.clone(),
-                            vec![slot.clone()],
-                            &schema.id,
-                            self,
-                        )));
-                    }
-                }
+        if let Some(keys) = keys {
+            let cache = self.cache();
+            let pairs: Vec<(SlotKey, SlotView)> = keys
+                .into_iter()
+                .filter_map(|key| {
+                    cache
+                        .slot_entries
+                        .get(&key)
+                        .cloned()
+                        .map(|view| (key, view))
+                })
+                .collect();
+            drop(cache);
+            if let Some(preferred) = select_preferred_slot_view(&pairs) {
+                return Ok(Some(preferred));
             }
-            return Ok(None);
+            return Ok(pairs.into_iter().next().map(|(_, view)| view));
         }
         if uri.contains("://") {
             return Ok(None);
@@ -978,31 +1067,7 @@ impl SchemaView {
 
     /// Return all unique slots referenced by the schemas as [`SlotView`]s.
     pub fn slot_views(&self) -> Result<Vec<SlotView>, SchemaViewError> {
-        use std::collections::HashMap;
-
-        let mut slot_map: HashMap<String, SlotView> = HashMap::new();
-
-        // Include globally declared slot definitions.
-        for schema in self.data.schema_definitions.values() {
-            if let Some(slots) = &schema.slot_definitions {
-                for (slot_name, slot_def) in slots {
-                    slot_map.entry(slot_name.clone()).or_insert_with(|| {
-                        SlotView::new(slot_name.clone(), vec![slot_def.clone()], &schema.id, self)
-                    });
-                }
-            }
-        }
-
-        // Include slots referenced via classes (captures inline slot usage).
-        for class_view in self.class_views()? {
-            for slot in class_view.slots() {
-                slot_map
-                    .entry(slot.name.clone())
-                    .or_insert_with(|| slot.clone());
-            }
-        }
-
-        Ok(slot_map.into_values().collect())
+        Ok(self.cache().slot_entries.values().cloned().collect())
     }
 
     pub fn get_slot(
@@ -1010,57 +1075,41 @@ impl SchemaView {
         id: &Identifier,
         conv: &Converter,
     ) -> Result<Option<SlotView>, IdentifierError> {
-        fn alt_names(name: &str) -> Vec<String> {
-            let mut v = Vec::new();
-            v.push(name.to_string());
-            if name.contains('_') {
-                v.push(name.replace('_', " "));
-            }
-            if name.contains(' ') {
-                v.push(name.replace(' ', "_"));
-            }
-            v
-        }
         match id {
             Identifier::Name(name) => {
-                let names = alt_names(name);
-                for name in names {
-                    let index = self.cache().slot_name_index.get(&name).cloned();
-                    if let Some((schema, slot_name)) = index {
-                        if let Some(schema_def) = self.data.schema_definitions.get(&schema) {
-                            if let Some(defs) = &schema_def.slot_definitions {
-                                if let Some(slot) = defs.get(&slot_name) {
-                                    return Ok(Some(SlotView::new(
-                                        slot_name.clone(),
-                                        vec![slot.clone()],
-                                        &schema_def.id,
-                                        self,
-                                    )));
-                                }
-                            }
+                let cache = self.cache();
+                let mut pairs: Vec<(SlotKey, SlotView)> = Vec::new();
+                if let Some(keys) = cache.slot_name_index.get(name) {
+                    for key in keys {
+                        if let Some(view) = cache.slot_entries.get(key) {
+                            pairs.push((key.clone(), view.clone()));
                         }
                     }
                 }
-                Ok(None)
+                drop(cache);
+                if let Some(preferred) = select_preferred_slot_view(&pairs) {
+                    Ok(Some(preferred))
+                } else {
+                    Ok(pairs.into_iter().next().map(|(_, view)| view))
+                }
             }
             Identifier::Curie(_) | Identifier::Uri(_) => {
                 let target_uri = id.to_uri(conv)?;
-                let index = self.cache().slot_uri_index.get(&target_uri.0).cloned();
-                if let Some((schema_uri, slot_name)) = index {
-                    if let Some(schema) = self.data.schema_definitions.get(&schema_uri) {
-                        if let Some(defs) = &schema.slot_definitions {
-                            if let Some(slot) = defs.get(&slot_name) {
-                                return Ok(Some(SlotView::new(
-                                    slot_name.clone(),
-                                    vec![slot.clone()],
-                                    &schema.id,
-                                    self,
-                                )));
-                            }
+                let cache = self.cache();
+                let mut pairs: Vec<(SlotKey, SlotView)> = Vec::new();
+                if let Some(keys) = cache.slot_uri_index.get(&target_uri.0) {
+                    for key in keys {
+                        if let Some(view) = cache.slot_entries.get(key) {
+                            pairs.push((key.clone(), view.clone()));
                         }
                     }
                 }
-                Ok(None)
+                drop(cache);
+                if let Some(preferred) = select_preferred_slot_view(&pairs) {
+                    Ok(Some(preferred))
+                } else {
+                    Ok(pairs.into_iter().next().map(|(_, view)| view))
+                }
             }
         }
     }
@@ -1126,4 +1175,25 @@ impl SchemaView {
             None => None,
         }
     }
+}
+
+fn select_preferred_slot_view(pairs: &[(SlotKey, SlotView)]) -> Option<SlotView> {
+    pairs
+        .iter()
+        .min_by(|(a_key, _), (b_key, _)| {
+            let a_order = (
+                a_key.owner.is_some(),
+                a_key.schema_uri.as_str(),
+                a_key.owner.as_deref().unwrap_or(""),
+                a_key.name.as_str(),
+            );
+            let b_order = (
+                b_key.owner.is_some(),
+                b_key.schema_uri.as_str(),
+                b_key.owner.as_deref().unwrap_or(""),
+                b_key.name.as_str(),
+            );
+            a_order.cmp(&b_order)
+        })
+        .map(|(_, view)| view.clone())
 }
