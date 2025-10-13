@@ -80,6 +80,20 @@ slot = sv.get_slot_view_by_uri('skos:definition')
 assert slot is not None
 assert slot.schema_id() == 'https://w3id.org/linkml/meta'
 assert slot.canonical_uri() == 'http://www.w3.org/2004/02/skos/core#definition'
+class_def = sv.get_class_view('linkml:class_definition')
+slot_def = sv.get_class_view('linkml:slot_definition')
+assert class_def is not None and slot_def is not None
+ancestor = type(class_def).most_specific_common_ancestor([class_def, slot_def])
+assert ancestor is not None and ancestor.name == 'definition'
+ancestor_with_mixins = type(class_def).most_specific_common_ancestor(
+    [class_def, slot_def],
+    include_mixins=True,
+)
+assert ancestor_with_mixins is not None and ancestor_with_mixins.name == 'definition'
+assert sv.is_same(sv)
+snapshot_yaml = sv.to_snapshot_yaml()
+sv_clone = type(sv).from_snapshot_yaml(snapshot_yaml)
+assert not sv.is_same(sv_clone)
 "#
         );
     });

@@ -218,6 +218,10 @@ impl PySchemaView {
         self.inner.get_schema(uri).cloned()
     }
 
+    fn is_same(&self, other: &PySchemaView) -> bool {
+        self.inner.as_ref().is_same(other.inner.as_ref())
+    }
+
     #[classmethod]
     #[pyo3(name = "from_snapshot_yaml")]
     fn py_from_snapshot_yaml(_cls: &Bound<'_, PyType>, data: &str) -> PyResult<Self> {
@@ -380,6 +384,25 @@ impl PySchemaView {
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
 impl PyClassView {
+    #[classmethod]
+    #[pyo3(signature = (class_views, include_mixins=false))]
+    fn most_specific_common_ancestor(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        class_views: Vec<Py<PyClassView>>,
+        include_mixins: bool,
+    ) -> PyResult<Option<PyClassView>> {
+        let mut rust_views = Vec::with_capacity(class_views.len());
+        for view in class_views.iter() {
+            let bound = view.bind(py);
+            let borrowed = bound.borrow();
+            rust_views.push(borrowed.inner.clone());
+        }
+        ClassView::most_specific_common_ancestor(&rust_views, include_mixins)
+            .map_err(|e| PyException::new_err(format!("{:?}", e)))
+            .map(|opt| opt.map(|view| PyClassView { inner: view }))
+    }
+
     #[getter]
     pub fn name(&self) -> String {
         self.inner.name().to_string()
