@@ -16,6 +16,7 @@ serde_path_to_error = "0.1.17"
 thiserror = "1"
 serde = { version = "1.0", features = ["derive"] }
 curies = { version = "0.1.3", optional = true }
+arc-swap = "1.7"
 
 [dependencies.reqwest]
 version = "0.12.16"

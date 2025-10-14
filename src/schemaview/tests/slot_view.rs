@@ -183,7 +183,7 @@ fn meta_slot_definition_lookup_prefers_global() {
         .converter_for_schema(&meta_schema.id)
         .expect("converter for schema");
     assert_eq!(
-        Identifier::new("skos:definition").to_uri(conv).unwrap().0,
+        Identifier::new("skos:definition").to_uri(&conv).unwrap().0,
         "http://www.w3.org/2004/02/skos/core#definition"
     );
     assert_eq!(
@@ -196,4 +196,40 @@ fn meta_slot_definition_lookup_prefers_global() {
         .get_slot(&Identifier::new("skos:definition"), &conv)
         .unwrap();
     assert!(slot_by_curie.is_some(), "curie lookup should succeed");
+}
+
+#[test]
+fn class_attribute_enum_range() {
+    let schema = from_yaml(Path::new(&data_path("simple_enum.yaml"))).unwrap();
+
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+
+    let conv = converter_from_schemas([&schema]);
+
+    let class = sv
+        .get_class(&Identifier::new("Signal"), &conv)
+        .unwrap()
+        .unwrap();
+    let slot = class
+        .slots()
+        .iter()
+        .find(|s| s.name == "signalType")
+        .expect("signalType slot");
+
+    assert!(
+        slot.get_range_enum().is_some(),
+        "signalType should expose enum range"
+    );
+
+    let slot_view = sv
+        .slot_views()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.name == "signalType")
+        .expect("signalType cached slot");
+    assert!(
+        slot_view.get_range_enum().is_some(),
+        "cached signalType slot should expose enum range"
+    );
 }

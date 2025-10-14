@@ -55,7 +55,7 @@ impl RangeInfo {
     ) -> Option<ClassView> {
         e.range().and_then(|r| {
             if let Some(conv) = slotview.sv.converter_for_schema(&slotview.schema_uri) {
-                if let Ok(Some(cv)) = slotview.sv.get_class(&Identifier::new(r), conv) {
+                if let Ok(Some(cv)) = slotview.sv.get_class(&Identifier::new(r), &conv) {
                     return Some(cv);
                 }
             }
@@ -71,7 +71,7 @@ impl RangeInfo {
     fn determine_range_enum(e: &SlotExpressionOrSubtype, slotview: &SlotView) -> Option<EnumView> {
         e.range().and_then(|r| {
             if let Some(conv) = slotview.sv.converter_for_schema(&slotview.schema_uri) {
-                if let Ok(Some(ev)) = slotview.sv.get_enum(&Identifier::new(r), conv) {
+                if let Ok(Some(ev)) = slotview.sv.get_enum(&Identifier::new(r), &conv) {
                     return Some(ev);
                 }
             }
@@ -174,6 +174,11 @@ pub struct SlotViewData {
     cached_range_info: OnceLock<Vec<RangeInfo>>,
 }
 
+// NOTE: The cached members above are derived from cloned slot definitions.
+// If we ever introduce in-place schema mutation, these fields should switch
+// to reference shared live state (e.g. via ArcSwap) rather than storing
+// snapshots that must be refreshed manually.
+
 /// Lightweight view over an effective LinkML slot definition.
 ///
 /// Cloning this type is cheap because it only clones an internal `Arc` handle.
@@ -240,7 +245,7 @@ impl SlotView {
         if let Some(explicit_uri) = &self.definition().slot_uri {
             let id = Identifier::new(explicit_uri);
             if let Some(conv) = self.sv.converter_for_schema(&self.schema_uri) {
-                if let Ok(uri) = id.to_uri(conv) {
+                if let Ok(uri) = id.to_uri(&conv) {
                     return Identifier::Uri(uri);
                 }
             }
@@ -249,7 +254,7 @@ impl SlotView {
 
         let fallback = self.sv.get_uri(&self.schema_uri, &self.name);
         if let Some(conv) = self.sv.converter_for_schema(&self.schema_uri) {
-            if let Ok(uri) = fallback.to_uri(conv) {
+            if let Ok(uri) = fallback.to_uri(&conv) {
                 return Identifier::Uri(uri);
             }
         }

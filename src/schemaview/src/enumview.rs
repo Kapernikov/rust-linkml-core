@@ -24,6 +24,9 @@ impl EnumViewData {
     }
 }
 
+// NOTE: `enum_def` is a cloned snapshot. If mutable schema updates are added,
+// revisit this to ensure EnumView stays in sync with the underlying data.
+
 /// Lightweight view over a LinkML enum definition.
 ///
 /// Cloning this type is cheap because it only clones an internal `Arc` handle.

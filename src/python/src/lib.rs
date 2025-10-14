@@ -215,7 +215,7 @@ impl PySchemaView {
     }
 
     fn get_schema(&self, uri: &str) -> Option<SchemaDefinition> {
-        self.inner.get_schema(uri).cloned()
+        self.inner.get_schema(uri)
     }
 
     fn is_same(&self, other: &PySchemaView) -> bool {
@@ -300,7 +300,8 @@ impl PySchemaView {
     fn schema_ids(&self) -> Vec<String> {
         self.inner
             .all_schema_definitions()
-            .map(|x| x.0.clone())
+            .into_iter()
+            .map(|(schema_id, _)| schema_id)
             .collect()
     }
 
@@ -370,7 +371,7 @@ impl PySchemaView {
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "SchemaView(n_schemas={}, n_classes={}, n_slots={})",
-            self.inner.all_schema_definitions().count(),
+            self.inner.all_schema_definitions().len(),
             self.inner.get_class_ids().len(),
             self.inner.get_slot_ids().len()
         ))
@@ -1023,7 +1024,7 @@ impl PyLinkMLInstance {
         turtle_to_string(
             &self.value,
             rust_sv,
-            schema,
+            &schema,
             &conv,
             TurtleOptions {
                 skolem: skolem.unwrap_or(false),

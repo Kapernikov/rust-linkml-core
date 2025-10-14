@@ -360,9 +360,9 @@ impl LinkMLInstance {
                 let idb = cb.canonical_uri();
                 let class_equal = if let Some(conv) = sva.converter_for_schema(ca.schema_id()) {
                     // Use 'sva' for comparison; identifiers are global across schemas
-                    sva.identifier_equals(&ida, &idb, conv).unwrap_or(false)
+                    sva.identifier_equals(&ida, &idb, &conv).unwrap_or(false)
                 } else if let Some(conv) = svb.converter_for_schema(cb.schema_id()) {
-                    svb.identifier_equals(&ida, &idb, conv).unwrap_or(false)
+                    svb.identifier_equals(&ida, &idb, &conv).unwrap_or(false)
                 } else {
                     ca.name() == cb.name()
                 };

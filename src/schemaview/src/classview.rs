@@ -18,6 +18,10 @@ pub struct ClassViewData {
     descendants_index: DescendantsIndex,
 }
 
+// NOTE: `class` and `slots` are cloned snapshots taken at construction time.
+// If we add mutable schema updates in the future, consider sharing live
+// state instead of storing copies here.
+
 impl ClassViewData {
     pub fn new(
         class: &ClassDefinition,
@@ -259,7 +263,7 @@ impl ClassView {
         if let Some(explicit_uri) = &self.data.class.class_uri {
             let id = Identifier::new(explicit_uri);
             if let Some(conv) = self.data.sv.converter_for_schema(&self.data.schema_uri) {
-                if let Ok(uri) = id.to_uri(conv) {
+                if let Ok(uri) = id.to_uri(&conv) {
                     return Identifier::Uri(uri);
                 }
             }
@@ -271,7 +275,7 @@ impl ClassView {
             .sv
             .get_uri(&self.data.schema_uri, &self.data.class.name);
         if let Some(conv) = self.data.sv.converter_for_schema(&self.data.schema_uri) {
-            if let Ok(uri) = fallback.to_uri(conv) {
+            if let Ok(uri) = fallback.to_uri(&conv) {
                 return Identifier::Uri(uri);
             }
         }
@@ -304,7 +308,7 @@ impl ClassView {
                         } else if self.data.sv.identifier_equals(
                             &self.data.sv.get_uri(&schema.id, parent),
                             class_uri,
-                            conv,
+                            &conv,
                         )? {
                             is_descendant = true;
                         }
@@ -315,7 +319,7 @@ impl ClassView {
                                 if self.data.sv.identifier_equals(
                                     &self.data.sv.get_uri(&schema.id, mixin),
                                     class_uri,
-                                    conv,
+                                    &conv,
                                 )? {
                                     is_descendant = true;
                                     break;
@@ -390,7 +394,7 @@ impl ClassView {
             None => return Err(SchemaViewError::NotFound),
         };
         match &self.data.class.is_a {
-            Some(parent) => self.data.sv.get_class(&Identifier::new(parent), conv),
+            Some(parent) => self.data.sv.get_class(&Identifier::new(parent), &conv),
             None => Ok(None),
         }
     }
@@ -453,7 +457,7 @@ impl ClassView {
                         })?;
                     for mixin in mixins {
                         if let Some(mixin_view) =
-                            current.data.sv.get_class(&Identifier::new(mixin), conv)?
+                            current.data.sv.get_class(&Identifier::new(mixin), &conv)?
                         {
                             collect_recursive(&mixin_view, depth + 1, include_mixins, acc)?;
                         }
