@@ -20,6 +20,8 @@
 - Python bindings: `maturin develop -m src/python/Cargo.toml` (requires Python and maturin).
 
 ## Coding Style & Naming Conventions
+- Try to make library code panic-safe. You can use .expect() or .unwrap() but only if you know that the panic will never happen because of user inputs (looking up a nonexistent slot or class must return None not a panic, for instance).
+  A panic that clearly happens because of a bug in our library code itself or because of an unrecoverable OS error (eg out of memory) is acceptable.
 - Rust: 4-space indent; `snake_case` for functions/modules, `UpperCamelCase` for types, `SCREAMING_SNAKE_CASE` for consts.
 - Use `rustfmt` and `clippy` before pushing. Keep public APIs documented with concise Rustdoc.
 - Python (bindings helpers): follow PEP 8; prefer type hints where feasible.
