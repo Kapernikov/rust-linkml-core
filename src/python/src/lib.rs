@@ -66,6 +66,20 @@ impl PySchemaView {
     }
 }
 
+impl From<SchemaView> for PySchemaView {
+    fn from(value: SchemaView) -> Self {
+        PySchemaView {
+            inner: Arc::new(value),
+        }
+    }
+}
+
+impl From<Arc<SchemaView>> for PySchemaView {
+    fn from(value: Arc<SchemaView>) -> Self {
+        PySchemaView { inner: value }
+    }
+}
+
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "ClassView")]
 #[derive(Clone)]
@@ -76,6 +90,20 @@ pub struct PyClassView {
 impl PyClassView {
     pub fn as_rust(&self) -> &ClassView {
         &self.inner
+    }
+}
+
+impl From<ClassView> for PyClassView {
+    fn from(value: ClassView) -> Self {
+        PyClassView { inner: value }
+    }
+}
+
+impl From<&ClassView> for PyClassView {
+    fn from(value: &ClassView) -> Self {
+        PyClassView {
+            inner: value.clone(),
+        }
     }
 }
 
@@ -92,6 +120,20 @@ impl PySlotView {
     }
 }
 
+impl From<SlotView> for PySlotView {
+    fn from(value: SlotView) -> Self {
+        PySlotView { inner: value }
+    }
+}
+
+impl From<&SlotView> for PySlotView {
+    fn from(value: &SlotView) -> Self {
+        PySlotView {
+            inner: value.clone(),
+        }
+    }
+}
+
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "EnumView")]
 #[derive(Clone)]
@@ -102,6 +144,20 @@ pub struct PyEnumView {
 impl PyEnumView {
     pub fn as_rust(&self) -> &EnumView {
         &self.inner
+    }
+}
+
+impl From<EnumView> for PyEnumView {
+    fn from(value: EnumView) -> Self {
+        PyEnumView { inner: value }
+    }
+}
+
+impl From<&EnumView> for PyEnumView {
+    fn from(value: &EnumView) -> Self {
+        PyEnumView {
+            inner: value.clone(),
+        }
     }
 }
 
@@ -260,7 +316,7 @@ impl PySchemaView {
             .inner
             .get_class(&Identifier::new(id), &conv)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))?
-            .map(|cv| PyClassView { inner: cv }))
+            .map(PyClassView::from))
     }
 
     fn get_class_view_by_uri(&self, uri: &str) -> PyResult<Option<PyClassView>> {
@@ -268,7 +324,7 @@ impl PySchemaView {
             .inner
             .get_class_by_uri(uri)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))?
-            .map(|cv| PyClassView { inner: cv }))
+            .map(PyClassView::from))
     }
 
     fn get_slot_view(&self, id: &str) -> PyResult<Option<PySlotView>> {
@@ -277,7 +333,7 @@ impl PySchemaView {
             .inner
             .get_slot(&Identifier::new(id), &conv)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))?
-            .map(|svw| PySlotView { inner: svw }))
+            .map(PySlotView::from))
     }
 
     fn get_slot_view_by_uri(&self, uri: &str) -> PyResult<Option<PySlotView>> {
@@ -285,7 +341,7 @@ impl PySchemaView {
             .inner
             .get_slot_by_uri(uri)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))?
-            .map(|svw| PySlotView { inner: svw }))
+            .map(PySlotView::from))
     }
 
     fn get_enum_view(&self, id: &str) -> PyResult<Option<PyEnumView>> {
@@ -294,7 +350,7 @@ impl PySchemaView {
             .inner
             .get_enum(&Identifier::new(id), &conv)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))?
-            .map(|ev| PyEnumView { inner: ev }))
+            .map(PyEnumView::from))
     }
 
     fn schema_ids(&self) -> Vec<String> {
@@ -332,36 +388,21 @@ impl PySchemaView {
     fn class_views(&self) -> PyResult<Vec<PyClassView>> {
         self.inner
             .class_views()
-            .map(|views| {
-                views
-                    .into_iter()
-                    .map(|cv| PyClassView { inner: cv })
-                    .collect()
-            })
+            .map(|views| views.into_iter().map(PyClassView::from).collect())
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
     }
 
     fn enum_views(&self) -> PyResult<Vec<PyEnumView>> {
         self.inner
             .enum_views()
-            .map(|views| {
-                views
-                    .into_iter()
-                    .map(|ev| PyEnumView { inner: ev })
-                    .collect()
-            })
+            .map(|views| views.into_iter().map(PyEnumView::from).collect())
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
     }
 
     fn slot_views(&self) -> PyResult<Vec<PySlotView>> {
         self.inner
             .slot_views()
-            .map(|views| {
-                views
-                    .into_iter()
-                    .map(|sv| PySlotView { inner: sv })
-                    .collect()
-            })
+            .map(|views| views.into_iter().map(PySlotView::from).collect())
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
     }
 
@@ -398,7 +439,7 @@ impl PyClassView {
         }
         ClassView::most_specific_common_ancestor(&rust_views, include_mixins)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
-            .map(|opt| opt.map(|view| PyClassView { inner: view }))
+            .map(|opt| opt.map(PyClassView::from))
     }
 
     #[getter]
@@ -425,7 +466,7 @@ impl PyClassView {
         self.inner
             .parent_class()
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
-            .map(|opt| opt.map(|cv| PyClassView { inner: cv }))
+            .map(|opt| opt.map(PyClassView::from))
     }
 
     fn identifier_slot(&self) -> Option<PySlotView> {
@@ -444,7 +485,7 @@ impl PyClassView {
         self.inner
             .get_descendants(recurse, include_mixins)
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
-            .map(|v| v.into_iter().map(|cv| PyClassView { inner: cv }).collect())
+            .map(|v| v.into_iter().map(PyClassView::from).collect())
     }
 
     fn schema_id(&self) -> String {
@@ -490,15 +531,11 @@ impl PySlotView {
     }
 
     fn range_class(&self) -> Option<PyClassView> {
-        self.inner
-            .get_range_class()
-            .map(|cv| PyClassView { inner: cv })
+        self.inner.get_range_class().map(PyClassView::from)
     }
 
     fn range_enum(&self) -> Option<PyEnumView> {
-        self.inner
-            .get_range_enum()
-            .map(|ev| PyEnumView { inner: ev })
+        self.inner.get_range_enum().map(PyEnumView::from)
     }
 
     fn is_range_scalar(&self) -> bool {
