@@ -296,56 +296,61 @@ impl ClassView {
             .sv
             .converter_for_schema(schema_uri)
             .ok_or(SchemaViewError::NotFound)?;
-        for (_, schema) in self.data.sv.all_schema_definitions() {
-            if let Some(classes) = &schema.classes {
-                for (cls_name, cls_def) in classes {
-                    let mut is_descendant = false;
-                    if let Some(parent) = &cls_def.is_a {
-                        if !(parent.contains(":") || parent.contains("/")) {
-                            if parent == class_name {
-                                is_descendant = true;
-                            }
-                        } else if self.data.sv.identifier_equals(
-                            &self.data.sv.get_uri(&schema.id, parent),
-                            class_uri,
-                            &conv,
-                        )? {
-                            is_descendant = true;
-                        }
-                    }
-                    if !is_descendant && include_mixins {
-                        if let Some(mixins) = &cls_def.mixins {
-                            for mixin in mixins {
-                                if self.data.sv.identifier_equals(
-                                    &self.data.sv.get_uri(&schema.id, mixin),
+        self.data
+            .sv
+            .with_schema_definitions(|schemas| -> Result<(), SchemaViewError> {
+                for schema in schemas.values() {
+                    if let Some(classes) = &schema.classes {
+                        for (cls_name, cls_def) in classes {
+                            let mut is_descendant = false;
+                            if let Some(parent) = &cls_def.is_a {
+                                if !(parent.contains(":") || parent.contains("/")) {
+                                    if parent == class_name {
+                                        is_descendant = true;
+                                    }
+                                } else if self.data.sv.identifier_equals(
+                                    &self.data.sv.get_uri(&schema.id, parent),
                                     class_uri,
                                     &conv,
                                 )? {
                                     is_descendant = true;
-                                    break;
+                                }
+                            }
+                            if !is_descendant && include_mixins {
+                                if let Some(mixins) = &cls_def.mixins {
+                                    for mixin in mixins {
+                                        if self.data.sv.identifier_equals(
+                                            &self.data.sv.get_uri(&schema.id, mixin),
+                                            class_uri,
+                                            &conv,
+                                        )? {
+                                            is_descendant = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            if is_descendant {
+                                let tpl = (schema.id.clone(), cls_name.clone());
+                                if !result.contains(&tpl) {
+                                    result.push(tpl);
+                                    if recurse {
+                                        self.compute_descendant_identifiers(
+                                            recurse,
+                                            include_mixins,
+                                            &schema.id,
+                                            &self.data.sv.get_uri(&schema.id, cls_name),
+                                            cls_name,
+                                            result,
+                                        )?;
+                                    }
                                 }
                             }
                         }
                     }
-                    if is_descendant {
-                        let tpl = (schema.id.clone(), cls_name.clone());
-                        if !result.contains(&tpl) {
-                            result.push(tpl);
-                            if recurse {
-                                self.compute_descendant_identifiers(
-                                    recurse,
-                                    include_mixins,
-                                    &schema.id,
-                                    &self.data.sv.get_uri(&schema.id, cls_name),
-                                    cls_name,
-                                    result,
-                                )?;
-                            }
-                        }
-                    }
                 }
-            }
-        }
+                Ok(())
+            })?;
         Ok(())
     }
 

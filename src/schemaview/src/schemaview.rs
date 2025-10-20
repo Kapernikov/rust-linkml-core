@@ -515,10 +515,27 @@ impl SchemaView {
         Ok(added)
     }
 
+    /// Returns an owned `SchemaDefinition` for the given ID.
+    ///
+    /// Prefer [`with_schema_definition`] when you only need a borrow; it avoids cloning the
+    /// entire schema and is therefore cheaper for large documents.
     pub fn get_schema(&self, id: &str) -> Option<SchemaDefinition> {
         self.with_data(|data| data.schema_definitions.get(id).cloned())
     }
 
+    /// Applies `f` to the schema with the given ID, if present, borrowing the definition.
+    pub fn with_schema_definition<R>(
+        &self,
+        id: &str,
+        f: impl FnOnce(&SchemaDefinition) -> R,
+    ) -> Option<R> {
+        self.with_data(|data| data.schema_definitions.get(id).map(f))
+    }
+
+    /// Returns cloned schema definitions for every loaded schema.
+    ///
+    /// Prefer [`with_schema_definitions`] when you only need to inspect the data; this helper is
+    /// kept for callers that require owned copies of every schema.
     pub fn iter_schemas(&self) -> Vec<(String, SchemaDefinition)> {
         self.with_data(|data| {
             data.schema_definitions
@@ -641,13 +658,15 @@ impl SchemaView {
         Ok(())
     }
 
-    pub fn all_schema_definitions(&self) -> Vec<(String, SchemaDefinition)> {
-        self.with_data(|data| {
-            data.schema_definitions
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect()
-        })
+    /// Provides read-only access to all loaded schema definitions without cloning them.
+    ///
+    /// This is cheaper than `iter_schemas` because it keeps the internal snapshot borrowed
+    /// rather than materializing owned copies of every schema.
+    pub fn with_schema_definitions<R>(
+        &self,
+        f: impl FnOnce(&HashMap<String, SchemaDefinition>) -> R,
+    ) -> R {
+        self.with_data(|data| f(&data.schema_definitions))
     }
 
     fn index_schema_slots(
@@ -860,6 +879,8 @@ impl SchemaView {
         unresolved
     }
 
+    /// Returns an owned `SchemaDefinition`; prefer [`with_schema_definition`] to borrow without
+    /// cloning when possible.
     pub fn get_schema_definition(&self, id: &str) -> Option<SchemaDefinition> {
         self.with_data(|data| data.schema_definitions.get(id).cloned())
     }
@@ -869,37 +890,38 @@ impl SchemaView {
         schema_uri: &str,
         class_name: &str,
     ) -> Result<Option<ClassView>, SchemaViewError> {
-        if let Some((schema_def, class_def)) = self.with_data(|data| {
-            data.schema_definitions
-                .get(schema_uri)
-                .and_then(|schema_def| {
-                    schema_def.classes.as_ref().and_then(|classes| {
-                        classes
-                            .get(class_name)
-                            .map(|class_def| (schema_def.clone(), class_def.clone()))
-                    })
-                })
-        }) {
-            if let Some(cv) = self
-                .cache()
-                .clas_view_cache
-                .get(&(schema_uri.to_string(), class_name.to_string()))
-            {
-                return Ok(Some(cv.clone()));
-            }
-            let converter = self.converter_for_schema(schema_uri).ok_or_else(|| {
-                println!("No converter for schema {}", schema_uri);
-                SchemaViewError::NoConverterForSchema(schema_uri.to_string())
-            })?;
-            let class_view = ClassView::new(&class_def, self, schema_uri, &schema_def, &converter)?;
-            _ = class_view.get_descendants(true, false);
-            let cvc = class_view.clone();
-            self.write_cache()
-                .clas_view_cache
-                .insert((schema_uri.to_string(), class_name.to_string()), cvc);
-            return Ok(Some(class_view));
+        let cache_key = (schema_uri.to_string(), class_name.to_string());
+        if let Some(cv) = self.cache().clas_view_cache.get(&cache_key) {
+            return Ok(Some(cv.clone()));
         }
-        Ok(None)
+
+        let maybe_result = self.with_schema_definition(schema_uri, |schema_def| {
+            let classes = schema_def.classes.as_ref()?;
+            let class_def = classes.get(class_name)?;
+            let converter = match self.converter_for_schema(schema_uri) {
+                Some(conv) => conv,
+                None => {
+                    return Some(Err(SchemaViewError::NoConverterForSchema(
+                        schema_uri.to_string(),
+                    )))
+                }
+            };
+            Some(ClassView::new(
+                class_def, self, schema_uri, schema_def, &converter,
+            ))
+        });
+
+        let class_view_result = match maybe_result {
+            Some(Some(result)) => result,
+            Some(None) | None => return Ok(None),
+        };
+
+        let class_view = class_view_result?;
+        _ = class_view.get_descendants(true, false);
+        self.write_cache()
+            .clas_view_cache
+            .insert(cache_key, class_view.clone());
+        Ok(Some(class_view))
     }
 
     pub fn identifier_equals(
