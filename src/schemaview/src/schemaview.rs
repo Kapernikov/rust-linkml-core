@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::converter::Converter;
 use crate::identifier::{
-    converter_from_schema, converter_from_schemas, Identifier, IdentifierError,
+    converter_from_schema, converter_from_schemas, Identifier, IdentifierError, Uri,
 };
 use crate::snapshot::{
     ResolvedImport, SchemaEntry, SchemaViewSnapshot, SCHEMAVIEW_SNAPSHOT_VERSION,
@@ -106,7 +106,7 @@ pub(crate) struct SchemaViewData {
     pub(crate) converters: HashMap<String, Converter>,
 }
 
-pub(crate) struct SchemaViewCache {
+pub(crate) struct SchemaIndex {
     pub(crate) class_uri_index: HashMap<String, (String, String)>,
     pub(crate) class_name_index: HashMap<String, (String, String)>,
     pub(crate) slot_uri_index: HashMap<String, Vec<SlotKey>>,
@@ -115,11 +115,14 @@ pub(crate) struct SchemaViewCache {
     pub(crate) clas_view_cache: HashMap<(String, String), ClassView>,
     pub(crate) enum_uri_index: HashMap<String, (String, String)>,
     pub(crate) enum_name_index: HashMap<String, (String, String)>,
+    pub(crate) class_id_index: HashMap<(String, String), CanonicalIds>,
+    pub(crate) slot_id_index: HashMap<SlotKey, CanonicalIds>,
+    pub(crate) enum_id_index: HashMap<(String, String), CanonicalIds>,
 }
 
-impl SchemaViewCache {
+impl SchemaIndex {
     pub fn new() -> Self {
-        SchemaViewCache {
+        SchemaIndex {
             class_uri_index: HashMap::new(),
             class_name_index: HashMap::new(),
             slot_uri_index: HashMap::new(),
@@ -128,8 +131,155 @@ impl SchemaViewCache {
             slot_entries: HashMap::new(),
             enum_uri_index: HashMap::new(),
             enum_name_index: HashMap::new(),
+            class_id_index: HashMap::new(),
+            slot_id_index: HashMap::new(),
+            enum_id_index: HashMap::new(),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CanonicalIds {
+    canonical_uri: Identifier,
+    canonical_curie: Option<Identifier>,
+    native_uri: Identifier,
+    native_curie: Option<Identifier>,
+}
+
+impl CanonicalIds {
+    fn new(
+        canonical_uri: Identifier,
+        canonical_curie: Option<Identifier>,
+        native_uri: Identifier,
+        native_curie: Option<Identifier>,
+    ) -> Self {
+        CanonicalIds {
+            canonical_uri,
+            canonical_curie,
+            native_uri,
+            native_curie,
+        }
+    }
+
+    pub(crate) fn canonical_uri(&self) -> Identifier {
+        self.canonical_uri.clone()
+    }
+
+    pub(crate) fn canonical_curie(&self) -> Option<Identifier> {
+        self.canonical_curie.clone()
+    }
+
+    pub(crate) fn native_uri(&self) -> Identifier {
+        self.native_uri.clone()
+    }
+
+    pub(crate) fn native_curie(&self) -> Option<Identifier> {
+        self.native_curie.clone()
+    }
+}
+
+fn fallback_uri(schema: &SchemaDefinition, local_name: &str) -> String {
+    let base = schema.id.trim_end_matches('/');
+    if base.is_empty() {
+        local_name.to_string()
+    } else {
+        format!("{}/{}", base, local_name)
+    }
+}
+
+fn to_uri_identifier(candidate: &str, conv: &Converter, fallback: &str) -> Identifier {
+    let candidate_id = Identifier::new(candidate);
+    match candidate_id.to_uri(conv) {
+        Ok(uri) => Identifier::Uri(uri),
+        Err(_) => {
+            if candidate.contains("://") {
+                Identifier::Uri(Uri(candidate.to_string()))
+            } else {
+                Identifier::Uri(Uri(fallback.to_string()))
+            }
+        }
+    }
+}
+
+fn to_curie_identifier(candidate: &str, conv: &Converter) -> Option<Identifier> {
+    let candidate_id = Identifier::new(candidate);
+    match &candidate_id {
+        Identifier::Curie(_) => Some(candidate_id),
+        Identifier::Uri(_) => candidate_id.to_curie(conv).ok().map(Identifier::Curie),
+        Identifier::Name(_) => None,
+    }
+}
+
+fn compute_class_canonical_ids(
+    schema: &SchemaDefinition,
+    class_name: &str,
+    class_def: &linkml_meta::ClassDefinition,
+    conv: &Converter,
+) -> CanonicalIds {
+    let default_prefix = schema.default_prefix.as_deref().unwrap_or(&schema.name);
+    let default_curie = if class_name.contains(':') && class_def.class_uri.is_none() {
+        class_name.to_string()
+    } else {
+        format!("{}:{}", default_prefix, class_name)
+    };
+    let fallback = fallback_uri(schema, class_name);
+    let canonical_source = class_def
+        .class_uri
+        .as_deref()
+        .unwrap_or(default_curie.as_str());
+    let canonical_uri = to_uri_identifier(canonical_source, conv, &fallback);
+    let canonical_curie = to_curie_identifier(canonical_source, conv)
+        .or_else(|| to_curie_identifier(&fallback, conv));
+    let native_uri = to_uri_identifier(default_curie.as_str(), conv, &fallback);
+    let native_curie = to_curie_identifier(default_curie.as_str(), conv);
+    CanonicalIds::new(canonical_uri, canonical_curie, native_uri, native_curie)
+}
+
+fn compute_slot_canonical_ids_from_parts(
+    schema: &SchemaDefinition,
+    slot_name: &str,
+    explicit_uri: Option<&str>,
+    conv: &Converter,
+) -> CanonicalIds {
+    let default_prefix = schema.default_prefix.as_deref().unwrap_or(&schema.name);
+    let default_curie = if slot_name.contains(':') && explicit_uri.is_none() {
+        slot_name.to_string()
+    } else {
+        format!("{}:{}", default_prefix, slot_name)
+    };
+    let fallback = fallback_uri(schema, slot_name);
+    let canonical_source = explicit_uri.unwrap_or(default_curie.as_str());
+    let canonical_uri = to_uri_identifier(canonical_source, conv, &fallback);
+    let canonical_curie = to_curie_identifier(canonical_source, conv)
+        .or_else(|| to_curie_identifier(&fallback, conv));
+    let native_uri = to_uri_identifier(default_curie.as_str(), conv, &fallback);
+    let native_curie = to_curie_identifier(default_curie.as_str(), conv);
+    CanonicalIds::new(canonical_uri, canonical_curie, native_uri, native_curie)
+}
+
+fn compute_enum_canonical_ids(
+    schema: &SchemaDefinition,
+    enum_name: &str,
+    enum_def: &EnumDefinition,
+    conv: &Converter,
+) -> CanonicalIds {
+    let default_prefix = schema.default_prefix.as_deref().unwrap_or(&schema.name);
+    let default_curie = if enum_name.contains(':') && enum_def.enum_uri.is_none() {
+        enum_name.to_string()
+    } else {
+        format!("{}:{}", default_prefix, enum_name)
+    };
+    let fallback = fallback_uri(schema, enum_name);
+    let canonical_source = enum_def
+        .enum_uri
+        .as_deref()
+        .unwrap_or(default_curie.as_str());
+    let canonical_uri = to_uri_identifier(canonical_source, conv, &fallback);
+    let canonical_curie = to_curie_identifier(canonical_source, conv)
+        .or_else(|| to_curie_identifier(&fallback, conv));
+    let native_uri = to_uri_identifier(default_curie.as_str(), conv, &fallback);
+    let native_curie = to_curie_identifier(default_curie.as_str(), conv);
+    CanonicalIds::new(canonical_uri, canonical_curie, native_uri, native_curie)
 }
 
 impl SchemaViewData {
@@ -146,7 +296,7 @@ impl SchemaViewData {
 #[derive(Clone)]
 pub struct SchemaView {
     pub(crate) data: Arc<ArcSwap<SchemaViewData>>,
-    pub(crate) cache: Arc<RwLock<SchemaViewCache>>,
+    pub(crate) index: Arc<RwLock<SchemaIndex>>,
 }
 
 impl Default for SchemaView {
@@ -159,7 +309,7 @@ impl SchemaView {
     pub fn new() -> Self {
         SchemaView {
             data: Arc::new(ArcSwap::from_pointee(SchemaViewData::new())),
-            cache: Arc::new(RwLock::new(SchemaViewCache::new())),
+            index: Arc::new(RwLock::new(SchemaIndex::new())),
         }
     }
 
@@ -186,27 +336,34 @@ impl SchemaView {
         result
     }
 
-    fn register_slot_view<I, J>(&self, key: SlotKey, slot_view: SlotView, names: I, uris: J)
-    where
+    fn register_slot_view<I, J>(
+        &self,
+        key: SlotKey,
+        slot_view: SlotView,
+        names: I,
+        uris: J,
+        canonical_ids: CanonicalIds,
+    ) where
         I: IntoIterator<Item = String>,
         J: IntoIterator<Item = String>,
     {
-        let mut cache = self.write_cache();
-        cache.slot_entries.insert(key.clone(), slot_view);
+        let mut index = self.write_index();
+        index.slot_entries.insert(key.clone(), slot_view);
+        index.slot_id_index.insert(key.clone(), canonical_ids);
         for name in names {
-            let entry = cache.slot_name_index.entry(name).or_default();
+            let entry = index.slot_name_index.entry(name).or_default();
             if !entry.contains(&key) {
                 entry.push(key.clone());
             }
         }
         for uri in uris {
-            let entry = cache.slot_uri_index.entry(uri).or_default();
+            let entry = index.slot_uri_index.entry(uri).or_default();
             if !entry.contains(&key) {
                 entry.push(key.clone());
             }
         }
         let scoped = key.scoped_identifier();
-        let entry = cache.slot_uri_index.entry(scoped).or_default();
+        let entry = index.slot_uri_index.entry(scoped).or_default();
         if !entry.contains(&key) {
             entry.push(key);
         }
@@ -361,16 +518,48 @@ impl SchemaView {
         self.data().resolved_schema_imports.clone()
     }
 
-    fn cache(&self) -> RwLockReadGuard<'_, SchemaViewCache> {
-        self.cache
+    fn index(&self) -> RwLockReadGuard<'_, SchemaIndex> {
+        self.index
             .read()
             .unwrap_or_else(|poison| poison.into_inner())
     }
 
-    fn write_cache(&self) -> RwLockWriteGuard<'_, SchemaViewCache> {
-        self.cache
+    fn write_index(&self) -> RwLockWriteGuard<'_, SchemaIndex> {
+        self.index
             .write()
             .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    pub(crate) fn class_canonical_ids(
+        &self,
+        schema_uri: &str,
+        class_name: &str,
+    ) -> Option<CanonicalIds> {
+        let key = (schema_uri.to_string(), class_name.to_string());
+        self.index().class_id_index.get(&key).cloned()
+    }
+
+    pub(crate) fn slot_canonical_ids(
+        &self,
+        schema_uri: &str,
+        owner: Option<&str>,
+        slot_name: &str,
+    ) -> Option<CanonicalIds> {
+        let key = SlotKey::new(
+            schema_uri.to_string(),
+            owner.map(|s| s.to_string()),
+            slot_name.to_string(),
+        );
+        self.index().slot_id_index.get(&key).cloned()
+    }
+
+    pub(crate) fn enum_canonical_ids(
+        &self,
+        schema_uri: &str,
+        enum_name: &str,
+    ) -> Option<CanonicalIds> {
+        let key = (schema_uri.to_string(), enum_name.to_string());
+        self.index().enum_id_index.get(&key).cloned()
     }
 
     pub fn get_tree_root_or(&self, class_name: Option<&str>) -> Option<ClassView> {
@@ -510,7 +699,7 @@ impl SchemaView {
             }
         });
         if added {
-            self.write_cache().clas_view_cache.clear();
+            self.write_index().clas_view_cache.clear();
         }
         Ok(added)
     }
@@ -578,7 +767,7 @@ impl SchemaView {
                 let data = self.data();
                 for n in candidates {
                     if let Some((schema_uri, enum_name)) =
-                        self.cache().enum_name_index.get(&n).cloned()
+                        self.index().enum_name_index.get(&n).cloned()
                     {
                         if let Some(schema) = data.schema_definitions.get(&schema_uri) {
                             if let Some(enums) = &schema.enums {
@@ -596,7 +785,7 @@ impl SchemaView {
                 let target_uri = _identifier.to_uri(&conv).ok()?;
                 let data = self.data();
                 if let Some((schema_uri, enum_name)) =
-                    self.cache().enum_uri_index.get(&target_uri.0).cloned()
+                    self.index().enum_uri_index.get(&target_uri.0).cloned()
                 {
                     if let Some(schema) = data.schema_definitions.get(&schema_uri) {
                         if let Some(enums) = &schema.enums {
@@ -628,31 +817,40 @@ impl SchemaView {
                 let default_uri = default_id.to_uri(conv).map(|u| u.0).unwrap_or_else(|_| {
                     format!("{}/{}", schema.id.trim_end_matches('/'), class_name)
                 });
-                self.write_cache()
-                    .class_name_index
-                    .entry(class_name.clone())
-                    .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
-
-                if let Some(curi) = &class_def.class_uri {
-                    let explicit_uri = Identifier::new(curi).to_uri(conv)?.0;
-                    self.write_cache()
-                        .class_uri_index
-                        .entry(explicit_uri.clone())
+                let canonical_ids =
+                    compute_class_canonical_ids(schema, class_name, class_def, conv);
+                {
+                    let mut index = self.write_index();
+                    index
+                        .class_name_index
+                        .entry(class_name.clone())
                         .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
-                    if explicit_uri != default_uri {
-                        self.write_cache()
+
+                    if let Some(curi) = &class_def.class_uri {
+                        let explicit_uri = Identifier::new(curi).to_uri(conv)?.0;
+                        index
+                            .class_uri_index
+                            .entry(explicit_uri.clone())
+                            .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
+                        if explicit_uri != default_uri {
+                            index
+                                .class_uri_index
+                                .entry(default_uri.clone())
+                                .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
+                        }
+                    } else {
+                        index
                             .class_uri_index
                             .entry(default_uri.clone())
                             .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
                     }
-                } else {
-                    self.write_cache()
-                        .class_uri_index
-                        .entry(default_uri)
-                        .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
+
+                    index
+                        .class_id_index
+                        .insert((schema_uri.to_string(), class_name.clone()), canonical_ids);
                 }
 
-                self.index_class_attributes(schema_uri, schema, class_name, class_def);
+                self.index_class_attributes(schema_uri, schema, class_name, class_def, conv);
             }
         }
         Ok(())
@@ -696,14 +894,27 @@ impl SchemaView {
                     }
                 }
 
+                let canonical_ids = compute_slot_canonical_ids_from_parts(
+                    schema,
+                    slot_name,
+                    slot_def.slot_uri.as_deref(),
+                    conv,
+                );
+
                 let slot_view =
                     SlotView::new(slot_name.clone(), vec![slot_def.clone()], &schema.id, self);
-                let canonical_string = slot_view.canonical_uri().to_string();
+                let canonical_string = canonical_ids.canonical_uri().to_string();
                 if !uris.iter().any(|u| u == &canonical_string) {
                     uris.push(canonical_string);
                 }
                 let key = SlotKey::new(schema_uri.to_string(), None, slot_name.clone());
-                self.register_slot_view(key, slot_view, vec![slot_name.clone()], uris);
+                self.register_slot_view(
+                    key,
+                    slot_view,
+                    vec![slot_name.clone()],
+                    uris,
+                    canonical_ids,
+                );
             }
         }
         Ok(())
@@ -715,6 +926,7 @@ impl SchemaView {
         schema: &SchemaDefinition,
         class_name: &str,
         class_def: &linkml_meta::ClassDefinition,
+        conv: &Converter,
     ) {
         if let Some(attributes) = &class_def.attributes {
             for (attr_name, attr_def) in attributes {
@@ -732,15 +944,44 @@ impl SchemaView {
                     }
                 }
 
+                let explicit_uri = defs
+                    .iter()
+                    .find_map(|d| d.slot_uri.as_deref())
+                    .map(|s| s.to_string());
+                let canonical_ids = compute_slot_canonical_ids_from_parts(
+                    schema,
+                    attr_name,
+                    explicit_uri.as_deref(),
+                    conv,
+                );
                 let slot_view = SlotView::new(attr_name.clone(), defs, schema_uri, self);
                 let key = SlotKey::new(
                     schema_uri.to_string(),
                     Some(class_name.to_string()),
                     attr_name.clone(),
                 );
-                let canonical = slot_view.canonical_uri().to_string();
-                let uri_strings = vec![canonical];
-                self.register_slot_view(key, slot_view, vec![attr_name.clone()], uri_strings);
+                let mut uri_strings = Vec::new();
+                let canonical = canonical_ids.canonical_uri().to_string();
+                uri_strings.push(canonical);
+                let native = canonical_ids.native_uri().to_string();
+                if !uri_strings.contains(&native) {
+                    uri_strings.push(native);
+                }
+                if let Some(explicit) = &explicit_uri {
+                    if let Ok(explicit_uri) = Identifier::new(explicit).to_uri(conv) {
+                        let explicit_uri = explicit_uri.0;
+                        if !uri_strings.contains(&explicit_uri) {
+                            uri_strings.push(explicit_uri);
+                        }
+                    }
+                }
+                self.register_slot_view(
+                    key,
+                    slot_view,
+                    vec![attr_name.clone()],
+                    uri_strings,
+                    canonical_ids,
+                );
             }
         }
     }
@@ -762,28 +1003,36 @@ impl SchemaView {
                 let default_uri = default_id.to_uri(conv).map(|u| u.0).unwrap_or_else(|_| {
                     format!("{}/{}", schema.id.trim_end_matches('/'), enum_name)
                 });
-                self.write_cache()
-                    .enum_name_index
-                    .entry(enum_name.clone())
-                    .or_insert_with(|| (schema_uri.to_string(), enum_name.clone()));
-
-                if let Some(euri) = &enum_def.enum_uri {
-                    let explicit_uri = Identifier::new(euri).to_uri(conv)?.0;
-                    self.write_cache()
-                        .enum_uri_index
-                        .entry(explicit_uri.clone())
+                let canonical_ids = compute_enum_canonical_ids(schema, enum_name, enum_def, conv);
+                {
+                    let mut index = self.write_index();
+                    index
+                        .enum_name_index
+                        .entry(enum_name.clone())
                         .or_insert_with(|| (schema_uri.to_string(), enum_name.clone()));
-                    if explicit_uri != default_uri {
-                        self.write_cache()
+
+                    if let Some(euri) = &enum_def.enum_uri {
+                        let explicit_uri = Identifier::new(euri).to_uri(conv)?.0;
+                        index
                             .enum_uri_index
-                            .entry(default_uri.clone())
+                            .entry(explicit_uri.clone())
+                            .or_insert_with(|| (schema_uri.to_string(), enum_name.clone()));
+                        if explicit_uri != default_uri {
+                            index
+                                .enum_uri_index
+                                .entry(default_uri.clone())
+                                .or_insert_with(|| (schema_uri.to_string(), enum_name.clone()));
+                        }
+                    } else {
+                        index
+                            .enum_uri_index
+                            .entry(default_uri)
                             .or_insert_with(|| (schema_uri.to_string(), enum_name.clone()));
                     }
-                } else {
-                    self.write_cache()
-                        .enum_uri_index
-                        .entry(default_uri)
-                        .or_insert_with(|| (schema_uri.to_string(), enum_name.clone()));
+
+                    index
+                        .enum_id_index
+                        .insert((schema_uri.to_string(), enum_name.clone()), canonical_ids);
                 }
             }
         }
@@ -799,7 +1048,7 @@ impl SchemaView {
         match id {
             Identifier::Name(name) => {
                 if let Some((schema_uri, enum_name)) =
-                    self.cache().enum_name_index.get(name).cloned()
+                    self.index().enum_name_index.get(name).cloned()
                 {
                     if let Some(schema) = data.schema_definitions.get(&schema_uri) {
                         if let Some(enums) = &schema.enums {
@@ -814,7 +1063,7 @@ impl SchemaView {
             Identifier::Curie(_) | Identifier::Uri(_) => {
                 let target_uri = id.to_uri(conv)?;
                 if let Some((schema_uri, enum_name)) =
-                    self.cache().enum_uri_index.get(&target_uri.0).cloned()
+                    self.index().enum_uri_index.get(&target_uri.0).cloned()
                 {
                     if let Some(schema) = data.schema_definitions.get(&schema_uri) {
                         if let Some(enums) = &schema.enums {
@@ -891,7 +1140,7 @@ impl SchemaView {
         class_name: &str,
     ) -> Result<Option<ClassView>, SchemaViewError> {
         let cache_key = (schema_uri.to_string(), class_name.to_string());
-        if let Some(cv) = self.cache().clas_view_cache.get(&cache_key) {
+        if let Some(cv) = self.index().clas_view_cache.get(&cache_key) {
             return Ok(Some(cv.clone()));
         }
 
@@ -918,7 +1167,7 @@ impl SchemaView {
 
         let class_view = class_view_result?;
         _ = class_view.get_descendants(true, false);
-        self.write_cache()
+        self.write_index()
             .clas_view_cache
             .insert(cache_key, class_view.clone());
         Ok(Some(class_view))
@@ -939,7 +1188,7 @@ impl SchemaView {
         // avoid doing get_class here because this needs to be cheap
         match id {
             Identifier::Name(name) => {
-                let lk = self.cache().class_name_index.get(name).cloned();
+                let lk = self.index().class_name_index.get(name).cloned();
                 if lk.is_some() {
                     Ok(true)
                 } else {
@@ -949,7 +1198,7 @@ impl SchemaView {
             Identifier::Curie(_) | Identifier::Uri(_) => {
                 let target_uri = id.to_uri(conv).map_err(SchemaViewError::IdentifierError)?;
                 let lk = self
-                    .cache()
+                    .index()
                     .class_uri_index
                     .get(target_uri.0.as_str())
                     .cloned();
@@ -970,7 +1219,7 @@ impl SchemaView {
         // avoid using get_class
         match id {
             Identifier::Name(name) => {
-                let lk = self.cache().class_name_index.get(name).cloned();
+                let lk = self.index().class_name_index.get(name).cloned();
                 if let Some((schema, class_name)) = lk {
                     let class_opt = self.with_data(|data| {
                         data.schema_definitions.get(&schema).and_then(|schema_def| {
@@ -987,7 +1236,7 @@ impl SchemaView {
             Identifier::Curie(_) | Identifier::Uri(_) => {
                 let target_uri = id.to_uri(conv).map_err(SchemaViewError::IdentifierError)?;
                 let lk = self
-                    .cache()
+                    .index()
                     .class_uri_index
                     .get(target_uri.0.as_str())
                     .cloned();
@@ -1016,7 +1265,7 @@ impl SchemaView {
     ) -> Result<Option<ClassView>, SchemaViewError> {
         match id {
             Identifier::Name(name) => {
-                let lk = self.cache().class_name_index.get(name).cloned();
+                let lk = self.index().class_name_index.get(name).cloned();
                 if let Some((schema, class_name)) = lk {
                     return self.get_class_by_schema(&schema, &class_name);
                 }
@@ -1025,7 +1274,7 @@ impl SchemaView {
             Identifier::Curie(_) | Identifier::Uri(_) => {
                 let target_uri = id.to_uri(conv).map_err(SchemaViewError::IdentifierError)?;
                 let lk = self
-                    .cache()
+                    .index()
                     .class_uri_index
                     .get(target_uri.0.as_str())
                     .cloned();
@@ -1039,7 +1288,7 @@ impl SchemaView {
 
     pub fn get_class_ids(&self) -> Vec<String> {
         return self
-            .cache()
+            .index()
             .class_uri_index
             .keys()
             .cloned()
@@ -1049,7 +1298,7 @@ impl SchemaView {
     /// Retrieve a [`ClassView`] by its expanded URI.
     pub fn get_class_by_uri(&self, uri: &str) -> Result<Option<ClassView>, SchemaViewError> {
         let location = {
-            let cache = self.cache();
+            let cache = self.index();
             cache.class_uri_index.get(uri).cloned()
         };
         if let Some((schema_uri, class_name)) = location {
@@ -1067,7 +1316,7 @@ impl SchemaView {
 
     pub fn get_slot_ids(&self) -> Vec<String> {
         let mut ids: Vec<String> = self
-            .cache()
+            .index()
             .slot_entries
             .values()
             .map(|view| view.canonical_uri().to_string())
@@ -1080,11 +1329,11 @@ impl SchemaView {
     /// Retrieve a [`SlotView`] by its expanded URI.
     pub fn get_slot_by_uri(&self, uri: &str) -> Result<Option<SlotView>, SchemaViewError> {
         let keys = {
-            let cache = self.cache();
+            let cache = self.index();
             cache.slot_uri_index.get(uri).cloned()
         };
         if let Some(keys) = keys {
-            let cache = self.cache();
+            let cache = self.index();
             let pairs: Vec<(SlotKey, SlotView)> = keys
                 .into_iter()
                 .filter_map(|key| {
@@ -1158,7 +1407,7 @@ impl SchemaView {
 
     /// Return all unique slots referenced by the schemas as [`SlotView`]s.
     pub fn slot_views(&self) -> Result<Vec<SlotView>, SchemaViewError> {
-        Ok(self.cache().slot_entries.values().cloned().collect())
+        Ok(self.index().slot_entries.values().cloned().collect())
     }
 
     pub fn get_slot(
@@ -1168,7 +1417,7 @@ impl SchemaView {
     ) -> Result<Option<SlotView>, IdentifierError> {
         match id {
             Identifier::Name(name) => {
-                let cache = self.cache();
+                let cache = self.index();
                 let mut pairs: Vec<(SlotKey, SlotView)> = Vec::new();
                 if let Some(keys) = cache.slot_name_index.get(name) {
                     for key in keys {
@@ -1186,7 +1435,7 @@ impl SchemaView {
             }
             Identifier::Curie(_) | Identifier::Uri(_) => {
                 let target_uri = id.to_uri(conv)?;
-                let cache = self.cache();
+                let cache = self.index();
                 let mut pairs: Vec<(SlotKey, SlotView)> = Vec::new();
                 if let Some(keys) = cache.slot_uri_index.get(&target_uri.0) {
                     for key in keys {

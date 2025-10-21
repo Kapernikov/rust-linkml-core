@@ -242,6 +242,14 @@ impl SlotView {
     /// Returns the canonical URI for this slot, preferring explicit `slot_uri`
     /// declarations when available.
     pub fn canonical_uri(&self) -> Identifier {
+        let owner = self.definition().owner.clone();
+        if let Some(ids) =
+            self.sv
+                .slot_canonical_ids(&self.schema_uri, owner.as_deref(), &self.name)
+        {
+            return ids.canonical_uri();
+        }
+
         if let Some(explicit_uri) = &self.definition().slot_uri {
             let id = Identifier::new(explicit_uri);
             if let Some(conv) = self.sv.converter_for_schema(&self.schema_uri) {

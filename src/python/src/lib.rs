@@ -593,6 +593,10 @@ impl PyEnumView {
         self.inner.schema_id().to_string()
     }
 
+    fn canonical_uri(&self) -> String {
+        self.inner.canonical_uri().to_string()
+    }
+
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "EnumView(name='{}', n_values={})",

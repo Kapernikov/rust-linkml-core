@@ -5,7 +5,7 @@ use crate::converter::Converter;
 use linkml_meta::{ClassDefinition, SchemaDefinition, SlotDefinition};
 
 use crate::identifier::{Identifier, IdentifierError};
-use crate::schemaview::{SchemaView, SchemaViewError};
+use crate::schemaview::{CanonicalIds, SchemaView, SchemaViewError};
 use crate::slotview::SlotView;
 
 type DescendantsIndex = HashMap<(bool, bool), OnceLock<Vec<(String, String)>>>;
@@ -159,6 +159,52 @@ impl ClassView {
         native: bool,
         expand: bool,
     ) -> Result<Identifier, IdentifierError> {
+        if let Some(ids) = self
+            .data
+            .sv
+            .class_canonical_ids(&self.data.schema_uri, &self.data.class.name)
+        {
+            return self.cached_get_uri(ids, conv, native, expand);
+        }
+
+        self.compute_get_uri_fallback(conv, native, expand)
+    }
+
+    fn cached_get_uri(
+        &self,
+        ids: CanonicalIds,
+        conv: &Converter,
+        native: bool,
+        expand: bool,
+    ) -> Result<Identifier, IdentifierError> {
+        match (native, expand) {
+            (true, true) => Ok(ids.canonical_uri()),
+            (true, false) => {
+                if let Some(curie) = ids.native_curie() {
+                    Ok(curie)
+                } else {
+                    let uri = ids.native_uri();
+                    uri.to_curie(conv).map(Identifier::Curie)
+                }
+            }
+            (false, true) => Ok(ids.canonical_uri()),
+            (false, false) => {
+                if let Some(curie) = ids.canonical_curie() {
+                    Ok(curie)
+                } else {
+                    let uri = ids.canonical_uri();
+                    uri.to_curie(conv).map(Identifier::Curie)
+                }
+            }
+        }
+    }
+
+    fn compute_get_uri_fallback(
+        &self,
+        conv: &Converter,
+        native: bool,
+        expand: bool,
+    ) -> Result<Identifier, IdentifierError> {
         if native && expand {
             return Ok(self.canonical_uri());
         }
@@ -260,14 +306,12 @@ impl ClassView {
     /// Returns the canonical URI for this class, preferring explicit
     /// `class_uri` declarations when available.
     pub fn canonical_uri(&self) -> Identifier {
-        if let Some(explicit_uri) = &self.data.class.class_uri {
-            let id = Identifier::new(explicit_uri);
-            if let Some(conv) = self.data.sv.converter_for_schema(&self.data.schema_uri) {
-                if let Ok(uri) = id.to_uri(&conv) {
-                    return Identifier::Uri(uri);
-                }
-            }
-            return id;
+        if let Some(ids) = self
+            .data
+            .sv
+            .class_canonical_ids(&self.data.schema_uri, &self.data.class.name)
+        {
+            return ids.canonical_uri();
         }
 
         let fallback = self

@@ -54,6 +54,37 @@ impl EnumView {
         &self.data.enum_def
     }
 
+    pub fn canonical_uri(&self) -> Identifier {
+        if let Some(ids) = self
+            .data
+            .sv
+            .enum_canonical_ids(&self.data.schema_uri, &self.data.enum_def.name)
+        {
+            return ids.canonical_uri();
+        }
+
+        if let Some(explicit_uri) = &self.data.enum_def.enum_uri {
+            let id = Identifier::new(explicit_uri);
+            if let Some(conv) = self.data.sv.converter_for_schema(&self.data.schema_uri) {
+                if let Ok(uri) = id.to_uri(&conv) {
+                    return Identifier::Uri(uri);
+                }
+            }
+            return id;
+        }
+
+        let fallback = self
+            .data
+            .sv
+            .get_uri(&self.data.schema_uri, &self.data.enum_def.name);
+        if let Some(conv) = self.data.sv.converter_for_schema(&self.data.schema_uri) {
+            if let Ok(uri) = fallback.to_uri(&conv) {
+                return Identifier::Uri(uri);
+            }
+        }
+        fallback
+    }
+
     pub fn permissible_value_keys(&self) -> Result<&Vec<String>, SchemaViewError> {
         Ok(self.data.cached_pv_keys.get_or_init(|| {
             let mut keys: HashSet<String> = HashSet::new();
