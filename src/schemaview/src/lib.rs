@@ -4,6 +4,7 @@ pub mod curie;
 pub mod enumview;
 pub mod identifier;
 pub mod io;
+pub mod path_resolver;
 #[cfg(feature = "resolve")]
 pub mod resolve;
 pub mod schemaview;

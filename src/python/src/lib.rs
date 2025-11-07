@@ -406,6 +406,14 @@ impl PySchemaView {
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
     }
 
+    fn slots_for_path(&self, class_id: &str, path: Vec<String>) -> PyResult<Vec<PySlotView>> {
+        let slots = self
+            .inner
+            .slots_for_path(&Identifier::new(class_id), path.iter().map(|s| s.as_str()))
+            .map_err(|e| PyException::new_err(format!("{:?}", e)))?;
+        Ok(slots.into_iter().map(PySlotView::from).collect())
+    }
+
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "SchemaView(n_schemas={}, n_classes={}, n_slots={})",

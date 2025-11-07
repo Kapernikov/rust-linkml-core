@@ -95,10 +95,12 @@ impl ClassView {
                         slot_schema_uri = base.schema_uri.to_owned();
                         defs.extend(base.definitions().iter().cloned());
                     }
-                    if let Some(cu) = &class_def.slot_usage {
-                        if let Some(usage) = cu.get(slot_ref) {
-                            slot_schema_uri = schema_uri.to_owned();
-                            defs.push(*usage.clone());
+                    for def in &mut defs {
+                        if def.owner.is_none() {
+                            def.owner = Some(class_def.name.clone());
+                        }
+                        if def.from_schema.is_none() {
+                            def.from_schema = Some(schema_uri.to_string());
                         }
                     }
                     acc.insert(
@@ -111,14 +113,39 @@ impl ClassView {
             if let Some(attribs) = &class_def.attributes {
                 for (attr_name, attr_def) in attribs {
                     let mut defs = vec![*attr_def.clone()];
-                    if let Some(cu) = &class_def.slot_usage {
-                        if let Some(usage) = cu.get(attr_name) {
-                            defs.push(*usage.clone());
+                    for def in &mut defs {
+                        if def.owner.is_none() {
+                            def.owner = Some(class_def.name.clone());
+                        }
+                        if def.from_schema.is_none() {
+                            def.from_schema = Some(schema_uri.to_string());
                         }
                     }
                     acc.insert(
                         attr_name.clone(),
                         SlotView::new(attr_name.clone(), defs, schema_uri, sv),
+                    );
+                }
+            }
+
+            if let Some(slot_usage) = &class_def.slot_usage {
+                for (slot_name, usage) in slot_usage {
+                    let mut defs = if let Some(existing) = acc.get(slot_name) {
+                        existing.definitions().clone()
+                    } else {
+                        Vec::new()
+                    };
+                    let mut usage_def = *usage.clone();
+                    if usage_def.owner.is_none() {
+                        usage_def.owner = Some(class_def.name.clone());
+                    }
+                    if usage_def.from_schema.is_none() {
+                        usage_def.from_schema = Some(schema_uri.to_string());
+                    }
+                    defs.push(usage_def);
+                    acc.insert(
+                        slot_name.clone(),
+                        SlotView::new(slot_name.clone(), defs, schema_uri, sv),
                     );
                 }
             }

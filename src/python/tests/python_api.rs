@@ -33,6 +33,20 @@ fn simple_enum_path() -> PathBuf {
     panic!("simple_enum.yaml not found in known locations relative to python crate");
 }
 
+fn path_traversal_path() -> PathBuf {
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let candidates = [
+        base.join("../schemaview/tests/data/path_traversal.yaml"),
+        base.join("tests/data/path_traversal.yaml"),
+    ];
+    for c in candidates {
+        if c.exists() {
+            return c;
+        }
+    }
+    panic!("path_traversal.yaml not found in known locations relative to python crate");
+}
+
 #[test]
 fn construct_via_python() {
     pyo3::prepare_freethreaded_python();
@@ -212,6 +226,84 @@ results['is_same_clone'] = sv.is_same(sv_clone)
             .extract()
             .expect("is_same_clone wrong type");
         assert!(!is_same_clone);
+    });
+}
+
+#[test]
+fn slots_for_path_exposed() {
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let module = PyModule::new(py, "linkml_runtime").unwrap();
+        runtime_module(&module).unwrap();
+        let sys = py.import("sys").unwrap();
+        let modules = sys.getattr("modules").unwrap();
+        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        sys_modules.set_item("linkml_runtime", module).unwrap();
+
+        let locals = PyDict::new(py);
+        locals
+            .set_item(
+                "path_schema",
+                path_traversal_path().to_str().expect("unicode path"),
+            )
+            .unwrap();
+        let script = CString::new(
+            r#"
+import linkml_runtime as lr
+sv = lr.make_schema_view(path_schema)
+slots = sv.slots_for_path(
+    "Person",
+    ["workplaces", "departments", "location", "address", "street"],
+)
+results = {
+    "count": len(slots),
+    "names": sorted(slot.name for slot in slots),
+    "after_scalar": len(
+        sv.slots_for_path("Person", ["favorite_number", "bogus"])
+    ),
+}
+"#,
+        )
+        .unwrap();
+        if let Err(err) = py.run(script.as_c_str(), None, Some(&locals)) {
+            let value = err.value(py);
+            let message = match value.str() {
+                Ok(s) => s.to_string_lossy().into_owned(),
+                Err(_) => "<no message>".to_string(),
+            };
+            panic!("python script execution failed: {}", message);
+        }
+
+        let results_value = locals
+            .get_item("results")
+            .expect("results lookup failed")
+            .expect("results missing");
+        let results = results_value
+            .downcast::<PyDict>()
+            .expect("results not a dict");
+
+        let count: usize = results
+            .get_item("count")
+            .expect("count lookup failed")
+            .expect("count missing")
+            .extract()
+            .expect("count wrong type");
+        assert!(count >= 1, "expected at least one slot match");
+
+        let names_value = results
+            .get_item("names")
+            .expect("names lookup failed")
+            .expect("names missing");
+        let names: Vec<String> = names_value.extract().expect("names wrong type");
+        assert!(names.iter().any(|name| name == "street"));
+
+        let after_scalar: usize = results
+            .get_item("after_scalar")
+            .expect("after_scalar lookup failed")
+            .expect("after_scalar missing")
+            .extract()
+            .expect("after_scalar wrong type");
+        assert_eq!(after_scalar, 0);
     });
 }
 

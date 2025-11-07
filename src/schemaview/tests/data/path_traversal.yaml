@@ -1,0 +1,72 @@
+id: https://example.org/path-traversal
+name: path_traversal
+prefixes:
+  ex: https://example.org/
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+default_prefix: ex
+classes:
+  Address:
+    attributes:
+      street:
+        range: string
+      postal_code:
+        range: string
+  AltAddress:
+    is_a: Address
+    slot_usage:
+      street:
+        description: Alternate street label
+        required: true
+  Location:
+    attributes:
+      address:
+        range: Address
+        inlined: true
+  DeptLocation:
+    is_a: Location
+    slot_usage:
+      address:
+        range: AltAddress
+        inlined: true
+  Department:
+    attributes:
+      location:
+        range: Location
+        inlined: true
+  RemoteDepartment:
+    is_a: Department
+    slot_usage:
+      location:
+        range: DeptLocation
+        inlined: true
+  Org:
+    attributes:
+      departments:
+        range: Department
+        multivalued: true
+        inlined: true
+      name:
+        range: string
+  Company:
+    is_a: Org
+  NonProfit:
+    is_a: Org
+    slot_usage:
+      departments:
+        any_of:
+          - range: Department
+          - range: RemoteDepartment
+        multivalued: true
+        inlined: true
+  Person:
+    attributes:
+      workplaces:
+        any_of:
+          - range: Company
+          - range: NonProfit
+        multivalued: true
+        inlined: true
+      favorite_number:
+        range: integer
