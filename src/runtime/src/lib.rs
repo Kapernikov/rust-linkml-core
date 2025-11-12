@@ -246,7 +246,7 @@ pub enum LinkMLInstance {
         values: HashMap<String, LinkMLInstance>,
         class: ClassView,
         sv: SchemaView,
-        extras: HashMap<String, JsonValue>,
+        unknown_fields: HashMap<String, JsonValue>,
     },
 }
 
@@ -285,12 +285,16 @@ impl LinkMLInstance {
                     .map(|(k, v)| (k.clone(), v.to_json()))
                     .collect(),
             ),
-            LinkMLInstance::Object { values, extras, .. } => {
+            LinkMLInstance::Object {
+                values,
+                unknown_fields,
+                ..
+            } => {
                 let mut map = serde_json::Map::new();
                 for (k, v) in values.iter() {
                     map.insert(k.clone(), v.to_json());
                 }
-                for (k, v) in extras.iter() {
+                for (k, v) in unknown_fields.iter() {
                     map.entry(k.clone()).or_insert_with(|| v.clone());
                 }
                 JsonValue::Object(map)
@@ -492,14 +496,14 @@ impl LinkMLInstance {
                     values: a,
                     class: ca,
                     sv: sva,
-                    extras: extras_a,
+                    unknown_fields: unknown_a,
                     ..
                 },
                 Object {
                     values: b,
                     class: cb,
                     sv: svb,
-                    extras: extras_b,
+                    unknown_fields: unknown_b,
                     ..
                 },
             ) => {
@@ -518,11 +522,11 @@ impl LinkMLInstance {
                     return false;
                 }
 
-                if extras_a.len() != extras_b.len() {
+                if unknown_a.len() != unknown_b.len() {
                     return false;
                 }
-                for (k, va) in extras_a.iter() {
-                    match extras_b.get(k) {
+                for (k, va) in unknown_a.iter() {
+                    match unknown_b.get(k) {
                         Some(vb) if vb == va => {}
                         _ => return false,
                     }
@@ -707,7 +711,7 @@ impl LinkMLInstance {
             values,
             class: class.clone(),
             sv: sv.clone(),
-            extras: HashMap::new(),
+            unknown_fields: HashMap::new(),
         })
     }
 
@@ -900,7 +904,7 @@ impl LinkMLInstance {
         let chosen = Self::select_class(&map, &base_class, sv, conv);
 
         let mut values = HashMap::new();
-        let mut extras = HashMap::new();
+        let mut unknown_fields = HashMap::new();
         for (k, v) in map.into_iter() {
             let slot_tmp: Option<SlotView> = chosen
                 .slots()
@@ -930,16 +934,16 @@ impl LinkMLInstance {
             } else {
                 let msg = format!("unknown slot `{}` for class `{}`", key_name, chosen.name());
                 diagnostics.push_error(DiagnosticCode::UnknownSlot, p.clone(), msg);
-                extras.insert(key_name, v);
+                unknown_fields.insert(key_name, v);
             }
         }
-        run_object_constraints(&chosen, &values, &extras, path.clone(), diagnostics);
+        run_object_constraints(&chosen, &values, &unknown_fields, path.clone(), diagnostics);
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
             values,
             class: chosen,
             sv: sv.clone(),
-            extras,
+            unknown_fields,
         })
     }
 
@@ -1203,7 +1207,7 @@ impl LinkMLInstance {
                     values: child_values,
                     class: selected,
                     sv: sv.clone(),
-                    extras: HashMap::new(),
+                    unknown_fields: HashMap::new(),
                 })
             }
             other => {
@@ -1245,7 +1249,7 @@ impl LinkMLInstance {
                     values: child_values,
                     class: range_cv,
                     sv: sv.clone(),
-                    extras: HashMap::new(),
+                    unknown_fields: HashMap::new(),
                 })
             }
         }
@@ -1338,10 +1342,10 @@ fn collect_diagnostics(value: &LinkMLInstance, path: &mut Vec<String>, sink: &mu
         LinkMLInstance::Object {
             values,
             class,
-            extras,
+            unknown_fields,
             ..
         } => {
-            run_object_constraints(class, values, extras, path.clone(), sink);
+            run_object_constraints(class, values, unknown_fields, path.clone(), sink);
             for (key, child) in values {
                 path.push(key.clone());
                 collect_diagnostics(child, path, sink);

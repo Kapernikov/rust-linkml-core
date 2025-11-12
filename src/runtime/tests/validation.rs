@@ -141,7 +141,7 @@ fn diagnostics_report_missing_required_slot() {
 }
 
 #[test]
-fn diagnostics_report_unknown_slot_and_extras() {
+fn diagnostics_report_unknown_slot_and_fields() {
     let (sv, conv) = load_personinfo_schema();
     let person = class_by_name(&sv, &conv, "Person");
     let outcome = load_yaml_file(
@@ -156,8 +156,8 @@ fn diagnostics_report_unknown_slot_and_extras() {
         matches!(d.code, DiagnosticCode::UnknownSlot)
             && d.path.last().map(|p| p == "unknown_attr").unwrap_or(false)
     }));
-    if let Some(LinkMLInstance::Object { extras, .. }) = outcome.instance {
-        assert!(extras.contains_key("unknown_attr"));
+    if let Some(LinkMLInstance::Object { unknown_fields, .. }) = outcome.instance {
+        assert!(unknown_fields.contains_key("unknown_attr"));
     } else {
         panic!("expected person to deserialize as object");
     }

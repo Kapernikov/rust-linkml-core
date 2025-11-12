@@ -7,7 +7,7 @@ pub struct ObjectConstraintContext<'a> {
     pub class: &'a ClassView,
     pub values: &'a HashMap<String, LinkMLInstance>,
     #[allow(dead_code)]
-    pub extras: &'a HashMap<String, serde_json::Value>,
+    pub unknown_fields: &'a HashMap<String, serde_json::Value>,
     pub path: InstancePath,
 }
 
@@ -51,11 +51,11 @@ impl ObjectConstraint for RequiredSlotConstraint {
     }
 }
 
-struct UnknownExtraConstraint;
+struct UnknownFieldConstraint;
 
-impl ObjectConstraint for UnknownExtraConstraint {
+impl ObjectConstraint for UnknownFieldConstraint {
     fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut DiagnosticSink) {
-        for (extra, _) in ctx.extras.iter() {
+        for (extra, _) in ctx.unknown_fields.iter() {
             let mut path = ctx.path.clone();
             path.push(extra.clone());
             sink.push_error(
@@ -88,21 +88,21 @@ impl ObjectConstraint for UnknownDeclaredSlotConstraint {
 
 static OBJECT_CONSTRAINTS: &[&dyn ObjectConstraint] = &[
     &RequiredSlotConstraint,
-    &UnknownExtraConstraint,
+    &UnknownFieldConstraint,
     &UnknownDeclaredSlotConstraint,
 ];
 
 pub fn run_object_constraints(
     class: &ClassView,
     values: &HashMap<String, LinkMLInstance>,
-    extras: &HashMap<String, serde_json::Value>,
+    unknown_fields: &HashMap<String, serde_json::Value>,
     path: InstancePath,
     sink: &mut DiagnosticSink,
 ) {
     let ctx = ObjectConstraintContext {
         class,
         values,
-        extras,
+        unknown_fields,
         path,
     };
     for constraint in OBJECT_CONSTRAINTS {

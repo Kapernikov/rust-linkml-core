@@ -652,8 +652,6 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(make_schema_view, m)?)?;
     m.add_function(wrap_pyfunction!(load_yaml, m)?)?;
     m.add_function(wrap_pyfunction!(load_json, m)?)?;
-    m.add_function(wrap_pyfunction!(load_yaml_with_diagnostics, m)?)?;
-    m.add_function(wrap_pyfunction!(load_json_with_diagnostics, m)?)?;
     m.add_function(wrap_pyfunction!(py_diff, m)?)?;
     m.add_function(wrap_pyfunction!(py_patch, m)?)?;
     m.add_function(wrap_pyfunction!(py_to_turtle, m)?)?;
@@ -1160,10 +1158,10 @@ impl PyLinkMLInstance {
         }
     }
 
-    fn extras<'py>(&self, py: Python<'py>) -> PyResult<Py<PyDict>> {
+    fn unknown_fields<'py>(&self, py: Python<'py>) -> PyResult<Py<PyDict>> {
         let dict = PyDict::new(py);
-        if let LinkMLInstance::Object { extras, .. } = &self.value {
-            for (k, v) in extras {
+        if let LinkMLInstance::Object { unknown_fields, .. } = &self.value {
+            for (k, v) in unknown_fields {
                 dict.set_item(k, json_value_to_py(py, v))?;
             }
         }
@@ -1340,50 +1338,6 @@ fn load_yaml(
     source: &Bound<'_, PyAny>,
     sv: Py<PySchemaView>,
     class_view: Py<PyClassView>,
-) -> PyResult<PyLinkMLInstance> {
-    let sv_ref = sv.bind(py).borrow();
-    let rust_sv = sv_ref.as_rust();
-    let conv = rust_sv.converter();
-    let class_bound = class_view.bind(py);
-    let class_ref = class_bound.borrow();
-    let (text, _) = py_filelike_or_string_to_string(source)?;
-    let load_result = load_yaml_str(&text, rust_sv, class_ref.as_rust(), &conv)
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-    let value = load_result
-        .into_instance()
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-    Ok(PyLinkMLInstance::new(value, sv))
-}
-
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(signature = (source, sv, class_view))]
-fn load_json(
-    py: Python<'_>,
-    source: &Bound<'_, PyAny>,
-    sv: Py<PySchemaView>,
-    class_view: Py<PyClassView>,
-) -> PyResult<PyLinkMLInstance> {
-    let sv_ref = sv.bind(py).borrow();
-    let rust_sv = sv_ref.as_rust();
-    let conv = rust_sv.converter();
-    let class_bound = class_view.bind(py);
-    let class_ref = class_bound.borrow();
-    let (text, _) = py_filelike_or_string_to_string(source)?;
-    let load_result = load_json_str(&text, rust_sv, class_ref.as_rust(), &conv)
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-    let value = load_result
-        .into_instance()
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-    Ok(PyLinkMLInstance::new(value, sv))
-}
-
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(signature = (source, sv, class_view))]
-fn load_yaml_with_diagnostics(
-    py: Python<'_>,
-    source: &Bound<'_, PyAny>,
-    sv: Py<PySchemaView>,
-    class_view: Py<PyClassView>,
 ) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationDiagnostic>>)> {
     let sv_ref = sv.bind(py).borrow();
     let rust_sv = sv_ref.as_rust();
@@ -1398,7 +1352,7 @@ fn load_yaml_with_diagnostics(
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(signature = (source, sv, class_view))]
-fn load_json_with_diagnostics(
+fn load_json(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
     sv: Py<PySchemaView>,
