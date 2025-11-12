@@ -1,5 +1,5 @@
 use clap::Parser;
-use linkml_runtime::{load_json_file, load_yaml_file, validate_errors};
+use linkml_runtime::{load_json_file, load_yaml_file, validate_diagnostics};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io::from_yaml;
 #[cfg(feature = "resolve")]
@@ -44,13 +44,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         load_yaml_file(data_path, &sv, &class_view, &conv)?
     };
-    let errs = validate_errors(&value);
-    if errs.is_empty() {
+    let diagnostics = validate_diagnostics(&value);
+    if diagnostics.is_empty() {
         println!("valid");
         Ok(())
     } else {
-        for e in errs {
-            println!("{e}");
+        for diag in diagnostics {
+            let location = if diag.path.is_empty() {
+                "<root>".to_string()
+            } else {
+                diag.path.join(".")
+            };
+            println!("{:?} at {}: {}", diag.code, location, diag.message);
         }
         std::process::exit(1);
     }

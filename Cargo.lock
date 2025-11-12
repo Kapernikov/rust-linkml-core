@@ -938,6 +938,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "linkml_meta",
+ "once_cell",
  "oxrdf",
  "oxttl",
  "percent-encoding",
