@@ -27,7 +27,10 @@ fn inlined_mapping_selects_subclass_by_typeuri() {
         .expect("class not found");
 
     // Load JSON data
-    let v = load_json_file(Path::new(&data_path("mapping_data.json")), &sv, &bag, &conv).unwrap();
+    let v = load_json_file(Path::new(&data_path("mapping_data.json")), &sv, &bag, &conv)
+        .unwrap()
+        .into_instance()
+        .unwrap();
 
     // Instance should validate
     assert!(validate(&v).is_ok());

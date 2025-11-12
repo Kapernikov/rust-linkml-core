@@ -1,7 +1,8 @@
-use linkml_runtime::{diff, load_json_str, load_yaml_file, DiffOptions};
+use linkml_runtime::{diff, load_json_str, load_yaml_file, DiffOptions, LinkMLInstance};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
-use linkml_schemaview::schemaview::SchemaView;
+use linkml_schemaview::schemaview::{ClassView, SchemaView};
+use linkml_schemaview::Converter;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -19,6 +20,18 @@ fn info_path(name: &str) -> PathBuf {
     p.push("data");
     p.push(name);
     p
+}
+
+fn load_instance(
+    path: &Path,
+    sv: &SchemaView,
+    class: &ClassView,
+    conv: &Converter,
+) -> LinkMLInstance {
+    load_yaml_file(path, sv, class, conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
 }
 
 fn collect_ids(v: &linkml_runtime::LinkMLInstance, out: &mut Vec<u64>) {
@@ -50,13 +63,12 @@ fn node_ids_preserved_scalar_update() {
         .get_class(&Identifier::new("Person"), &conv)
         .unwrap()
         .expect("class not found");
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("person_valid.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
+    );
     let mut tgt_json = src.to_json();
     if let serde_json::Value::Object(ref mut m) = tgt_json {
         m.insert("age".to_string(), serde_json::json!(99));
@@ -67,6 +79,8 @@ fn node_ids_preserved_scalar_update() {
         &class,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
 
     let deltas = diff(&src, &tgt, DiffOptions::default());
@@ -100,13 +114,12 @@ fn patch_trace_add_in_list() {
         .get_class(&Identifier::new("Container"), &conv)
         .unwrap()
         .expect("class not found");
-    let base = load_yaml_file(
+    let base = load_instance(
         Path::new(&info_path("example_personinfo_data.yaml")),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     // Add a new object to the 'objects' list
     let mut base_json = base.to_json();
@@ -126,6 +139,8 @@ fn patch_trace_add_in_list() {
         &container,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
 
     let deltas = diff(&base, &target, DiffOptions::default());
@@ -163,13 +178,12 @@ fn patch_missing_to_null_semantics() {
         .unwrap()
         .expect("class not found");
 
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("person_partial.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
+    );
     // Build delta: set age to explicit null
     let deltas = vec![linkml_runtime::Delta {
         path: vec!["age".to_string()],
@@ -234,13 +248,12 @@ fn patch_records_failed_paths() {
         .get_class(&Identifier::new("Person"), &conv)
         .unwrap()
         .expect("class not found");
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("person_valid.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
+    );
 
     let deltas = vec![linkml_runtime::Delta {
         path: vec!["no_such_slot".to_string()],

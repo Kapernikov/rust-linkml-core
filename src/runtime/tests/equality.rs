@@ -12,6 +12,30 @@ fn data_path(name: &str) -> std::path::PathBuf {
     p
 }
 
+fn load_yaml_doc(
+    doc: &str,
+    sv: &SchemaView,
+    class: &linkml_schemaview::schemaview::ClassView,
+    conv: &linkml_schemaview::Converter,
+) -> LinkMLInstance {
+    load_yaml_str(doc, sv, class, conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
+}
+
+fn load_json_doc(
+    doc: &str,
+    sv: &SchemaView,
+    class: &linkml_schemaview::schemaview::ClassView,
+    conv: &linkml_schemaview::Converter,
+) -> LinkMLInstance {
+    load_json_str(doc, sv, class, conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
+}
+
 #[test]
 fn object_equality_ignores_null_assignments() {
     // Load personinfo schema and Container class
@@ -40,8 +64,8 @@ objects:
     id: "P:1"
     name: "Alice"
 "#;
-    let v1 = load_yaml_str(doc_with_null, &sv, &container, &conv).unwrap();
-    let v2 = load_yaml_str(doc_without_slot, &sv, &container, &conv).unwrap();
+    let v1 = load_yaml_doc(doc_with_null, &sv, &container, &conv);
+    let v2 = load_yaml_doc(doc_without_slot, &sv, &container, &conv);
     let p1 = v1.navigate_path(["objects", "0"]).unwrap();
     let p2 = v2.navigate_path(["objects", "0"]).unwrap();
     assert!(
@@ -86,8 +110,8 @@ objects:
       - started_at_time: 2019-01-01
         is_current: true
 "#;
-    let v1 = load_yaml_str(doc_a, &sv, &container, &conv).unwrap();
-    let v2 = load_yaml_str(doc_b, &sv, &container, &conv).unwrap();
+    let v1 = load_yaml_doc(doc_a, &sv, &container, &conv);
+    let v2 = load_yaml_doc(doc_b, &sv, &container, &conv);
     let p1 = v1.navigate_path(["objects", "0"]).unwrap();
     let p2 = v2.navigate_path(["objects", "0"]).unwrap();
     assert!(matches!(p1, LinkMLInstance::Object { .. }));
@@ -122,8 +146,8 @@ fn mapping_equality_is_key_based_not_ordered() {
     "alpha": {"typeURI": "ThingA", "a_only": "foo", "common": "shared"}
   }
 }"#;
-    let v1 = load_json_str(doc1, &sv, &bag, &conv).unwrap();
-    let v2 = load_json_str(doc2, &sv, &bag, &conv).unwrap();
+    let v1 = load_json_doc(doc1, &sv, &bag, &conv);
+    let v2 = load_json_doc(doc2, &sv, &bag, &conv);
     let m1 = v1.navigate_path(["things"]).unwrap();
     let m2 = v2.navigate_path(["things"]).unwrap();
     assert!(matches!(m1, LinkMLInstance::Mapping { .. }));
@@ -169,9 +193,9 @@ objects:
     name: "Carol"
     gender: "cisgender woman"
 "#;
-    let v1 = load_yaml_str(doc1, &sv, &container, &conv).unwrap();
-    let v2 = load_yaml_str(doc2, &sv, &container, &conv).unwrap();
-    let v3 = load_yaml_str(doc3, &sv, &container, &conv).unwrap();
+    let v1 = load_yaml_doc(doc1, &sv, &container, &conv);
+    let v2 = load_yaml_doc(doc2, &sv, &container, &conv);
+    let v3 = load_yaml_doc(doc3, &sv, &container, &conv);
     let g1 = v1.navigate_path(["objects", "0", "gender"]).unwrap();
     let g2 = v2.navigate_path(["objects", "0", "gender"]).unwrap();
     let g3 = v3.navigate_path(["objects", "0", "gender"]).unwrap();

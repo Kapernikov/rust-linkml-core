@@ -38,7 +38,7 @@ fn load_value(
     class: &ClassView,
     conv: &Converter,
 ) -> Result<linkml_runtime::LinkMLInstance, Box<dyn std::error::Error>> {
-    if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+    let result = if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
         if ext == "json" {
             load_json_file(path, sv, class, conv)
         } else {
@@ -46,7 +46,10 @@ fn load_value(
         }
     } else {
         load_yaml_file(path, sv, class, conv)
-    }
+    }?;
+    result
+        .into_instance()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
 fn write_value(

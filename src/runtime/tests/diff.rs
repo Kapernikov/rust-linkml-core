@@ -1,15 +1,10 @@
 use linkml_runtime::{
-    diff,
-    load_json_str,
-    load_yaml_file,
-    load_yaml_file_with_diagnostics,
-    patch,
-    DiagnosticCode,
-    DiffOptions,
+    diff, load_json_str, load_yaml_file, patch, DiagnosticCode, DiffOptions, LinkMLInstance,
 };
 use linkml_schemaview::identifier::converter_from_schema;
 use linkml_schemaview::io::from_yaml;
-use linkml_schemaview::schemaview::SchemaView;
+use linkml_schemaview::schemaview::{ClassView, SchemaView};
+use linkml_schemaview::Converter;
 use std::path::{Path, PathBuf};
 
 fn data_path(name: &str) -> PathBuf {
@@ -32,11 +27,35 @@ fn class_in_schema(
     sv: &SchemaView,
     schema: &linkml_meta::SchemaDefinition,
     class_name: &str,
-) -> linkml_schemaview::schemaview::ClassView {
+) -> ClassView {
     let schema_id = schema.id.as_str();
     sv.get_class_by_schema(schema_id, class_name)
         .unwrap()
         .expect("class not found")
+}
+
+fn load_instance(
+    path: &Path,
+    sv: &SchemaView,
+    class: &ClassView,
+    conv: &Converter,
+) -> LinkMLInstance {
+    load_yaml_file(path, sv, class, conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
+}
+
+fn load_json_instance(
+    text: &str,
+    sv: &SchemaView,
+    class: &ClassView,
+    conv: &Converter,
+) -> LinkMLInstance {
+    load_json_str(text, sv, class, conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
 }
 
 #[test]
@@ -46,20 +65,18 @@ fn diff_and_patch_person() {
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
     let class = class_in_schema(&sv, &schema, "Person");
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("person_valid.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
-    let tgt = load_yaml_file(
+    );
+    let tgt = load_instance(
         Path::new(&data_path("person_older.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
+    );
 
     let deltas = diff(&src, &tgt, DiffOptions::default());
     assert_eq!(deltas.len(), 1);
@@ -97,20 +114,18 @@ fn diff_ignore_missing_target() {
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
     let class = class_in_schema(&sv, &schema, "Person");
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("person_valid.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
-    let tgt = load_yaml_file(
+    );
+    let tgt = load_instance(
         Path::new(&data_path("person_partial.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
+    );
 
     let deltas = diff(&src, &tgt, DiffOptions::default());
     assert!(deltas.is_empty());
@@ -135,20 +150,18 @@ fn diff_and_patch_personinfo() {
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
     let container = class_in_schema(&sv, &schema, "Container");
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&info_path("example_personinfo_data.yaml")),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
-    let tgt = load_yaml_file(
+    );
+    let tgt = load_instance(
         Path::new(&info_path("example_personinfo_data_2.yaml")),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     let deltas = diff(&src, &tgt, DiffOptions::default());
     assert!(!deltas.is_empty());
@@ -182,13 +195,12 @@ fn diff_null_and_missing_semantics() {
     let conv = converter_from_schema(&schema);
     let class = class_in_schema(&sv, &schema, "Person");
 
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("person_valid.yaml")),
         &sv,
         &class,
         &conv,
-    )
-    .unwrap();
+    );
 
     // X -> null => update to null
     if let LinkMLInstance::Object { .. } = src.clone() {
@@ -196,13 +208,12 @@ fn diff_null_and_missing_semantics() {
         if let serde_json::Value::Object(ref mut m) = tgt_json {
             m.insert("age".to_string(), serde_json::Value::Null);
         }
-        let tgt = load_json_str(
+        let tgt = load_json_instance(
             &serde_json::to_string(&tgt_json).unwrap(),
             &sv,
             &class,
             &conv,
-        )
-        .unwrap();
+        );
         let deltas = diff(&src, &tgt, DiffOptions::default());
         assert!(deltas
             .iter()
@@ -215,13 +226,12 @@ fn diff_null_and_missing_semantics() {
         if let serde_json::Value::Object(ref mut m) = src_json {
             m.insert("age".to_string(), serde_json::Value::Null);
         }
-        let src_with_null = load_json_str(
+        let src_with_null = load_json_instance(
             &serde_json::to_string(&src_json).unwrap(),
             &sv,
             &class,
             &conv,
-        )
-        .unwrap();
+        );
         let deltas = diff(&src_with_null, &src, DiffOptions::default());
         assert!(deltas.iter().any(|d| d.path == vec!["age".to_string()]
             && d.old == Some(serde_json::Value::Null)
@@ -234,13 +244,12 @@ fn diff_null_and_missing_semantics() {
         if let serde_json::Value::Object(ref mut m) = src_json {
             m.remove("age");
         }
-        let src_missing = load_json_str(
+        let src_missing = load_json_instance(
             &serde_json::to_string(&src_json).unwrap(),
             &sv,
             &class,
             &conv,
-        )
-        .unwrap();
+        );
         let deltas = diff(&src_missing, &src, DiffOptions::default());
         assert!(deltas
             .iter()
@@ -253,13 +262,12 @@ fn diff_null_and_missing_semantics() {
         if let serde_json::Value::Object(ref mut m) = tgt_json {
             m.remove("age");
         }
-        let tgt_missing = load_json_str(
+        let tgt_missing = load_json_instance(
             &serde_json::to_string(&tgt_json).unwrap(),
             &sv,
             &class,
             &conv,
-        )
-        .unwrap();
+        );
         let deltas = diff(&src, &tgt_missing, DiffOptions::default());
         assert!(deltas.iter().all(|d| d.path != vec!["age".to_string()]));
         let deltas2 = diff(
@@ -283,7 +291,7 @@ fn personinfo_invalid_fails() {
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
     let class = class_in_schema(&sv, &schema, "Container");
-    let outcome = load_yaml_file_with_diagnostics(
+    let outcome = load_yaml_file(
         Path::new(&info_path("example_personinfo_data_invalid.yaml")),
         &sv,
         &class,
@@ -291,6 +299,8 @@ fn personinfo_invalid_fails() {
     )
     .unwrap();
     let diags = outcome.diagnostics;
-    assert!(diags.iter().any(|d| matches!(d.code, DiagnosticCode::UnknownSlot)
-        && d.path.iter().any(|seg| seg == "unknown_attr")));
+    assert!(diags
+        .iter()
+        .any(|d| matches!(d.code, DiagnosticCode::UnknownSlot)
+            && d.path.iter().any(|seg| seg == "unknown_attr")));
 }

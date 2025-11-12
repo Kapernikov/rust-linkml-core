@@ -1,7 +1,8 @@
-use linkml_runtime::{diff, load_json_str, load_yaml_file, patch, DiffOptions};
+use linkml_runtime::{diff, load_json_str, load_yaml_file, patch, DiffOptions, LinkMLInstance};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
-use linkml_schemaview::schemaview::SchemaView;
+use linkml_schemaview::schemaview::{ClassView, SchemaView};
+use linkml_schemaview::Converter;
 use serde_json::Value as JsonValue;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,30 @@ fn data_path(name: &str) -> PathBuf {
     p.push("data");
     p.push(name);
     p
+}
+
+fn load_instance(
+    path: &Path,
+    sv: &SchemaView,
+    class: &ClassView,
+    conv: &Converter,
+) -> LinkMLInstance {
+    load_yaml_file(path, sv, class, conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
+}
+
+fn load_json_instance(
+    text: &str,
+    sv: &SchemaView,
+    class: &ClassView,
+    conv: &Converter,
+) -> LinkMLInstance {
+    load_json_str(text, sv, class, conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
 }
 
 #[test]
@@ -25,13 +50,12 @@ fn single_inlined_object_identifier_change_is_replacement() {
         .unwrap()
         .expect("class not found");
 
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("example_personinfo_data.yaml")),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     // Modify diagnosis.id of the first medical history event for P:002
     let mut tgt_json = src.to_json();
@@ -51,13 +75,12 @@ fn single_inlined_object_identifier_change_is_replacement() {
             }
         }
     }
-    let tgt = load_json_str(
+    let tgt = load_json_instance(
         &serde_json::to_string(&tgt_json).unwrap(),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     let deltas_default = diff(&src, &tgt, DiffOptions::default());
     // Expect a single replacement at the diagnosis object path with default behaviour
@@ -134,13 +157,12 @@ fn single_inlined_object_non_identifier_change_is_field_delta() {
         .unwrap()
         .expect("class not found");
 
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("example_personinfo_data.yaml")),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     // Modify diagnosis.name only
     let mut tgt_json = src.to_json();
@@ -160,13 +182,12 @@ fn single_inlined_object_non_identifier_change_is_field_delta() {
             }
         }
     }
-    let tgt = load_json_str(
+    let tgt = load_json_instance(
         &serde_json::to_string(&tgt_json).unwrap(),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     let deltas = diff(&src, &tgt, DiffOptions::default());
     assert!(deltas.iter().any(|d| d.path
@@ -211,13 +232,12 @@ fn list_inlined_object_identifier_change_is_replacement() {
         .unwrap()
         .expect("class not found");
 
-    let src = load_yaml_file(
+    let src = load_instance(
         Path::new(&data_path("example_personinfo_data.yaml")),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     // Change the id of the third object (P:002)
     let mut tgt_json = src.to_json();
@@ -228,13 +248,12 @@ fn list_inlined_object_identifier_change_is_replacement() {
             }
         }
     }
-    let tgt = load_json_str(
+    let tgt = load_json_instance(
         &serde_json::to_string(&tgt_json).unwrap(),
         &sv,
         &container,
         &conv,
-    )
-    .unwrap();
+    );
 
     let deltas = diff(&src, &tgt, DiffOptions::default());
     // Expect a single replacement at the list item path
@@ -276,6 +295,8 @@ fn mapping_inlined_identifier_change_is_add_delete() {
         &bag,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
 
     // Rename mapping key 'alpha' to 'alpha2'
@@ -287,7 +308,7 @@ fn mapping_inlined_identifier_change_is_add_delete() {
             }
         }
     }
-    let tgt = load_json_str(&serde_json::to_string(&tgt_json).unwrap(), &sv, &bag, &conv).unwrap();
+    let tgt = load_json_instance(&serde_json::to_string(&tgt_json).unwrap(), &sv, &bag, &conv);
 
     let deltas = diff(&src, &tgt, DiffOptions::default());
     // Expect one delete and one add at mapping keys; no inner key-slot deltas

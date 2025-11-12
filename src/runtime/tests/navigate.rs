@@ -28,6 +28,8 @@ fn navigate_basic() {
         &container,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     // Map root should have key 'objects'
     match &v {

@@ -1,5 +1,5 @@
 use clap::Parser;
-use linkml_runtime::{load_json_file, load_yaml_file, validate_diagnostics};
+use linkml_runtime::{load_json_file, load_yaml_file};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io::from_yaml;
 #[cfg(feature = "resolve")]
@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("{e:?}"))?
         .ok_or("class not found")?;
     let data_path = &args.data;
-    let value = if let Some(ext) = data_path.extension() {
+    let load_result = if let Some(ext) = data_path.extension() {
         if ext == "json" {
             load_json_file(data_path, &sv, &class_view, &conv)?
         } else {
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         load_yaml_file(data_path, &sv, &class_view, &conv)?
     };
-    let diagnostics = validate_diagnostics(&value);
+    let diagnostics = load_result.diagnostics;
     if diagnostics.is_empty() {
         println!("valid");
         Ok(())

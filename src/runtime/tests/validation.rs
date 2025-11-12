@@ -1,10 +1,4 @@
-use linkml_runtime::{
-    load_yaml_file,
-    load_yaml_file_with_diagnostics,
-    validate,
-    DiagnosticCode,
-    LinkMLInstance,
-};
+use linkml_runtime::{load_yaml_file, validate, DiagnosticCode, LinkMLInstance};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
@@ -43,6 +37,8 @@ fn validate_personinfo_example1() {
         &container,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
 }
@@ -57,6 +53,8 @@ fn validate_personinfo_example2() {
         &container,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
 }
@@ -71,6 +69,8 @@ fn validate_personinfo_null_collections() {
         &container,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
     // Assert that nulls are preserved as LinkMLInstance::Null (not empty collections)
@@ -108,7 +108,7 @@ fn validate_personinfo_null_collections() {
 fn diagnostics_report_regex_pattern_violation() {
     let (sv, conv) = load_personinfo_schema();
     let person = class_by_name(&sv, &conv, "Person");
-    let outcome = load_yaml_file_with_diagnostics(
+    let outcome = load_yaml_file(
         Path::new(&info_path("person_bad_email.yaml")),
         &sv,
         &person,
@@ -126,7 +126,7 @@ fn diagnostics_report_regex_pattern_violation() {
 fn diagnostics_report_missing_required_slot() {
     let (sv, conv) = load_personinfo_schema();
     let person = class_by_name(&sv, &conv, "Person");
-    let outcome = load_yaml_file_with_diagnostics(
+    let outcome = load_yaml_file(
         Path::new(&info_path("person_missing_familial_type.yaml")),
         &sv,
         &person,
@@ -144,7 +144,7 @@ fn diagnostics_report_missing_required_slot() {
 fn diagnostics_report_unknown_slot_and_extras() {
     let (sv, conv) = load_personinfo_schema();
     let person = class_by_name(&sv, &conv, "Person");
-    let outcome = load_yaml_file_with_diagnostics(
+    let outcome = load_yaml_file(
         Path::new(&info_path("person_unknown_attr.yaml")),
         &sv,
         &person,

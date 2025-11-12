@@ -191,27 +191,24 @@ impl DiagnosticSink {
     }
 }
 
-pub struct SolveOutcome {
+pub struct LoadResult {
     pub instance: Option<LinkMLInstance>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
-impl SolveOutcome {
+impl LoadResult {
     pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
             .any(|d| d.severity == Severity::Error)
     }
 
-    pub fn into_result(self) -> std::result::Result<LinkMLInstance, LinkMLError> {
-        let has_errors = self
-            .diagnostics
-            .iter()
-            .any(|d| d.severity == Severity::Error);
-        match self.instance {
-            Some(value) if !has_errors => Ok(value),
-            _ => Err(LinkMLError::new(self.diagnostics)),
+    pub fn into_instance(self) -> std::result::Result<LinkMLInstance, LinkMLError> {
+        if self.has_errors() {
+            return Err(LinkMLError::new(self.diagnostics));
         }
+        self.instance
+            .ok_or_else(|| LinkMLError::new(self.diagnostics))
     }
 }
 
@@ -664,7 +661,9 @@ impl LinkMLInstance {
                 }
             }
         }
-        soft_match.map(|(c, _)| c.clone()).unwrap_or_else(|| base.clone())
+        soft_match
+            .map(|(c, _)| c.clone())
+            .unwrap_or_else(|| base.clone())
     }
 
     fn parse_object_fixed_class(
@@ -1042,7 +1041,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         inside_list: bool,
-    ) -> SolveOutcome {
+    ) -> LoadResult {
         let mut sink = DiagnosticSink::default();
         let result = Self::from_json_internal(
             value,
@@ -1062,7 +1061,7 @@ impl LinkMLInstance {
                 None
             }
         };
-        SolveOutcome {
+        LoadResult {
             instance,
             diagnostics,
         }
@@ -1076,7 +1075,7 @@ impl LinkMLInstance {
         conv: &Converter,
         inside_list: bool,
     ) -> LResult<Self> {
-        let SolveOutcome {
+        let LoadResult {
             instance,
             diagnostics,
         } = Self::from_json_with_diagnostics(value, class, slot, sv, conv, inside_list);
@@ -1253,44 +1252,14 @@ impl LinkMLInstance {
     }
 }
 
-pub fn load_yaml_file_with_diagnostics(
-    path: &Path,
-    sv: &SchemaView,
-    class: &ClassView,
-    conv: &Converter,
-) -> std::result::Result<SolveOutcome, Box<dyn std::error::Error>> {
-    let text = fs::read_to_string(path)?;
-    load_yaml_str_with_diagnostics(&text, sv, class, conv)
-}
-
-pub fn load_yaml_str_with_diagnostics(
-    data: &str,
-    sv: &SchemaView,
-    class: &ClassView,
-    conv: &Converter,
-) -> std::result::Result<SolveOutcome, Box<dyn std::error::Error>> {
-    let value: serde_yaml::Value = serde_yaml::from_str(data)?;
-    let json = serde_json::to_value(value)?;
-    Ok(LinkMLInstance::from_json_with_diagnostics(
-        json,
-        class.clone(),
-        None,
-        sv,
-        conv,
-        false,
-    ))
-}
-
 pub fn load_yaml_file(
     path: &Path,
     sv: &SchemaView,
     class: &ClassView,
     conv: &Converter,
-) -> std::result::Result<LinkMLInstance, Box<dyn std::error::Error>> {
-    let outcome = load_yaml_file_with_diagnostics(path, sv, class, conv)?;
-    outcome
-        .into_result()
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
+    let text = fs::read_to_string(path)?;
+    load_yaml_str(&text, sv, class, conv)
 }
 
 pub fn load_yaml_str(
@@ -1298,32 +1267,11 @@ pub fn load_yaml_str(
     sv: &SchemaView,
     class: &ClassView,
     conv: &Converter,
-) -> std::result::Result<LinkMLInstance, Box<dyn std::error::Error>> {
-    let outcome = load_yaml_str_with_diagnostics(data, sv, class, conv)?;
-    outcome
-        .into_result()
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-}
-
-pub fn load_json_file_with_diagnostics(
-    path: &Path,
-    sv: &SchemaView,
-    class: &ClassView,
-    conv: &Converter,
-) -> std::result::Result<SolveOutcome, Box<dyn std::error::Error>> {
-    let text = fs::read_to_string(path)?;
-    load_json_str_with_diagnostics(&text, sv, class, conv)
-}
-
-pub fn load_json_str_with_diagnostics(
-    data: &str,
-    sv: &SchemaView,
-    class: &ClassView,
-    conv: &Converter,
-) -> std::result::Result<SolveOutcome, Box<dyn std::error::Error>> {
-    let value: JsonValue = serde_json::from_str(data)?;
+) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
+    let value: serde_yaml::Value = serde_yaml::from_str(data)?;
+    let json = serde_json::to_value(value)?;
     Ok(LinkMLInstance::from_json_with_diagnostics(
-        value,
+        json,
         class.clone(),
         None,
         sv,
@@ -1337,11 +1285,9 @@ pub fn load_json_file(
     sv: &SchemaView,
     class: &ClassView,
     conv: &Converter,
-) -> std::result::Result<LinkMLInstance, Box<dyn std::error::Error>> {
-    let outcome = load_json_file_with_diagnostics(path, sv, class, conv)?;
-    outcome
-        .into_result()
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
+    let text = fs::read_to_string(path)?;
+    load_json_str(&text, sv, class, conv)
 }
 
 pub fn load_json_str(
@@ -1349,11 +1295,16 @@ pub fn load_json_str(
     sv: &SchemaView,
     class: &ClassView,
     conv: &Converter,
-) -> std::result::Result<LinkMLInstance, Box<dyn std::error::Error>> {
-    let outcome = load_json_str_with_diagnostics(data, sv, class, conv)?;
-    outcome
-        .into_result()
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
+    let value: JsonValue = serde_json::from_str(data)?;
+    Ok(LinkMLInstance::from_json_with_diagnostics(
+        value,
+        class.clone(),
+        None,
+        sv,
+        conv,
+        false,
+    ))
 }
 
 fn collect_diagnostics(value: &LinkMLInstance, path: &mut Vec<String>, sink: &mut DiagnosticSink) {

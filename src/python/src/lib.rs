@@ -4,9 +4,8 @@ use linkml_runtime::diff::{
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
 use linkml_runtime::{
-    load_json_str, load_json_str_with_diagnostics, load_yaml_str, load_yaml_str_with_diagnostics,
-    validate_diagnostics, Diagnostic, DiagnosticCode, LinkMLInstance, NodeId, Severity,
-    SolveOutcome,
+    load_json_str, load_yaml_str, validate_diagnostics, Diagnostic, DiagnosticCode, LinkMLInstance,
+    LoadResult, NodeId, Severity,
 };
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
@@ -965,7 +964,7 @@ fn diagnostics_to_py(
 fn convert_outcome(
     py: Python<'_>,
     sv: Py<PySchemaView>,
-    outcome: SolveOutcome,
+    outcome: LoadResult,
 ) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationDiagnostic>>)> {
     let diagnostics = diagnostics_to_py(py, outcome.diagnostics)?;
     let instance = outcome
@@ -1348,9 +1347,12 @@ fn load_yaml(
     let class_bound = class_view.bind(py);
     let class_ref = class_bound.borrow();
     let (text, _) = py_filelike_or_string_to_string(source)?;
-    let v = load_yaml_str(&text, rust_sv, class_ref.as_rust(), &conv)
+    let load_result = load_yaml_str(&text, rust_sv, class_ref.as_rust(), &conv)
         .map_err(|e| PyException::new_err(e.to_string()))?;
-    Ok(PyLinkMLInstance::new(v, sv))
+    let value = load_result
+        .into_instance()
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+    Ok(PyLinkMLInstance::new(value, sv))
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
@@ -1367,9 +1369,12 @@ fn load_json(
     let class_bound = class_view.bind(py);
     let class_ref = class_bound.borrow();
     let (text, _) = py_filelike_or_string_to_string(source)?;
-    let v = load_json_str(&text, rust_sv, class_ref.as_rust(), &conv)
+    let load_result = load_json_str(&text, rust_sv, class_ref.as_rust(), &conv)
         .map_err(|e| PyException::new_err(e.to_string()))?;
-    Ok(PyLinkMLInstance::new(v, sv))
+    let value = load_result
+        .into_instance()
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+    Ok(PyLinkMLInstance::new(value, sv))
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
@@ -1386,7 +1391,7 @@ fn load_yaml_with_diagnostics(
     let class_bound = class_view.bind(py);
     let class_ref = class_bound.borrow();
     let (text, _) = py_filelike_or_string_to_string(source)?;
-    let outcome = load_yaml_str_with_diagnostics(&text, rust_sv, class_ref.as_rust(), &conv)
+    let outcome = load_yaml_str(&text, rust_sv, class_ref.as_rust(), &conv)
         .map_err(|e| PyException::new_err(e.to_string()))?;
     convert_outcome(py, sv, outcome)
 }
@@ -1405,7 +1410,7 @@ fn load_json_with_diagnostics(
     let class_bound = class_view.bind(py);
     let class_ref = class_bound.borrow();
     let (text, _) = py_filelike_or_string_to_string(source)?;
-    let outcome = load_json_str_with_diagnostics(&text, rust_sv, class_ref.as_rust(), &conv)
+    let outcome = load_json_str(&text, rust_sv, class_ref.as_rust(), &conv)
         .map_err(|e| PyException::new_err(e.to_string()))?;
     convert_outcome(py, sv, outcome)
 }
