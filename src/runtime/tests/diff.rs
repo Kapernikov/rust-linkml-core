@@ -1,5 +1,13 @@
-use linkml_runtime::{diff, load_json_str, load_yaml_file, patch, DiffOptions};
-use linkml_schemaview::identifier::{converter_from_schema, Identifier};
+use linkml_runtime::{
+    diff,
+    load_json_str,
+    load_yaml_file,
+    load_yaml_file_with_diagnostics,
+    patch,
+    DiagnosticCode,
+    DiffOptions,
+};
+use linkml_schemaview::identifier::converter_from_schema;
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
 use std::path::{Path, PathBuf};
@@ -20,16 +28,24 @@ fn info_path(name: &str) -> PathBuf {
     p
 }
 
+fn class_in_schema(
+    sv: &SchemaView,
+    schema: &linkml_meta::SchemaDefinition,
+    class_name: &str,
+) -> linkml_schemaview::schemaview::ClassView {
+    let schema_id = schema.id.as_str();
+    sv.get_class_by_schema(schema_id, class_name)
+        .unwrap()
+        .expect("class not found")
+}
+
 #[test]
 fn diff_and_patch_person() {
     let schema = from_yaml(Path::new(&data_path("schema.yaml"))).unwrap();
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
-    let class = sv
-        .get_class(&Identifier::new("Person"), &conv)
-        .unwrap()
-        .expect("class not found");
+    let class = class_in_schema(&sv, &schema, "Person");
     let src = load_yaml_file(
         Path::new(&data_path("person_valid.yaml")),
         &sv,
@@ -80,10 +96,7 @@ fn diff_ignore_missing_target() {
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
-    let class = sv
-        .get_class(&Identifier::new("Person"), &conv)
-        .unwrap()
-        .expect("class not found");
+    let class = class_in_schema(&sv, &schema, "Person");
     let src = load_yaml_file(
         Path::new(&data_path("person_valid.yaml")),
         &sv,
@@ -121,10 +134,7 @@ fn diff_and_patch_personinfo() {
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
-    let container = sv
-        .get_class(&Identifier::new("Container"), &conv)
-        .unwrap()
-        .expect("class not found");
+    let container = class_in_schema(&sv, &schema, "Container");
     let src = load_yaml_file(
         Path::new(&info_path("example_personinfo_data.yaml")),
         &sv,
@@ -170,10 +180,7 @@ fn diff_null_and_missing_semantics() {
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
-    let class = sv
-        .get_class(&Identifier::new("Person"), &conv)
-        .unwrap()
-        .expect("class not found");
+    let class = class_in_schema(&sv, &schema, "Person");
 
     let src = load_yaml_file(
         Path::new(&data_path("person_valid.yaml")),
@@ -275,15 +282,15 @@ fn personinfo_invalid_fails() {
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schema(&schema);
-    let class = sv
-        .get_class(&Identifier::new("Person"), &conv)
-        .unwrap()
-        .expect("class not found");
-    let v = load_yaml_file(
+    let class = class_in_schema(&sv, &schema, "Container");
+    let outcome = load_yaml_file_with_diagnostics(
         Path::new(&info_path("example_personinfo_data_invalid.yaml")),
         &sv,
         &class,
         &conv,
-    );
-    assert!(v.is_err());
+    )
+    .unwrap();
+    let diags = outcome.diagnostics;
+    assert!(diags.iter().any(|d| matches!(d.code, DiagnosticCode::UnknownSlot)
+        && d.path.iter().any(|seg| seg == "unknown_attr")));
 }

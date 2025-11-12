@@ -1,0 +1,6 @@
+id: P:missing-rel
+name: Missing Familial Type
+objecttype: https://w3id.org/linkml/examples/personinfo/Person
+has_familial_relationships:
+  rel_missing_type:
+    related_to: P:other

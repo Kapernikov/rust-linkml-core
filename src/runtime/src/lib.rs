@@ -636,17 +636,35 @@ impl LinkMLInstance {
             return p.clone();
         }
 
+        let mut soft_match: Option<(&ClassView, usize)> = None;
         for c in &cand_refs {
             let mut tmp_diags = DiagnosticSink::default();
-            if let Ok(tmp) =
+            if let Ok(_tmp) =
                 Self::parse_object_fixed_class(map.clone(), c, sv, conv, Vec::new(), &mut tmp_diags)
             {
-                if !tmp_diags.has_errors() && validate(&tmp).is_ok() {
+                let diag_vec = tmp_diags.into_vec();
+                let has_blocking_error = diag_vec.iter().any(|d| {
+                    d.severity == Severity::Error && d.code != DiagnosticCode::UnknownSlot
+                });
+                if has_blocking_error {
+                    continue;
+                }
+                let unknown_count = diag_vec
+                    .iter()
+                    .filter(|d| {
+                        d.severity == Severity::Error && d.code == DiagnosticCode::UnknownSlot
+                    })
+                    .count();
+                if unknown_count == 0 {
                     return (*c).clone();
+                }
+                match soft_match {
+                    Some((_, best)) if best <= unknown_count => {}
+                    _ => soft_match = Some((*c, unknown_count)),
                 }
             }
         }
-        base.clone()
+        soft_match.map(|(c, _)| c.clone()).unwrap_or_else(|| base.clone())
     }
 
     fn parse_object_fixed_class(
