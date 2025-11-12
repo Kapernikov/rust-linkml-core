@@ -694,6 +694,7 @@ impl LinkMLInstance {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn parse_list_slot(
         value: JsonValue,
         class: ClassView,
@@ -964,6 +965,7 @@ impl LinkMLInstance {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn from_json_internal(
         value: JsonValue,
         classview: ClassView,

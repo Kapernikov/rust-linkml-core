@@ -92,8 +92,15 @@ struct RegexConstraint;
 static REGEX_CACHE: Lazy<Mutex<std::collections::HashMap<String, Regex>>> =
     Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
 
+fn cache_lock() -> std::sync::MutexGuard<'static, std::collections::HashMap<String, Regex>> {
+    match REGEX_CACHE.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 fn compile_regex(pattern: &str) -> Option<Regex> {
-    let mut cache = REGEX_CACHE.lock().expect("regex cache poisoned");
+    let mut cache = cache_lock();
     if let Some(existing) = cache.get(pattern) {
         return Some(existing.clone());
     }
