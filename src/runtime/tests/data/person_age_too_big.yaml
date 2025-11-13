@@ -1,0 +1,4 @@
+id: P:old
+name: Too Old
+objecttype: https://w3id.org/linkml/examples/personinfo/Person
+age_in_years: 1200

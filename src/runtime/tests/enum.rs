@@ -1,4 +1,4 @@
-use linkml_runtime::{load_yaml_file, validate, LinkMLInstance};
+use linkml_runtime::{load_yaml_file, validate, LinkMLInstance, ValidationIssueCode};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
@@ -27,7 +27,9 @@ fn enum_valid_value() {
         .expect("class not found");
 
     let v = load_yaml_file(Path::new(&data_path("enum_valid.yaml")), &sv, &class, &conv)
-        .expect("failed to load valid enum instance");
+        .expect("failed to load valid enum instance")
+        .into_instance()
+        .expect("valid enum should not produce validation_issues");
 
     // Once enum support is implemented, validate should succeed.
     assert!(validate(&v).is_ok());
@@ -57,7 +59,7 @@ fn enum_invalid_value() {
         .unwrap()
         .expect("class not found");
 
-    let v = load_yaml_file(
+    let outcome = load_yaml_file(
         Path::new(&data_path("enum_invalid.yaml")),
         &sv,
         &class,
@@ -65,9 +67,8 @@ fn enum_invalid_value() {
     )
     .expect("failed to load invalid enum instance (parsing should still succeed)");
 
-    // This assertion is expected to FAIL until enum enforcement is implemented.
-    assert!(
-        validate(&v).is_err(),
-        "expected enum validation to fail for non-permissible value"
-    );
+    assert!(outcome
+        .validation_issues
+        .iter()
+        .any(|d| matches!(d.code, ValidationIssueCode::InvalidEnumValue)));
 }

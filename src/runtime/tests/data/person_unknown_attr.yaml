@@ -1,0 +1,4 @@
+id: P:unknown
+name: Unknown Attr
+objecttype: https://w3id.org/linkml/examples/personinfo/Person
+unknown_attr: should_fail

@@ -3,7 +3,10 @@ use linkml_runtime::diff::{
     diff as diff_internal, patch as patch_internal, Delta, DeltaOp, DiffOptions, PatchTrace,
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
-use linkml_runtime::{load_json_str, load_yaml_str, LinkMLInstance, NodeId};
+use linkml_runtime::{
+    load_json_str, load_yaml_str, validate_issues, LinkMLInstance, LoadResult, NodeId, Severity,
+    ValidationIssue, ValidationIssueCode,
+};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
 use linkml_schemaview::schemaview::SchemaView;
@@ -654,6 +657,7 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_to_turtle, m)?)?;
     m.add_class::<PyLinkMLInstance>()?;
     m.add_class::<PyDelta>()?;
+    m.add_class::<PyValidationIssue>()?;
     m.add_class::<PyPatchTrace>()?;
     m.add_class::<PyPatchResult>()?;
     Ok(())
@@ -756,6 +760,61 @@ pub struct PyDelta {
 impl From<Delta> for PyDelta {
     fn from(delta: Delta) -> Self {
         Self { inner: delta }
+    }
+}
+
+#[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
+#[pyclass(name = "ValidationIssue")]
+pub struct PyValidationIssue {
+    inner: ValidationIssue,
+}
+
+impl From<ValidationIssue> for PyValidationIssue {
+    fn from(inner: ValidationIssue) -> Self {
+        Self { inner }
+    }
+}
+
+#[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
+#[pymethods]
+impl PyValidationIssue {
+    #[getter]
+    fn code(&self) -> String {
+        validation_issue_code_label(&self.inner.code).to_string()
+    }
+
+    #[getter]
+    fn message(&self) -> String {
+        self.inner.message.clone()
+    }
+
+    #[getter]
+    fn path(&self) -> Vec<String> {
+        self.inner.path.clone()
+    }
+
+    #[getter]
+    fn severity(&self) -> String {
+        severity_label(&self.inner.severity).to_string()
+    }
+
+    #[getter]
+    fn candidate(&self) -> Option<String> {
+        self.inner.candidate.clone()
+    }
+
+    fn __repr__(&self) -> PyResult<String> {
+        Ok(format!(
+            "ValidationIssue(code='{}', severity='{}', path={:?}, message={})",
+            validation_issue_code_label(&self.inner.code),
+            severity_label(&self.inner.severity),
+            self.inner.path,
+            self.inner.message
+        ))
+    }
+
+    fn __str__(&self) -> PyResult<String> {
+        self.__repr__()
     }
 }
 
@@ -867,6 +926,54 @@ fn json_value_to_py(py: Python<'_>, v: &JsonValue) -> PyObject {
     let s = serde_json::to_string(v).unwrap();
     let json_mod = PyModule::import(py, "json").unwrap();
     json_mod.call_method1("loads", (s,)).unwrap().unbind()
+}
+
+fn validation_issue_code_label(code: &ValidationIssueCode) -> &'static str {
+    match code {
+        ValidationIssueCode::UnknownSlot => "unknown_slot",
+        ValidationIssueCode::MissingSlotContext => "missing_slot_context",
+        ValidationIssueCode::MissingClassContext => "missing_class_context",
+        ValidationIssueCode::InvalidContainerType => "invalid_container_type",
+        ValidationIssueCode::InvalidEnumValue => "invalid_enum_value",
+        ValidationIssueCode::RegexMismatch => "regex_mismatch",
+        ValidationIssueCode::RegexCompileError => "regex_compile_error",
+        ValidationIssueCode::MissingRequiredSlot => "missing_required_slot",
+        ValidationIssueCode::MinCardinalityViolation => "min_cardinality_violation",
+        ValidationIssueCode::MaxCardinalityViolation => "max_cardinality_violation",
+        ValidationIssueCode::ExactCardinalityViolation => "exact_cardinality_violation",
+        ValidationIssueCode::MinimumValueViolation => "minimum_value_violation",
+        ValidationIssueCode::MaximumValueViolation => "maximum_value_violation",
+        ValidationIssueCode::ParseError => "parse_error",
+    }
+}
+
+fn severity_label(severity: &Severity) -> &'static str {
+    match severity {
+        Severity::Error => "error",
+        Severity::Warning => "warning",
+    }
+}
+
+fn validation_issues_to_py(
+    py: Python<'_>,
+    validation_issues: Vec<ValidationIssue>,
+) -> PyResult<Vec<Py<PyValidationIssue>>> {
+    validation_issues
+        .into_iter()
+        .map(|diag| Py::new(py, PyValidationIssue::from(diag)))
+        .collect()
+}
+
+fn convert_outcome(
+    py: Python<'_>,
+    sv: Py<PySchemaView>,
+    outcome: LoadResult,
+) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationIssue>>)> {
+    let validation_issues = validation_issues_to_py(py, outcome.validation_issues)?;
+    let instance = outcome
+        .instance
+        .map(|value| PyLinkMLInstance::new(value, sv.clone_ref(py)));
+    Ok((instance, validation_issues))
 }
 
 fn py_to_json_value(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<JsonValue> {
@@ -1056,6 +1163,20 @@ impl PyLinkMLInstance {
         }
     }
 
+    fn unknown_fields<'py>(&self, py: Python<'py>) -> PyResult<Py<PyDict>> {
+        let dict = PyDict::new(py);
+        if let LinkMLInstance::Object { unknown_fields, .. } = &self.value {
+            for (k, v) in unknown_fields {
+                dict.set_item(k, json_value_to_py(py, v))?;
+            }
+        }
+        Ok(dict.into())
+    }
+
+    fn validation_issues<'py>(&self, py: Python<'py>) -> PyResult<Vec<Py<PyValidationIssue>>> {
+        validation_issues_to_py(py, validate_issues(&self.value))
+    }
+
     fn as_python<'py>(&self, py: Python<'py>) -> PyObject {
         json_value_to_py(py, &self.value.to_json())
     }
@@ -1222,16 +1343,16 @@ fn load_yaml(
     source: &Bound<'_, PyAny>,
     sv: Py<PySchemaView>,
     class_view: Py<PyClassView>,
-) -> PyResult<PyLinkMLInstance> {
+) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationIssue>>)> {
     let sv_ref = sv.bind(py).borrow();
     let rust_sv = sv_ref.as_rust();
     let conv = rust_sv.converter();
     let class_bound = class_view.bind(py);
     let class_ref = class_bound.borrow();
     let (text, _) = py_filelike_or_string_to_string(source)?;
-    let v = load_yaml_str(&text, rust_sv, class_ref.as_rust(), &conv)
+    let outcome = load_yaml_str(&text, rust_sv, class_ref.as_rust(), &conv)
         .map_err(|e| PyException::new_err(e.to_string()))?;
-    Ok(PyLinkMLInstance::new(v, sv))
+    convert_outcome(py, sv, outcome)
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
@@ -1241,16 +1362,16 @@ fn load_json(
     source: &Bound<'_, PyAny>,
     sv: Py<PySchemaView>,
     class_view: Py<PyClassView>,
-) -> PyResult<PyLinkMLInstance> {
+) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationIssue>>)> {
     let sv_ref = sv.bind(py).borrow();
     let rust_sv = sv_ref.as_rust();
     let conv = rust_sv.converter();
     let class_bound = class_view.bind(py);
     let class_ref = class_bound.borrow();
     let (text, _) = py_filelike_or_string_to_string(source)?;
-    let v = load_json_str(&text, rust_sv, class_ref.as_rust(), &conv)
+    let outcome = load_json_str(&text, rust_sv, class_ref.as_rust(), &conv)
         .map_err(|e| PyException::new_err(e.to_string()))?;
-    Ok(PyLinkMLInstance::new(v, sv))
+    convert_outcome(py, sv, outcome)
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]

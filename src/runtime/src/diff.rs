@@ -1,4 +1,4 @@
-use crate::{LResult, LinkMLInstance, NodeId};
+use crate::{LResult, LinkMLError, LinkMLInstance, NodeId, ValidationIssueSink};
 use linkml_schemaview::{
     converter::Converter,
     schemaview::{ClassView, SchemaView, SlotView},
@@ -691,6 +691,7 @@ fn apply_delta_root(
                 let slot_clone = slot_opt.clone();
                 let new_node = with_converter(schema_view, v, move |value, sv, conv| {
                     LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
+                        .into_instance()
                 })?;
                 mark_added_subtree(&new_node, trace);
                 *current = new_node;
@@ -707,6 +708,7 @@ fn apply_delta_root(
                     let slot_clone = slot_opt.clone();
                     let new_node = with_converter(schema_view, v, move |value, sv, conv| {
                         LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
+                            .into_instance()
                     })?;
                     if should_skip_update(current, &new_node, opts) {
                         return Ok(true);
@@ -750,6 +752,7 @@ fn apply_delta_object(
             || {
                 with_converter(schema_view, value, move |val, sv, conv| {
                     LinkMLInstance::from_json(val, class_clone, slot_clone, sv, conv, false)
+                        .into_instance()
                 })
             },
             OBJECT_DELTA_CONFIG,
@@ -786,13 +789,19 @@ fn apply_delta_mapping(
             op,
             || {
                 with_converter(schema_view, value, move |val, sv, conv| {
-                    LinkMLInstance::build_mapping_entry_for_slot(
+                    let mut diags = ValidationIssueSink::default();
+                    let value = LinkMLInstance::build_mapping_entry_for_slot(
                         &slot_clone,
                         val,
                         sv,
                         conv,
                         Vec::new(),
-                    )
+                        &mut diags,
+                    )?;
+                    if diags.has_errors() {
+                        return Err(LinkMLError::new(diags.into_vec()));
+                    }
+                    Ok(value)
                 })
             },
             MAPPING_DELTA_CONFIG,
@@ -825,14 +834,20 @@ fn apply_delta_list(
         let class_clone = class.clone();
         return apply_list_leaf_delta(values, idx_opt, owner_id, trace, opts, op, || {
             with_converter(schema_view, value, move |val, sv, conv| {
-                LinkMLInstance::build_list_item_for_slot(
+                let mut diags = ValidationIssueSink::default();
+                let value = LinkMLInstance::build_list_item_for_slot(
                     &slot_clone,
                     class_clone.as_ref(),
                     val,
                     sv,
                     conv,
                     Vec::new(),
-                )
+                    &mut diags,
+                )?;
+                if diags.has_errors() {
+                    return Err(LinkMLError::new(diags.into_vec()));
+                }
+                Ok(value)
             })
         });
     }

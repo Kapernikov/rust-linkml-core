@@ -1,0 +1,4 @@
+id: P:bad
+name: Bad Email
+objecttype: https://w3id.org/linkml/examples/personinfo/Person
+primary_email: not-an-email

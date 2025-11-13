@@ -45,9 +45,15 @@ fn load_value_via_python() {
             *locals,
             r#"
 import linkml_runtime as lr
+def load_no_errors(loader, path, sv, cls):
+    value, issues = loader(path, sv, cls)
+    assert value is not None
+    assert all(issue.severity != 'error' for issue in issues), issues
+    return value
+
 sv = lr.make_schema_view(schema_path)
 cls = sv.get_class_view('Person')
-value = lr.load_yaml(person_path, sv, cls)
+value = load_no_errors(lr.load_yaml, person_path, sv, cls)
 assert value.class_name == 'Person'
 assert value.class_definition.name == 'Person'
 assert value['name'].slot_name == 'name'

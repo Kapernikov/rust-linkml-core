@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     })?;
     let data_path = &args.data;
-    let value = if let Some(ext) = data_path.extension() {
+    let load_result = if let Some(ext) = data_path.extension() {
         if ext == "json" {
             load_json_file(data_path, &sv, &class_view, &conv)?
         } else {
@@ -80,6 +80,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         load_yaml_file(data_path, &sv, &class_view, &conv)?
     };
+    let value = load_result
+        .into_instance()
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     if let Err(e) = validate(&value) {
         eprintln!("invalid: {e}");
         std::process::exit(1);

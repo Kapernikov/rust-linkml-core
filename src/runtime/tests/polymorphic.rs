@@ -29,6 +29,8 @@ fn polymorphism_with_type() {
         &class,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
 }
@@ -49,6 +51,8 @@ fn polymorphism_without_type() {
         &class,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
 }
@@ -69,6 +73,8 @@ fn root_polymorphism_with_type() {
         &class,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
 }
@@ -89,6 +95,8 @@ fn root_polymorphism_without_type() {
         &class,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
 }
@@ -103,7 +111,10 @@ fn array_polymorphism() {
         .get_class(&Identifier::new("Container"), &conv)
         .unwrap()
         .expect("class not found");
-    let v = load_yaml_file(Path::new(&data_path("poly_array.yaml")), &sv, &class, &conv).unwrap();
+    let v = load_yaml_file(Path::new(&data_path("poly_array.yaml")), &sv, &class, &conv)
+        .unwrap()
+        .into_instance()
+        .unwrap();
     assert!(validate(&v).is_ok());
     if let LinkMLInstance::Object { values, .. } = v {
         let objs = values.get("objs").expect("objs not found");

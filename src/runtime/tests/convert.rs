@@ -33,6 +33,8 @@ fn convert_person_to_ttl() {
         &class,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
     assert!(ttl.contains("@prefix test: <https://example.com/test/> ."));
@@ -55,6 +57,8 @@ fn suppress_objecttype_triple() {
         &container,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
     assert!(!ttl.contains("<personinfo:objecttype>"));

@@ -308,7 +308,10 @@ mod tests {
             .get_class(&Identifier::new("Person"), &conv)
             .unwrap()
             .expect("class not found");
-        let person = load_yaml_file(&data_path("person_valid.yaml"), &sv, &class, &conv).unwrap();
+        let person = load_yaml_file(&data_path("person_valid.yaml"), &sv, &class, &conv)
+            .unwrap()
+            .into_instance()
+            .unwrap();
         (conv, class, person)
     }
 
@@ -327,6 +330,8 @@ mod tests {
             &class,
             &conv,
         )
+        .unwrap()
+        .into_instance()
         .unwrap();
         let deltas_stage1 = diff(&base, &stage1, DiffOptions::default());
         let (value_after_stage1, trace1) = patch_with_blame(
@@ -351,6 +356,8 @@ mod tests {
             &class,
             &conv,
         )
+        .unwrap()
+        .into_instance()
         .unwrap();
 
         let deltas_stage2 = diff(
@@ -405,6 +412,8 @@ mod tests {
             &class,
             &conv,
         )
+        .unwrap()
+        .into_instance()
         .unwrap();
 
         let deltas_stage1 = diff(&base, &stage1, DiffOptions::default());
@@ -434,6 +443,8 @@ mod tests {
             &class,
             &conv,
         )
+        .unwrap()
+        .into_instance()
         .unwrap();
 
         let deltas_stage2 = diff(
@@ -491,7 +502,9 @@ mod tests {
             &container,
             &conv,
         )
-        .expect("load base instance");
+        .expect("load base instance")
+        .into_instance()
+        .expect("invalid base data");
 
         let mut target_json = base.to_json();
         if let JsonValue::Object(ref mut root) = target_json {
@@ -517,7 +530,9 @@ mod tests {
             &container,
             &conv,
         )
-        .expect("load target instance");
+        .expect("load target instance")
+        .into_instance()
+        .expect("invalid target");
 
         let deltas = diff(&base, &target, DiffOptions::default());
         println!("deltas = {:#?}", deltas);

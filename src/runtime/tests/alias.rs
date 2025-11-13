@@ -28,6 +28,8 @@ fn parse_alias_fields() {
         &container,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     if let Err(e) = validate(&v) {
         println!("JSON: {:?}", v.to_json());

@@ -28,6 +28,8 @@ fn validate_person_ok() {
         &class,
         &conv,
     )
+    .unwrap()
+    .into_instance()
     .unwrap();
     assert!(validate(&v).is_ok());
 }
@@ -42,11 +44,12 @@ fn validate_person_fail() {
         .get_class(&Identifier::new("Person"), &conv)
         .unwrap()
         .expect("class not found");
-    let v = load_yaml_file(
+    let outcome = load_yaml_file(
         Path::new(&data_path("person_invalid.yaml")),
         &sv,
         &class,
         &conv,
-    );
-    assert!(v.is_err());
+    )
+    .unwrap();
+    assert!(outcome.has_errors());
 }
