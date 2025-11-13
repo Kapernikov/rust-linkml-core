@@ -754,7 +754,7 @@ impl LinkMLInstance {
                 let mut values = Vec::new();
                 for (i, v) in arr.into_iter().enumerate() {
                     let mut p = path.clone();
-                    p.push(format!("{}[{}]", sl.name, i));
+                    p.push(i.to_string());
                     values.push(Self::build_list_item_for_slot(
                         &sl,
                         Some(&class),
@@ -884,7 +884,7 @@ impl LinkMLInstance {
         let mut values = Vec::new();
         for (i, v) in arr.into_iter().enumerate() {
             let mut p = path.clone();
-            p.push(format!("[{}]", i));
+            p.push(i.to_string());
             values.push(Self::build_list_item_for_slot(
                 &sl,
                 Some(&class),
@@ -1335,9 +1335,9 @@ fn collect_validation_issues(
             let null_value = JsonValue::Null;
             run_slot_constraints(class.as_ref(), slot, &null_value, path.clone(), sink);
         }
-        LinkMLInstance::List { values, slot, .. } => {
+        LinkMLInstance::List { values, .. } => {
             for (idx, child) in values.iter().enumerate() {
-                path.push(format!("{}[{}]", slot.name, idx));
+                path.push(idx.to_string());
                 collect_validation_issues(child, path, sink);
                 path.pop();
             }
