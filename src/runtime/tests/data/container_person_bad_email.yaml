@@ -1,0 +1,12 @@
+objects:
+  - id: T
+    objecttype: https://w3id.org/linkml/examples/personinfo/Organization
+    name: club
+  - id: P:bad
+    name: Container Bad Email
+    objecttype: https://w3id.org/linkml/examples/personinfo/Person
+    primary_email: not-an-email
+    age_in_years: 42
+organizations:
+  - id: ROR:1
+    name: foo

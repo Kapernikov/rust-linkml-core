@@ -1,4 +1,4 @@
-use linkml_runtime::{load_yaml_file, validate, LinkMLInstance, ValidationIssueCode};
+use linkml_runtime::{load_yaml_file, validate, validate_issues, LinkMLInstance, ValidationIssueCode};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
@@ -128,6 +128,38 @@ fn validation_issues_report_regex_pattern_violation() {
         matches!(d.code, ValidationIssueCode::RegexMismatch)
             && d.path.last().map(|p| p == "primary_email").unwrap_or(false)
     }));
+}
+
+#[test]
+fn validation_issue_paths_include_list_indices_once() {
+    let (sv, conv) = load_personinfo_schema();
+    let container = class_by_name(&sv, &conv, "Container");
+    let load = load_yaml_file(
+        Path::new(&info_path("container_person_bad_email.yaml")),
+        &sv,
+        &container,
+        &conv,
+    )
+    .unwrap();
+    let instance = load
+        .instance
+        .expect("instance should be produced even with validation errors");
+    let diags = validate_issues(&instance);
+    let expected_path = vec![
+        "objects".to_string(),
+        "1".to_string(),
+        "primary_email".to_string(),
+    ];
+    let diag_paths: Vec<_> = diags
+        .iter()
+        .filter(|d| matches!(d.code, ValidationIssueCode::UnknownSlot))
+        .map(|d| d.path.clone())
+        .collect();
+    assert!(
+        diag_paths.iter().any(|p| p == &expected_path),
+        "diagnostics: {:?}",
+        diags
+    );
 }
 
 #[test]
