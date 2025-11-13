@@ -1,10 +1,11 @@
 use clap::Parser;
-use linkml_runtime::{load_json_file, load_yaml_file};
+use linkml_runtime::{load_json_file, load_yaml_file, Severity, ValidationIssue};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io::from_yaml;
 #[cfg(feature = "resolve")]
 use linkml_schemaview::resolve::resolve_schemas;
 use linkml_schemaview::schemaview::SchemaView;
+use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -15,6 +16,9 @@ struct Args {
     class: String,
     /// Data file (YAML or JSON)
     data: PathBuf,
+    /// Emit machine-readable JSON instead of human-readable text
+    #[arg(long)]
+    json: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,19 +48,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         load_yaml_file(data_path, &sv, &class_view, &conv)?
     };
-    let diagnostics = load_result.diagnostics;
-    if diagnostics.is_empty() {
+    let validation_issues = load_result.validation_issues;
+    let is_valid = validation_issues.is_empty();
+    if args.json {
+        emit_json(is_valid, &validation_issues)?;
+        if is_valid {
+            Ok(())
+        } else {
+            std::process::exit(1);
+        }
+    } else if is_valid {
         println!("valid");
         Ok(())
     } else {
-        for diag in diagnostics {
-            let location = if diag.path.is_empty() {
+        for issue in &validation_issues {
+            let location = if issue.path.is_empty() {
                 "<root>".to_string()
             } else {
-                diag.path.join(".")
+                issue.path.join(".")
             };
-            println!("{:?} at {}: {}", diag.code, location, diag.message);
+            println!("{:?} at {}: {}", issue.code, location, issue.message);
         }
         std::process::exit(1);
+    }
+}
+
+fn emit_json(valid: bool, issues: &[ValidationIssue]) -> Result<(), serde_json::Error> {
+    let issues_json: Vec<_> = issues
+        .iter()
+        .map(|issue| {
+            json!({
+                "code": format!("{:?}", issue.code),
+                "severity": severity_label(&issue.severity),
+                "path": issue.path,
+                "message": issue.message,
+                "candidate": issue.candidate,
+            })
+        })
+        .collect();
+    let output = json!({
+        "valid": valid,
+        "issues": issues_json,
+    });
+    println!("{}", serde_json::to_string_pretty(&output)?);
+    Ok(())
+}
+
+fn severity_label(severity: &Severity) -> &'static str {
+    match severity {
+        Severity::Error => "error",
+        Severity::Warning => "warning",
     }
 }

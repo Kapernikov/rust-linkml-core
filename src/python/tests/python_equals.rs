@@ -43,6 +43,13 @@ fn python_equals_api() {
             r#"
 import linkml_runtime as lr
 import json
+
+def load_no_errors(runtime, payload, sv, cls):
+    value, issues = runtime.load_json(payload, sv, cls)
+    assert value is not None
+    assert all(issue.severity != 'error' for issue in issues), issues
+    return value
+
 sv = lr.make_schema_view(schema_path)
 cls = sv.get_class_view('Container')
 
@@ -66,8 +73,8 @@ doc2 = {
   ]
 }
 
-v1 = lr.load_json(json.dumps(doc1), sv, cls)
-v2 = lr.load_json(json.dumps(doc2), sv, cls)
+v1 = load_no_errors(lr, json.dumps(doc1), sv, cls)
+v2 = load_no_errors(lr, json.dumps(doc2), sv, cls)
 assert v1['objects'][0].equals(v2['objects'][0], True)
 "#
         );

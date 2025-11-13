@@ -32,32 +32,36 @@ pub use blame::{
 pub use diff::{diff, patch, Delta, DiffOptions, PatchOptions, PatchTrace};
 #[derive(Debug)]
 pub struct LinkMLError {
-    diagnostics: Vec<Diagnostic>,
+    validation_issues: Vec<ValidationIssue>,
 }
 
 impl LinkMLError {
-    pub fn new(diagnostics: Vec<Diagnostic>) -> Self {
-        Self { diagnostics }
+    pub fn new(validation_issues: Vec<ValidationIssue>) -> Self {
+        Self { validation_issues }
     }
 
-    pub fn single(code: DiagnosticCode, path: InstancePath, message: impl Into<String>) -> Self {
+    pub fn single(
+        code: ValidationIssueCode,
+        path: InstancePath,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
-            diagnostics: vec![Diagnostic::error(code, path, message.into())],
+            validation_issues: vec![ValidationIssue::error(code, path, message.into())],
         }
     }
 
-    pub fn diagnostics(&self) -> &[Diagnostic] {
-        &self.diagnostics
+    pub fn validation_issues(&self) -> &[ValidationIssue] {
+        &self.validation_issues
     }
 
-    pub fn into_diagnostics(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    pub fn into_validation_issues(self) -> Vec<ValidationIssue> {
+        self.validation_issues
     }
 }
 
 impl std::fmt::Display for LinkMLError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(first) = self.diagnostics.first() {
+        if let Some(first) = self.validation_issues.first() {
             write!(f, "{}", first.message)
         } else {
             write!(f, "LinkML error")
@@ -107,7 +111,7 @@ pub enum Severity {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DiagnosticCode {
+pub enum ValidationIssueCode {
     UnknownSlot,
     MissingSlotContext,
     MissingClassContext,
@@ -122,16 +126,20 @@ pub enum DiagnosticCode {
 pub type InstancePath = Vec<String>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Diagnostic {
-    pub code: DiagnosticCode,
+pub struct ValidationIssue {
+    pub code: ValidationIssueCode,
     pub message: String,
     pub path: InstancePath,
     pub severity: Severity,
     pub candidate: Option<String>,
 }
 
-impl Diagnostic {
-    pub fn error<C: Into<String>>(code: DiagnosticCode, path: InstancePath, message: C) -> Self {
+impl ValidationIssue {
+    pub fn error<C: Into<String>>(
+        code: ValidationIssueCode,
+        path: InstancePath,
+        message: C,
+    ) -> Self {
         Self {
             code,
             message: message.into(),
@@ -141,7 +149,11 @@ impl Diagnostic {
         }
     }
 
-    pub fn warning<C: Into<String>>(code: DiagnosticCode, path: InstancePath, message: C) -> Self {
+    pub fn warning<C: Into<String>>(
+        code: ValidationIssueCode,
+        path: InstancePath,
+        message: C,
+    ) -> Self {
         Self {
             code,
             message: message.into(),
@@ -153,62 +165,62 @@ impl Diagnostic {
 }
 
 #[derive(Default)]
-pub struct DiagnosticSink {
-    diagnostics: Vec<Diagnostic>,
+pub struct ValidationIssueSink {
+    validation_issues: Vec<ValidationIssue>,
 }
 
-impl DiagnosticSink {
-    pub fn push(&mut self, diagnostic: Diagnostic) {
-        self.diagnostics.push(diagnostic);
+impl ValidationIssueSink {
+    pub fn push(&mut self, validation_issue: ValidationIssue) {
+        self.validation_issues.push(validation_issue);
     }
 
     pub fn push_error<C: Into<String>>(
         &mut self,
-        code: DiagnosticCode,
+        code: ValidationIssueCode,
         path: InstancePath,
         message: C,
     ) {
-        self.push(Diagnostic::error(code, path, message));
+        self.push(ValidationIssue::error(code, path, message));
     }
 
     pub fn push_warning<C: Into<String>>(
         &mut self,
-        code: DiagnosticCode,
+        code: ValidationIssueCode,
         path: InstancePath,
         message: C,
     ) {
-        self.push(Diagnostic::warning(code, path, message));
+        self.push(ValidationIssue::warning(code, path, message));
     }
 
     pub fn has_errors(&self) -> bool {
-        self.diagnostics
+        self.validation_issues
             .iter()
             .any(|d| d.severity == Severity::Error)
     }
 
-    pub fn into_vec(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    pub fn into_vec(self) -> Vec<ValidationIssue> {
+        self.validation_issues
     }
 }
 
 pub struct LoadResult {
     pub instance: Option<LinkMLInstance>,
-    pub diagnostics: Vec<Diagnostic>,
+    pub validation_issues: Vec<ValidationIssue>,
 }
 
 impl LoadResult {
     pub fn has_errors(&self) -> bool {
-        self.diagnostics
+        self.validation_issues
             .iter()
             .any(|d| d.severity == Severity::Error)
     }
 
     pub fn into_instance(self) -> std::result::Result<LinkMLInstance, LinkMLError> {
         if self.has_errors() {
-            return Err(LinkMLError::new(self.diagnostics));
+            return Err(LinkMLError::new(self.validation_issues));
         }
         self.instance
-            .ok_or_else(|| LinkMLError::new(self.diagnostics))
+            .ok_or_else(|| LinkMLError::new(self.validation_issues))
     }
 }
 
@@ -639,13 +651,13 @@ impl LinkMLInstance {
 
         let mut soft_match: Option<(&ClassView, usize)> = None;
         for c in &cand_refs {
-            let mut tmp_diags = DiagnosticSink::default();
+            let mut tmp_diags = ValidationIssueSink::default();
             if let Ok(_tmp) =
                 Self::parse_object_fixed_class(map.clone(), c, sv, conv, Vec::new(), &mut tmp_diags)
             {
                 let diag_vec = tmp_diags.into_vec();
                 let has_blocking_error = diag_vec.iter().any(|d| {
-                    d.severity == Severity::Error && d.code != DiagnosticCode::UnknownSlot
+                    d.severity == Severity::Error && d.code != ValidationIssueCode::UnknownSlot
                 });
                 if has_blocking_error {
                     continue;
@@ -653,7 +665,7 @@ impl LinkMLInstance {
                 let unknown_count = diag_vec
                     .iter()
                     .filter(|d| {
-                        d.severity == Severity::Error && d.code == DiagnosticCode::UnknownSlot
+                        d.severity == Severity::Error && d.code == ValidationIssueCode::UnknownSlot
                     })
                     .count();
                 if unknown_count == 0 {
@@ -676,7 +688,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         let mut values = HashMap::new();
         for (k, v) in map.into_iter() {
@@ -701,11 +713,17 @@ impl LinkMLInstance {
                     conv,
                     false,
                     p,
-                    diagnostics,
+                    validation_issues,
                 )?,
             );
         }
-        run_object_constraints(class, &values, &HashMap::new(), path.clone(), diagnostics);
+        run_object_constraints(
+            class,
+            &values,
+            &HashMap::new(),
+            path.clone(),
+            validation_issues,
+        );
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
             values,
@@ -724,7 +742,7 @@ impl LinkMLInstance {
         conv: &Converter,
         inside_list: bool,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         match (inside_list, value) {
             (false, JsonValue::Array(arr)) => {
@@ -739,7 +757,7 @@ impl LinkMLInstance {
                         sv,
                         conv,
                         p,
-                        diagnostics,
+                        validation_issues,
                     )?);
                 }
                 Ok(LinkMLInstance::List {
@@ -765,7 +783,7 @@ impl LinkMLInstance {
                     path_to_string(&path)
                 );
                 Err(LinkMLError::single(
-                    DiagnosticCode::InvalidContainerType,
+                    ValidationIssueCode::InvalidContainerType,
                     path.clone(),
                     msg,
                 ))
@@ -787,7 +805,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         match value {
             JsonValue::Object(map) => {
@@ -803,7 +821,7 @@ impl LinkMLInstance {
                             p.push(k.clone());
                             p
                         },
-                        diagnostics,
+                        validation_issues,
                     )?;
                     values.insert(k, child);
                 }
@@ -830,7 +848,7 @@ impl LinkMLInstance {
                     path_to_string(&path)
                 );
                 Err(LinkMLError::single(
-                    DiagnosticCode::InvalidContainerType,
+                    ValidationIssueCode::InvalidContainerType,
                     path.clone(),
                     msg,
                 ))
@@ -845,11 +863,11 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         let sl = slot.ok_or_else(|| {
             LinkMLError::single(
-                DiagnosticCode::MissingSlotContext,
+                ValidationIssueCode::MissingSlotContext,
                 path.clone(),
                 format!(
                     "list requires slot at {} for class={}",
@@ -869,7 +887,7 @@ impl LinkMLInstance {
                 sv,
                 conv,
                 p,
-                diagnostics,
+                validation_issues,
             )?);
         }
         Ok(LinkMLInstance::List {
@@ -888,7 +906,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         let base_class = match slot {
             Some(sl) => sl.get_range_class(),
@@ -896,7 +914,7 @@ impl LinkMLInstance {
         }
         .ok_or_else(|| {
             LinkMLError::single(
-                DiagnosticCode::MissingClassContext,
+                ValidationIssueCode::MissingClassContext,
                 path.clone(),
                 format!("object requires class or slot at {}", path_to_string(&path)),
             )
@@ -928,16 +946,20 @@ impl LinkMLInstance {
                         conv,
                         false,
                         p,
-                        diagnostics,
+                        validation_issues,
                     )?,
                 );
             } else {
-                let msg = format!("unknown slot `{}` for class `{}`", key_name, chosen.name());
-                diagnostics.push_error(DiagnosticCode::UnknownSlot, p.clone(), msg);
                 unknown_fields.insert(key_name, v);
             }
         }
-        run_object_constraints(&chosen, &values, &unknown_fields, path.clone(), diagnostics);
+        run_object_constraints(
+            &chosen,
+            &values,
+            &unknown_fields,
+            path.clone(),
+            validation_issues,
+        );
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
             values,
@@ -953,12 +975,12 @@ impl LinkMLInstance {
         slot: Option<SlotView>,
         sv: &SchemaView,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         let sl = slot.ok_or_else(|| {
             let classview_name = class.name().to_string();
             LinkMLError::single(
-                DiagnosticCode::MissingSlotContext,
+                ValidationIssueCode::MissingSlotContext,
                 path.clone(),
                 format!(
                     "scalar requires slot for at {} {}",
@@ -967,7 +989,7 @@ impl LinkMLInstance {
                 ),
             )
         })?;
-        run_slot_constraints(Some(&class), &sl, &value, path.clone(), diagnostics);
+        run_slot_constraints(Some(&class), &sl, &value, path.clone(), validation_issues);
         if value.is_null() {
             Ok(LinkMLInstance::Null {
                 node_id: new_node_id(),
@@ -995,7 +1017,7 @@ impl LinkMLInstance {
         conv: &Converter,
         inside_list: bool,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         if let Some(ref sl) = slot {
             let container_mode = sl.determine_slot_container_mode();
@@ -1009,7 +1031,7 @@ impl LinkMLInstance {
                         conv,
                         inside_list,
                         path,
-                        diagnostics,
+                        validation_issues,
                     );
                 }
                 SlotContainerMode::Mapping => {
@@ -1020,7 +1042,7 @@ impl LinkMLInstance {
                         sv,
                         conv,
                         path,
-                        diagnostics,
+                        validation_issues,
                     );
                 }
                 SlotContainerMode::SingleValue => {}
@@ -1029,16 +1051,16 @@ impl LinkMLInstance {
 
         match value {
             JsonValue::Array(arr) => {
-                Self::parse_array_value(arr, classview, slot, sv, conv, path, diagnostics)
+                Self::parse_array_value(arr, classview, slot, sv, conv, path, validation_issues)
             }
             JsonValue::Object(map) => {
-                Self::parse_object_value(map, classview, slot, sv, conv, path, diagnostics)
+                Self::parse_object_value(map, classview, slot, sv, conv, path, validation_issues)
             }
-            other => Self::parse_scalar_value(other, classview, slot, sv, path, diagnostics),
+            other => Self::parse_scalar_value(other, classview, slot, sv, path, validation_issues),
         }
     }
 
-    pub fn from_json_with_diagnostics(
+    pub fn from_json_with_validation_issues(
         value: JsonValue,
         class: ClassView,
         slot: Option<SlotView>,
@@ -1046,7 +1068,7 @@ impl LinkMLInstance {
         conv: &Converter,
         inside_list: bool,
     ) -> LoadResult {
-        let mut sink = DiagnosticSink::default();
+        let mut sink = ValidationIssueSink::default();
         let result = Self::from_json_internal(
             value,
             class,
@@ -1057,17 +1079,17 @@ impl LinkMLInstance {
             Vec::new(),
             &mut sink,
         );
-        let mut diagnostics = sink.into_vec();
+        let mut validation_issues = sink.into_vec();
         let instance = match result {
             Ok(v) => Some(v),
             Err(err) => {
-                diagnostics.extend(err.into_diagnostics());
+                validation_issues.extend(err.into_validation_issues());
                 None
             }
         };
         LoadResult {
             instance,
-            diagnostics,
+            validation_issues,
         }
     }
 
@@ -1081,14 +1103,14 @@ impl LinkMLInstance {
     ) -> LResult<Self> {
         let LoadResult {
             instance,
-            diagnostics,
-        } = Self::from_json_with_diagnostics(value, class, slot, sv, conv, inside_list);
-        let has_errors = diagnostics
+            validation_issues,
+        } = Self::from_json_with_validation_issues(value, class, slot, sv, conv, inside_list);
+        let has_errors = validation_issues
             .iter()
             .any(|d| matches!(d.severity, Severity::Error));
         match instance {
             Some(value) if !has_errors => Ok(value),
-            Some(_) | None => Err(LinkMLError::new(diagnostics)),
+            Some(_) | None => Err(LinkMLError::new(validation_issues)),
         }
     }
 
@@ -1100,7 +1122,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         let class_range: Option<ClassView> = list_slot.get_range_class();
         let slot_for_item = if class_range.is_some() {
@@ -1128,7 +1150,7 @@ impl LinkMLInstance {
                 .cloned()
                 .ok_or_else(|| {
                     LinkMLError::single(
-                        DiagnosticCode::MissingClassContext,
+                        ValidationIssueCode::MissingClassContext,
                         path.clone(),
                         "list item class context",
                     )
@@ -1138,7 +1160,7 @@ impl LinkMLInstance {
             conv,
             true,
             path,
-            diagnostics,
+            validation_issues,
         )
     }
 
@@ -1148,7 +1170,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        diagnostics: &mut DiagnosticSink,
+        validation_issues: &mut ValidationIssueSink,
     ) -> LResult<Self> {
         let range_cv = map_slot
             .definition()
@@ -1157,7 +1179,7 @@ impl LinkMLInstance {
             .and_then(|r| sv.get_class(&Identifier::new(r), conv).ok().flatten())
             .ok_or_else(|| {
                 LinkMLError::single(
-                    DiagnosticCode::MissingClassContext,
+                    ValidationIssueCode::MissingClassContext,
                     path.clone(),
                     format!(
                         "mapping slot must have class range at {}",
@@ -1191,7 +1213,7 @@ impl LinkMLInstance {
                             conv,
                             false,
                             p,
-                            diagnostics,
+                            validation_issues,
                         )?,
                     );
                 }
@@ -1200,7 +1222,7 @@ impl LinkMLInstance {
                     &child_values,
                     &HashMap::new(),
                     path.clone(),
-                    diagnostics,
+                    validation_issues,
                 );
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
@@ -1218,7 +1240,7 @@ impl LinkMLInstance {
                 let scalar_slot = Self::find_scalar_slot_for_inlined_map(&range_cv, key_slot_name)
                     .ok_or_else(|| {
                         LinkMLError::single(
-                            DiagnosticCode::MissingSlotContext,
+                            ValidationIssueCode::MissingSlotContext,
                             path.clone(),
                             format!(
                                 "no scalar slot available for inlined mapping at {}",
@@ -1242,7 +1264,7 @@ impl LinkMLInstance {
                     &child_values,
                     &HashMap::new(),
                     path.clone(),
-                    diagnostics,
+                    validation_issues,
                 );
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
@@ -1274,7 +1296,7 @@ pub fn load_yaml_str(
 ) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
     let value: serde_yaml::Value = serde_yaml::from_str(data)?;
     let json = serde_json::to_value(value)?;
-    Ok(LinkMLInstance::from_json_with_diagnostics(
+    Ok(LinkMLInstance::from_json_with_validation_issues(
         json,
         class.clone(),
         None,
@@ -1301,7 +1323,7 @@ pub fn load_json_str(
     conv: &Converter,
 ) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
     let value: JsonValue = serde_json::from_str(data)?;
-    Ok(LinkMLInstance::from_json_with_diagnostics(
+    Ok(LinkMLInstance::from_json_with_validation_issues(
         value,
         class.clone(),
         None,
@@ -1311,7 +1333,11 @@ pub fn load_json_str(
     ))
 }
 
-fn collect_diagnostics(value: &LinkMLInstance, path: &mut Vec<String>, sink: &mut DiagnosticSink) {
+fn collect_validation_issues(
+    value: &LinkMLInstance,
+    path: &mut Vec<String>,
+    sink: &mut ValidationIssueSink,
+) {
     match value {
         LinkMLInstance::Scalar {
             value: jv,
@@ -1328,14 +1354,14 @@ fn collect_diagnostics(value: &LinkMLInstance, path: &mut Vec<String>, sink: &mu
         LinkMLInstance::List { values, slot, .. } => {
             for (idx, child) in values.iter().enumerate() {
                 path.push(format!("{}[{}]", slot.name, idx));
-                collect_diagnostics(child, path, sink);
+                collect_validation_issues(child, path, sink);
                 path.pop();
             }
         }
         LinkMLInstance::Mapping { values, .. } => {
             for (key, child) in values {
                 path.push(key.clone());
-                collect_diagnostics(child, path, sink);
+                collect_validation_issues(child, path, sink);
                 path.pop();
             }
         }
@@ -1348,23 +1374,23 @@ fn collect_diagnostics(value: &LinkMLInstance, path: &mut Vec<String>, sink: &mu
             run_object_constraints(class, values, unknown_fields, path.clone(), sink);
             for (key, child) in values {
                 path.push(key.clone());
-                collect_diagnostics(child, path, sink);
+                collect_validation_issues(child, path, sink);
                 path.pop();
             }
         }
     }
 }
 
-pub fn validate_diagnostics(value: &LinkMLInstance) -> Vec<Diagnostic> {
-    let mut sink = DiagnosticSink::default();
+pub fn validate_issues(value: &LinkMLInstance) -> Vec<ValidationIssue> {
+    let mut sink = ValidationIssueSink::default();
     let mut path = Vec::new();
-    collect_diagnostics(value, &mut path, &mut sink);
+    collect_validation_issues(value, &mut path, &mut sink);
     sink.into_vec()
 }
 
 pub fn validate(value: &LinkMLInstance) -> std::result::Result<(), String> {
-    let diagnostics = validate_diagnostics(value);
-    match diagnostics
+    let validation_issues = validate_issues(value);
+    match validation_issues
         .iter()
         .find(|d| matches!(d.severity, Severity::Error))
     {

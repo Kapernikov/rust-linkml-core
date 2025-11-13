@@ -1,4 +1,4 @@
-use linkml_runtime::{load_yaml_file, validate, DiagnosticCode, LinkMLInstance};
+use linkml_runtime::{load_yaml_file, validate, LinkMLInstance, ValidationIssueCode};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
@@ -105,7 +105,7 @@ fn validate_personinfo_null_collections() {
 }
 
 #[test]
-fn diagnostics_report_regex_pattern_violation() {
+fn validation_issues_report_regex_pattern_violation() {
     let (sv, conv) = load_personinfo_schema();
     let person = class_by_name(&sv, &conv, "Person");
     let outcome = load_yaml_file(
@@ -115,15 +115,15 @@ fn diagnostics_report_regex_pattern_violation() {
         &conv,
     )
     .unwrap();
-    let diags = outcome.diagnostics;
+    let diags = outcome.validation_issues;
     assert!(diags.iter().any(|d| {
-        matches!(d.code, DiagnosticCode::RegexMismatch)
+        matches!(d.code, ValidationIssueCode::RegexMismatch)
             && d.path.last().map(|p| p == "primary_email").unwrap_or(false)
     }));
 }
 
 #[test]
-fn diagnostics_report_missing_required_slot() {
+fn validation_issues_report_missing_required_slot() {
     let (sv, conv) = load_personinfo_schema();
     let person = class_by_name(&sv, &conv, "Person");
     let outcome = load_yaml_file(
@@ -133,15 +133,15 @@ fn diagnostics_report_missing_required_slot() {
         &conv,
     )
     .unwrap();
-    let diags = outcome.diagnostics;
+    let diags = outcome.validation_issues;
     assert!(diags.iter().any(|d| {
-        matches!(d.code, DiagnosticCode::MissingRequiredSlot)
+        matches!(d.code, ValidationIssueCode::MissingRequiredSlot)
             && d.path.last().map(|p| p == "type").unwrap_or(false)
     }));
 }
 
 #[test]
-fn diagnostics_report_unknown_slot_and_fields() {
+fn validation_issues_report_unknown_slot_and_fields() {
     let (sv, conv) = load_personinfo_schema();
     let person = class_by_name(&sv, &conv, "Person");
     let outcome = load_yaml_file(
@@ -151,9 +151,9 @@ fn diagnostics_report_unknown_slot_and_fields() {
         &conv,
     )
     .unwrap();
-    let diags = outcome.diagnostics;
+    let diags = outcome.validation_issues;
     assert!(diags.iter().any(|d| {
-        matches!(d.code, DiagnosticCode::UnknownSlot)
+        matches!(d.code, ValidationIssueCode::UnknownSlot)
             && d.path.last().map(|p| p == "unknown_attr").unwrap_or(false)
     }));
     if let Some(LinkMLInstance::Object { unknown_fields, .. }) = outcome.instance {

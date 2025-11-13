@@ -4,8 +4,8 @@ use linkml_runtime::diff::{
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
 use linkml_runtime::{
-    load_json_str, load_yaml_str, validate_diagnostics, Diagnostic, DiagnosticCode, LinkMLInstance,
-    LoadResult, NodeId, Severity,
+    load_json_str, load_yaml_str, validate_issues, LinkMLInstance, LoadResult, NodeId, Severity,
+    ValidationIssue, ValidationIssueCode,
 };
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
@@ -657,7 +657,7 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_to_turtle, m)?)?;
     m.add_class::<PyLinkMLInstance>()?;
     m.add_class::<PyDelta>()?;
-    m.add_class::<PyValidationDiagnostic>()?;
+    m.add_class::<PyValidationIssue>()?;
     m.add_class::<PyPatchTrace>()?;
     m.add_class::<PyPatchResult>()?;
     Ok(())
@@ -764,23 +764,23 @@ impl From<Delta> for PyDelta {
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "ValidationDiagnostic")]
-pub struct PyValidationDiagnostic {
-    inner: Diagnostic,
+#[pyclass(name = "ValidationIssue")]
+pub struct PyValidationIssue {
+    inner: ValidationIssue,
 }
 
-impl From<Diagnostic> for PyValidationDiagnostic {
-    fn from(inner: Diagnostic) -> Self {
+impl From<ValidationIssue> for PyValidationIssue {
+    fn from(inner: ValidationIssue) -> Self {
         Self { inner }
     }
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
-impl PyValidationDiagnostic {
+impl PyValidationIssue {
     #[getter]
     fn code(&self) -> String {
-        diagnostic_code_label(&self.inner.code).to_string()
+        validation_issue_code_label(&self.inner.code).to_string()
     }
 
     #[getter]
@@ -805,8 +805,8 @@ impl PyValidationDiagnostic {
 
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
-            "ValidationDiagnostic(code='{}', severity='{}', path={:?}, message={})",
-            diagnostic_code_label(&self.inner.code),
+            "ValidationIssue(code='{}', severity='{}', path={:?}, message={})",
+            validation_issue_code_label(&self.inner.code),
             severity_label(&self.inner.severity),
             self.inner.path,
             self.inner.message
@@ -928,17 +928,17 @@ fn json_value_to_py(py: Python<'_>, v: &JsonValue) -> PyObject {
     json_mod.call_method1("loads", (s,)).unwrap().unbind()
 }
 
-fn diagnostic_code_label(code: &DiagnosticCode) -> &'static str {
+fn validation_issue_code_label(code: &ValidationIssueCode) -> &'static str {
     match code {
-        DiagnosticCode::UnknownSlot => "unknown_slot",
-        DiagnosticCode::MissingSlotContext => "missing_slot_context",
-        DiagnosticCode::MissingClassContext => "missing_class_context",
-        DiagnosticCode::InvalidContainerType => "invalid_container_type",
-        DiagnosticCode::InvalidEnumValue => "invalid_enum_value",
-        DiagnosticCode::RegexMismatch => "regex_mismatch",
-        DiagnosticCode::RegexCompileError => "regex_compile_error",
-        DiagnosticCode::MissingRequiredSlot => "missing_required_slot",
-        DiagnosticCode::ParseError => "parse_error",
+        ValidationIssueCode::UnknownSlot => "unknown_slot",
+        ValidationIssueCode::MissingSlotContext => "missing_slot_context",
+        ValidationIssueCode::MissingClassContext => "missing_class_context",
+        ValidationIssueCode::InvalidContainerType => "invalid_container_type",
+        ValidationIssueCode::InvalidEnumValue => "invalid_enum_value",
+        ValidationIssueCode::RegexMismatch => "regex_mismatch",
+        ValidationIssueCode::RegexCompileError => "regex_compile_error",
+        ValidationIssueCode::MissingRequiredSlot => "missing_required_slot",
+        ValidationIssueCode::ParseError => "parse_error",
     }
 }
 
@@ -949,13 +949,13 @@ fn severity_label(severity: &Severity) -> &'static str {
     }
 }
 
-fn diagnostics_to_py(
+fn validation_issues_to_py(
     py: Python<'_>,
-    diagnostics: Vec<Diagnostic>,
-) -> PyResult<Vec<Py<PyValidationDiagnostic>>> {
-    diagnostics
+    validation_issues: Vec<ValidationIssue>,
+) -> PyResult<Vec<Py<PyValidationIssue>>> {
+    validation_issues
         .into_iter()
-        .map(|diag| Py::new(py, PyValidationDiagnostic::from(diag)))
+        .map(|diag| Py::new(py, PyValidationIssue::from(diag)))
         .collect()
 }
 
@@ -963,12 +963,12 @@ fn convert_outcome(
     py: Python<'_>,
     sv: Py<PySchemaView>,
     outcome: LoadResult,
-) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationDiagnostic>>)> {
-    let diagnostics = diagnostics_to_py(py, outcome.diagnostics)?;
+) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationIssue>>)> {
+    let validation_issues = validation_issues_to_py(py, outcome.validation_issues)?;
     let instance = outcome
         .instance
         .map(|value| PyLinkMLInstance::new(value, sv.clone_ref(py)));
-    Ok((instance, diagnostics))
+    Ok((instance, validation_issues))
 }
 
 fn py_to_json_value(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<JsonValue> {
@@ -1168,8 +1168,8 @@ impl PyLinkMLInstance {
         Ok(dict.into())
     }
 
-    fn diagnostics<'py>(&self, py: Python<'py>) -> PyResult<Vec<Py<PyValidationDiagnostic>>> {
-        diagnostics_to_py(py, validate_diagnostics(&self.value))
+    fn validation_issues<'py>(&self, py: Python<'py>) -> PyResult<Vec<Py<PyValidationIssue>>> {
+        validation_issues_to_py(py, validate_issues(&self.value))
     }
 
     fn as_python<'py>(&self, py: Python<'py>) -> PyObject {
@@ -1338,7 +1338,7 @@ fn load_yaml(
     source: &Bound<'_, PyAny>,
     sv: Py<PySchemaView>,
     class_view: Py<PyClassView>,
-) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationDiagnostic>>)> {
+) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationIssue>>)> {
     let sv_ref = sv.bind(py).borrow();
     let rust_sv = sv_ref.as_rust();
     let conv = rust_sv.converter();
@@ -1357,7 +1357,7 @@ fn load_json(
     source: &Bound<'_, PyAny>,
     sv: Py<PySchemaView>,
     class_view: Py<PyClassView>,
-) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationDiagnostic>>)> {
+) -> PyResult<(Option<PyLinkMLInstance>, Vec<Py<PyValidationIssue>>)> {
     let sv_ref = sv.bind(py).borrow();
     let rust_sv = sv_ref.as_rust();
     let conv = rust_sv.converter();

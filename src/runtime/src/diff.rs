@@ -1,4 +1,4 @@
-use crate::{DiagnosticSink, LResult, LinkMLError, LinkMLInstance, NodeId};
+use crate::{LResult, LinkMLError, LinkMLInstance, NodeId, ValidationIssueSink};
 use linkml_schemaview::{
     converter::Converter,
     schemaview::{ClassView, SchemaView, SlotView},
@@ -786,7 +786,7 @@ fn apply_delta_mapping(
             op,
             || {
                 with_converter(schema_view, value, move |val, sv, conv| {
-                    let mut diags = DiagnosticSink::default();
+                    let mut diags = ValidationIssueSink::default();
                     let value = LinkMLInstance::build_mapping_entry_for_slot(
                         &slot_clone,
                         val,
@@ -831,7 +831,7 @@ fn apply_delta_list(
         let class_clone = class.clone();
         return apply_list_leaf_delta(values, idx_opt, owner_id, trace, opts, op, || {
             with_converter(schema_view, value, move |val, sv, conv| {
-                let mut diags = DiagnosticSink::default();
+                let mut diags = ValidationIssueSink::default();
                 let value = LinkMLInstance::build_list_item_for_slot(
                     &slot_clone,
                     class_clone.as_ref(),

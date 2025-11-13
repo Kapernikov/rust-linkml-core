@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{DiagnosticCode, DiagnosticSink, InstancePath, LinkMLInstance};
+use crate::{InstancePath, LinkMLInstance, ValidationIssueCode, ValidationIssueSink};
 use linkml_schemaview::schemaview::ClassView;
 
 pub struct ObjectConstraintContext<'a> {
@@ -12,13 +12,13 @@ pub struct ObjectConstraintContext<'a> {
 }
 
 pub trait ObjectConstraint: Send + Sync {
-    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut DiagnosticSink);
+    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut ValidationIssueSink);
 }
 
 struct RequiredSlotConstraint;
 
 impl ObjectConstraint for RequiredSlotConstraint {
-    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut DiagnosticSink) {
+    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut ValidationIssueSink) {
         for slot in ctx.class.slots() {
             let def = slot.definition();
             let required = def.required.unwrap_or(false)
@@ -38,7 +38,7 @@ impl ObjectConstraint for RequiredSlotConstraint {
                 let mut path = ctx.path.clone();
                 path.push(key.clone());
                 sink.push_error(
-                    DiagnosticCode::MissingRequiredSlot,
+                    ValidationIssueCode::MissingRequiredSlot,
                     path,
                     format!(
                         "required slot '{}' missing for class '{}'",
@@ -54,12 +54,12 @@ impl ObjectConstraint for RequiredSlotConstraint {
 struct UnknownFieldConstraint;
 
 impl ObjectConstraint for UnknownFieldConstraint {
-    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut DiagnosticSink) {
+    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut ValidationIssueSink) {
         for (extra, _) in ctx.unknown_fields.iter() {
             let mut path = ctx.path.clone();
             path.push(extra.clone());
             sink.push_error(
-                DiagnosticCode::UnknownSlot,
+                ValidationIssueCode::UnknownSlot,
                 path,
                 format!("unknown slot '{}' for class '{}'", extra, ctx.class.name()),
             );
@@ -70,14 +70,14 @@ impl ObjectConstraint for UnknownFieldConstraint {
 struct UnknownDeclaredSlotConstraint;
 
 impl ObjectConstraint for UnknownDeclaredSlotConstraint {
-    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut DiagnosticSink) {
+    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut ValidationIssueSink) {
         for (key, _) in ctx.values.iter() {
             let known = ctx.class.slots().iter().any(|s| s.name == *key);
             if !known {
                 let mut path = ctx.path.clone();
                 path.push(key.clone());
                 sink.push_error(
-                    DiagnosticCode::UnknownSlot,
+                    ValidationIssueCode::UnknownSlot,
                     path,
                     format!("unknown slot '{}' for class '{}'", key, ctx.class.name()),
                 );
@@ -97,7 +97,7 @@ pub fn run_object_constraints(
     values: &HashMap<String, LinkMLInstance>,
     unknown_fields: &HashMap<String, serde_json::Value>,
     path: InstancePath,
-    sink: &mut DiagnosticSink,
+    sink: &mut ValidationIssueSink,
 ) {
     let ctx = ObjectConstraintContext {
         class,

@@ -1,5 +1,5 @@
 use linkml_runtime::{
-    diff, load_json_str, load_yaml_file, patch, DiagnosticCode, DiffOptions, LinkMLInstance,
+    diff, load_json_str, load_yaml_file, patch, DiffOptions, LinkMLInstance, ValidationIssueCode,
 };
 use linkml_schemaview::identifier::converter_from_schema;
 use linkml_schemaview::io::from_yaml;
@@ -298,9 +298,9 @@ fn personinfo_invalid_fails() {
         &conv,
     )
     .unwrap();
-    let diags = outcome.diagnostics;
+    let diags = outcome.validation_issues;
     assert!(diags
         .iter()
-        .any(|d| matches!(d.code, DiagnosticCode::UnknownSlot)
+        .any(|d| matches!(d.code, ValidationIssueCode::UnknownSlot)
             && d.path.iter().any(|seg| seg == "unknown_attr")));
 }
