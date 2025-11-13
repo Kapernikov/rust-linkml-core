@@ -691,6 +691,7 @@ fn apply_delta_root(
                 let slot_clone = slot_opt.clone();
                 let new_node = with_converter(schema_view, v, move |value, sv, conv| {
                     LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
+                        .into_instance()
                 })?;
                 mark_added_subtree(&new_node, trace);
                 *current = new_node;
@@ -707,6 +708,7 @@ fn apply_delta_root(
                     let slot_clone = slot_opt.clone();
                     let new_node = with_converter(schema_view, v, move |value, sv, conv| {
                         LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
+                            .into_instance()
                     })?;
                     if should_skip_update(current, &new_node, opts) {
                         return Ok(true);
@@ -750,6 +752,7 @@ fn apply_delta_object(
             || {
                 with_converter(schema_view, value, move |val, sv, conv| {
                     LinkMLInstance::from_json(val, class_clone, slot_clone, sv, conv, false)
+                        .into_instance()
                 })
             },
             OBJECT_DELTA_CONFIG,

@@ -1065,7 +1065,7 @@ impl LinkMLInstance {
         }
     }
 
-    pub fn from_json_with_validation_issues(
+    pub fn from_json(
         value: JsonValue,
         class: ClassView,
         slot: Option<SlotView>,
@@ -1095,27 +1095,6 @@ impl LinkMLInstance {
         LoadResult {
             instance,
             validation_issues,
-        }
-    }
-
-    fn from_json(
-        value: JsonValue,
-        class: ClassView,
-        slot: Option<SlotView>,
-        sv: &SchemaView,
-        conv: &Converter,
-        inside_list: bool,
-    ) -> LResult<Self> {
-        let LoadResult {
-            instance,
-            validation_issues,
-        } = Self::from_json_with_validation_issues(value, class, slot, sv, conv, inside_list);
-        let has_errors = validation_issues
-            .iter()
-            .any(|d| matches!(d.severity, Severity::Error));
-        match instance {
-            Some(value) if !has_errors => Ok(value),
-            Some(_) | None => Err(LinkMLError::new(validation_issues)),
         }
     }
 
@@ -1301,7 +1280,7 @@ pub fn load_yaml_str(
 ) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
     let value: serde_yaml::Value = serde_yaml::from_str(data)?;
     let json = serde_json::to_value(value)?;
-    Ok(LinkMLInstance::from_json_with_validation_issues(
+    Ok(LinkMLInstance::from_json(
         json,
         class.clone(),
         None,
@@ -1328,7 +1307,7 @@ pub fn load_json_str(
     conv: &Converter,
 ) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
     let value: JsonValue = serde_json::from_str(data)?;
-    Ok(LinkMLInstance::from_json_with_validation_issues(
+    Ok(LinkMLInstance::from_json(
         value,
         class.clone(),
         None,
