@@ -86,10 +86,80 @@ impl ObjectConstraint for UnknownDeclaredSlotConstraint {
     }
 }
 
+struct CardinalityConstraint;
+
+impl ObjectConstraint for CardinalityConstraint {
+    fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut ValidationIssueSink) {
+        for slot in ctx.class.slots() {
+            let def = slot.definition();
+            let exact = def.exact_cardinality;
+            let min = def.minimum_cardinality;
+            let max = def.maximum_cardinality;
+            if exact.is_none() && min.is_none() && max.is_none() {
+                continue;
+            }
+            let count = ctx
+                .values
+                .get(&slot.name)
+                .map(|value| slot_value_count(value))
+                .unwrap_or(0);
+            let mut path = ctx.path.clone();
+            path.push(slot.name.clone());
+            if let Some(expected) = exact {
+                if (count as isize) != expected {
+                    sink.push_error(
+                        ValidationIssueCode::ExactCardinalityViolation,
+                        path,
+                        format!(
+                            "slot '{}' in class '{}' requires exactly {} value(s); found {}",
+                            slot.name,
+                            ctx.class.name(),
+                            expected,
+                            count
+                        ),
+                    );
+                }
+                continue;
+            }
+            if let Some(minimum) = min {
+                if (count as isize) < minimum {
+                    sink.push_error(
+                        ValidationIssueCode::MinCardinalityViolation,
+                        path.clone(),
+                        format!(
+                            "slot '{}' in class '{}' requires at least {} value(s); found {}",
+                            slot.name,
+                            ctx.class.name(),
+                            minimum,
+                            count
+                        ),
+                    );
+                }
+            }
+            if let Some(maximum) = max {
+                if (count as isize) > maximum {
+                    sink.push_error(
+                        ValidationIssueCode::MaxCardinalityViolation,
+                        path.clone(),
+                        format!(
+                            "slot '{}' in class '{}' allows at most {} value(s); found {}",
+                            slot.name,
+                            ctx.class.name(),
+                            maximum,
+                            count
+                        ),
+                    );
+                }
+            }
+        }
+    }
+}
+
 static OBJECT_CONSTRAINTS: &[&dyn ObjectConstraint] = &[
     &RequiredSlotConstraint,
     &UnknownFieldConstraint,
     &UnknownDeclaredSlotConstraint,
+    &CardinalityConstraint,
 ];
 
 pub fn run_object_constraints(
@@ -107,5 +177,20 @@ pub fn run_object_constraints(
     };
     for constraint in OBJECT_CONSTRAINTS {
         constraint.evaluate(&ctx, sink);
+    }
+}
+
+fn slot_value_count(value: &LinkMLInstance) -> usize {
+    match value {
+        LinkMLInstance::Null { .. } => 0,
+        LinkMLInstance::List { values, .. } => values
+            .iter()
+            .filter(|child| !matches!(child, LinkMLInstance::Null { .. }))
+            .count(),
+        LinkMLInstance::Mapping { values, .. } => values
+            .values()
+            .filter(|child| !matches!(child, LinkMLInstance::Null { .. }))
+            .count(),
+        _ => 1,
     }
 }

@@ -1,0 +1,30 @@
+id: https://example.org/cardinality
+name: cardinality
+prefixes:
+  ex: https://example.org/
+  linkml: https://w3id.org/linkml/
+imports:
+  - linkml:types
+default_range: string
+classes:
+  Bag:
+    slots:
+      - names
+      - tags
+      - ids
+slots:
+  names:
+    domain: Bag
+    range: string
+    multivalued: true
+    minimum_cardinality: 2
+  tags:
+    domain: Bag
+    range: string
+    multivalued: true
+    maximum_cardinality: 3
+  ids:
+    domain: Bag
+    range: string
+    multivalued: true
+    exact_cardinality: 1

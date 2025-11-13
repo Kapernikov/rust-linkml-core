@@ -938,6 +938,9 @@ fn validation_issue_code_label(code: &ValidationIssueCode) -> &'static str {
         ValidationIssueCode::RegexMismatch => "regex_mismatch",
         ValidationIssueCode::RegexCompileError => "regex_compile_error",
         ValidationIssueCode::MissingRequiredSlot => "missing_required_slot",
+        ValidationIssueCode::MinCardinalityViolation => "min_cardinality_violation",
+        ValidationIssueCode::MaxCardinalityViolation => "max_cardinality_violation",
+        ValidationIssueCode::ExactCardinalityViolation => "exact_cardinality_violation",
         ValidationIssueCode::ParseError => "parse_error",
     }
 }

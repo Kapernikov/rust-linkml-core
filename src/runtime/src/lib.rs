@@ -120,6 +120,9 @@ pub enum ValidationIssueCode {
     RegexMismatch,
     RegexCompileError,
     MissingRequiredSlot,
+    MinCardinalityViolation,
+    MaxCardinalityViolation,
+    ExactCardinalityViolation,
     ParseError,
 }
 

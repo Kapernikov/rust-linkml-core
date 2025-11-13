@@ -21,6 +21,14 @@ fn load_personinfo_schema() -> (SchemaView, Converter) {
     (sv, conv)
 }
 
+fn load_cardinality_schema() -> (SchemaView, Converter) {
+    let schema = from_yaml(Path::new(&info_path("cardinality_schema.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    (sv, conv)
+}
+
 fn class_by_name(sv: &SchemaView, conv: &Converter, name: &str) -> ClassView {
     sv.get_class(&Identifier::new(name), conv)
         .unwrap()
@@ -161,4 +169,88 @@ fn validation_issues_report_unknown_slot_and_fields() {
     } else {
         panic!("expected person to deserialize as object");
     }
+}
+
+#[test]
+fn cardinality_valid_data_passes() {
+    let (sv, conv) = load_cardinality_schema();
+    let bag = class_by_name(&sv, &conv, "Bag");
+    let value = load_yaml_file(
+        Path::new(&info_path("cardinality_valid.yaml")),
+        &sv,
+        &bag,
+        &conv,
+    )
+    .unwrap()
+    .into_instance()
+    .unwrap();
+    assert!(validate(&value).is_ok());
+}
+
+#[test]
+fn min_cardinality_violation_reported() {
+    let (sv, conv) = load_cardinality_schema();
+    let bag = class_by_name(&sv, &conv, "Bag");
+    let outcome = load_yaml_file(
+        Path::new(&info_path("cardinality_too_few.yaml")),
+        &sv,
+        &bag,
+        &conv,
+    )
+    .unwrap();
+    assert!(outcome.validation_issues.iter().any(|d| {
+        matches!(d.code, ValidationIssueCode::MinCardinalityViolation)
+            && d.path.last().map(|p| p == "names").unwrap_or(false)
+    }));
+}
+
+#[test]
+fn max_cardinality_violation_reported() {
+    let (sv, conv) = load_cardinality_schema();
+    let bag = class_by_name(&sv, &conv, "Bag");
+    let outcome = load_yaml_file(
+        Path::new(&info_path("cardinality_too_many.yaml")),
+        &sv,
+        &bag,
+        &conv,
+    )
+    .unwrap();
+    assert!(outcome.validation_issues.iter().any(|d| {
+        matches!(d.code, ValidationIssueCode::MaxCardinalityViolation)
+            && d.path.last().map(|p| p == "tags").unwrap_or(false)
+    }));
+}
+
+#[test]
+fn exact_cardinality_violation_when_missing() {
+    let (sv, conv) = load_cardinality_schema();
+    let bag = class_by_name(&sv, &conv, "Bag");
+    let outcome = load_yaml_file(
+        Path::new(&info_path("cardinality_exact_missing.yaml")),
+        &sv,
+        &bag,
+        &conv,
+    )
+    .unwrap();
+    assert!(outcome.validation_issues.iter().any(|d| {
+        matches!(d.code, ValidationIssueCode::ExactCardinalityViolation)
+            && d.path.last().map(|p| p == "ids").unwrap_or(false)
+    }));
+}
+
+#[test]
+fn exact_cardinality_violation_when_multiple() {
+    let (sv, conv) = load_cardinality_schema();
+    let bag = class_by_name(&sv, &conv, "Bag");
+    let outcome = load_yaml_file(
+        Path::new(&info_path("cardinality_exact_too_many.yaml")),
+        &sv,
+        &bag,
+        &conv,
+    )
+    .unwrap();
+    assert!(outcome.validation_issues.iter().any(|d| {
+        matches!(d.code, ValidationIssueCode::ExactCardinalityViolation)
+            && d.path.last().map(|p| p == "ids").unwrap_or(false)
+    }));
 }
