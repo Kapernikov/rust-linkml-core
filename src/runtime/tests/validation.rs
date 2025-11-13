@@ -1,4 +1,6 @@
-use linkml_runtime::{load_yaml_file, validate, validate_issues, LinkMLInstance, ValidationIssueCode};
+use linkml_runtime::{
+    load_yaml_file, validate, validate_issues, LinkMLInstance, ValidationIssueCode,
+};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
