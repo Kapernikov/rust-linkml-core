@@ -20,7 +20,8 @@ pub trait SlotConstraint: Send + Sync {
     fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationIssueSink);
 }
 
-static SLOT_CONSTRAINTS: &[&dyn SlotConstraint] = &[&EnumConstraint, &RegexConstraint];
+static SLOT_CONSTRAINTS: &[&dyn SlotConstraint] =
+    &[&EnumConstraint, &RegexConstraint, &RangeConstraint];
 
 pub fn run_slot_constraints(
     class: Option<&ClassView>,
@@ -97,6 +98,72 @@ fn cache_lock() -> std::sync::MutexGuard<'static, std::collections::HashMap<Stri
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     }
+}
+
+struct RangeConstraint;
+
+impl SlotConstraint for RangeConstraint {
+    fn applies(&self, ctx: &SlotConstraintContext) -> bool {
+        let def = ctx.slot.definition();
+        (def.minimum_value.is_some() || def.maximum_value.is_some()) && !ctx.value.is_null()
+    }
+
+    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationIssueSink) {
+        let value = match numeric_value(ctx.value) {
+            Some(v) => v,
+            None => return,
+        };
+        let def = ctx.slot.definition();
+        if let Some(minimum) = def
+            .minimum_value
+            .as_ref()
+            .and_then(|any| anything_to_f64(any))
+        {
+            if value < minimum {
+                sink.push_error(
+                    ValidationIssueCode::MinimumValueViolation,
+                    ctx.path.clone(),
+                    format!(
+                        "value {} is below minimum {} for slot '{}'",
+                        value, minimum, ctx.slot.name
+                    ),
+                );
+            }
+        }
+        if let Some(maximum) = def
+            .maximum_value
+            .as_ref()
+            .and_then(|any| anything_to_f64(any))
+        {
+            if value > maximum {
+                sink.push_error(
+                    ValidationIssueCode::MaximumValueViolation,
+                    ctx.path.clone(),
+                    format!(
+                        "value {} exceeds maximum {} for slot '{}'",
+                        value, maximum, ctx.slot.name
+                    ),
+                );
+            }
+        }
+    }
+}
+
+fn numeric_value(value: &JsonValue) -> Option<f64> {
+    match value {
+        JsonValue::Number(n) => n.as_f64(),
+        JsonValue::String(s) => s.parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+fn anything_to_f64(any: &linkml_meta::Anything) -> Option<f64> {
+    serde_json::to_value(any).ok().and_then(|v| match v {
+        JsonValue::Number(n) => n.as_f64(),
+        JsonValue::String(s) => s.parse::<f64>().ok(),
+        JsonValue::Bool(b) => Some(if b { 1.0 } else { 0.0 }),
+        _ => None,
+    })
 }
 
 fn compile_regex(pattern: &str) -> Option<Regex> {

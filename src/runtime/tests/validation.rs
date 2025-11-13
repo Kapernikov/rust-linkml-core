@@ -172,6 +172,40 @@ fn validation_issues_report_unknown_slot_and_fields() {
 }
 
 #[test]
+fn minimum_value_violation_reported() {
+    let (sv, conv) = load_personinfo_schema();
+    let person = class_by_name(&sv, &conv, "Person");
+    let outcome = load_yaml_file(
+        Path::new(&info_path("person_age_negative.yaml")),
+        &sv,
+        &person,
+        &conv,
+    )
+    .unwrap();
+    assert!(outcome.validation_issues.iter().any(|d| {
+        matches!(d.code, ValidationIssueCode::MinimumValueViolation)
+            && d.path.last().map(|p| p == "age_in_years").unwrap_or(false)
+    }));
+}
+
+#[test]
+fn maximum_value_violation_reported() {
+    let (sv, conv) = load_personinfo_schema();
+    let person = class_by_name(&sv, &conv, "Person");
+    let outcome = load_yaml_file(
+        Path::new(&info_path("person_age_too_big.yaml")),
+        &sv,
+        &person,
+        &conv,
+    )
+    .unwrap();
+    assert!(outcome.validation_issues.iter().any(|d| {
+        matches!(d.code, ValidationIssueCode::MaximumValueViolation)
+            && d.path.last().map(|p| p == "age_in_years").unwrap_or(false)
+    }));
+}
+
+#[test]
 fn cardinality_valid_data_passes() {
     let (sv, conv) = load_cardinality_schema();
     let bag = class_by_name(&sv, &conv, "Bag");

@@ -123,6 +123,8 @@ pub enum ValidationIssueCode {
     MinCardinalityViolation,
     MaxCardinalityViolation,
     ExactCardinalityViolation,
+    MinimumValueViolation,
+    MaximumValueViolation,
     ParseError,
 }
 
