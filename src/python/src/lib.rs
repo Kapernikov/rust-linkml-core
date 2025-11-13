@@ -1429,8 +1429,7 @@ fn py_patch(
             ignore_no_ops,
             treat_missing_as_null,
         },
-    )
-    .map_err(|e| PyException::new_err(e.to_string()))?;
+    )?;
     let py_val = Py::new(
         py,
         PyLinkMLInstance::new(new_value, source.sv.clone_ref(py)),

@@ -169,6 +169,47 @@ impl ValidationIssue {
     }
 }
 
+#[cfg(feature = "python")]
+mod python_error {
+    use super::{path_to_string, LinkMLError, ValidationIssue};
+    use pyo3::exceptions::PyValueError;
+    use pyo3::PyErr;
+
+    impl From<LinkMLError> for PyErr {
+        fn from(error: LinkMLError) -> Self {
+            fn format_issue(issue: &ValidationIssue) -> String {
+                let severity = match issue.severity {
+                    super::Severity::Error => "error",
+                    super::Severity::Warning => "warning",
+                };
+                let path = path_to_string(&issue.path);
+                let candidate = issue
+                    .candidate
+                    .as_ref()
+                    .map(|c| format!(" candidate='{}'", c))
+                    .unwrap_or_default();
+                format!(
+                    "- [{}::{:?}] {}: {}{}",
+                    severity, issue.code, path, issue.message, candidate
+                )
+            }
+
+            let issues = error.validation_issues();
+            if issues.is_empty() {
+                return PyValueError::new_err("LinkML validation error");
+            }
+
+            let details = issues.iter().map(format_issue).collect::<Vec<_>>();
+            let summary = format!(
+                "LinkML validation failed with {} issue(s):\n{}",
+                details.len(),
+                details.join("\n")
+            );
+            PyValueError::new_err(summary)
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ValidationIssueSink {
     validation_issues: Vec<ValidationIssue>,
@@ -224,6 +265,14 @@ impl LoadResult {
         if self.has_errors() {
             return Err(LinkMLError::new(self.validation_issues));
         }
+        self.instance
+            .ok_or_else(|| LinkMLError::new(self.validation_issues))
+    }
+
+    /// Return the instance even if validation errors were recorded, as long as
+    /// an instance exists. Useful for workflows that can inspect diagnostics
+    /// separately but still need the parsed value.
+    pub fn into_instance_tolerate_errors(self) -> std::result::Result<LinkMLInstance, LinkMLError> {
         self.instance
             .ok_or_else(|| LinkMLError::new(self.validation_issues))
     }

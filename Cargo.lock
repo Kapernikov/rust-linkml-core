@@ -943,6 +943,7 @@ dependencies = [
  "oxttl",
  "percent-encoding",
  "predicates 2.1.5",
+ "pyo3",
  "regex",
  "schemaview",
  "serde",
