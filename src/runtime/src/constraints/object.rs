@@ -101,7 +101,7 @@ impl ObjectConstraint for CardinalityConstraint {
             let count = ctx
                 .values
                 .get(&slot.name)
-                .map(|value| slot_value_count(value))
+                .map(slot_value_count)
                 .unwrap_or(0);
             let mut path = ctx.path.clone();
             path.push(slot.name.clone());

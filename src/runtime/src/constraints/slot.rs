@@ -114,11 +114,7 @@ impl SlotConstraint for RangeConstraint {
             None => return,
         };
         let def = ctx.slot.definition();
-        if let Some(minimum) = def
-            .minimum_value
-            .as_ref()
-            .and_then(|any| anything_to_f64(any))
-        {
+        if let Some(minimum) = def.minimum_value.as_ref().and_then(anything_to_f64) {
             if value < minimum {
                 sink.push_error(
                     ValidationIssueCode::MinimumValueViolation,
@@ -130,11 +126,7 @@ impl SlotConstraint for RangeConstraint {
                 );
             }
         }
-        if let Some(maximum) = def
-            .maximum_value
-            .as_ref()
-            .and_then(|any| anything_to_f64(any))
-        {
+        if let Some(maximum) = def.maximum_value.as_ref().and_then(anything_to_f64) {
             if value > maximum {
                 sink.push_error(
                     ValidationIssueCode::MaximumValueViolation,
