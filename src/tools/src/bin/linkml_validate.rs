@@ -1,5 +1,7 @@
 use clap::Parser;
-use linkml_runtime::{load_json_file, load_yaml_file, Severity, ValidationIssue};
+use linkml_runtime::{
+    load_json_file, load_yaml_file, ValidationResult, ValidationSeverity, ValidationValue,
+};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io::from_yaml;
 #[cfg(feature = "resolve")]
@@ -62,27 +64,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     } else {
         for issue in &validation_issues {
-            let location = if issue.path.is_empty() {
+            let location = if issue.subject.is_empty() {
                 "<root>".to_string()
             } else {
-                issue.path.join(".")
+                issue.subject.join(".")
             };
-            println!("{:?} at {}: {}", issue.code, location, issue.message);
+            println!("{:?} at {}: {}", issue.problem_type, location, issue.detail);
         }
         std::process::exit(1);
     }
 }
 
-fn emit_json(valid: bool, issues: &[ValidationIssue]) -> Result<(), serde_json::Error> {
+fn emit_json(valid: bool, issues: &[ValidationResult]) -> Result<(), serde_json::Error> {
     let issues_json: Vec<_> = issues
         .iter()
         .map(|issue| {
+            let object = match &issue.object {
+                ValidationValue::None => serde_json::Value::Null,
+                ValidationValue::Literal(v) => json!({ "literal": v }),
+                ValidationValue::Node(path) => json!({ "node": path }),
+            };
             json!({
-                "code": format!("{:?}", issue.code),
+                "type": format!("{:?}", issue.problem_type),
                 "severity": severity_label(&issue.severity),
-                "path": issue.path,
-                "message": issue.message,
-                "candidate": issue.candidate,
+                "subject": issue.subject,
+                "predicate": issue.predicate,
+                "instantiates": issue.instantiates,
+                "node_source": issue.node_source,
+                "object": object,
+                "detail": issue.detail,
             })
         })
         .collect();
@@ -94,9 +104,11 @@ fn emit_json(valid: bool, issues: &[ValidationIssue]) -> Result<(), serde_json::
     Ok(())
 }
 
-fn severity_label(severity: &Severity) -> &'static str {
+fn severity_label(severity: &ValidationSeverity) -> &'static str {
     match severity {
-        Severity::Error => "error",
-        Severity::Warning => "warning",
+        ValidationSeverity::Fatal => "fatal",
+        ValidationSeverity::Error => "error",
+        ValidationSeverity::Warning => "warning",
+        ValidationSeverity::Info => "info",
     }
 }

@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::{InstancePath, ValidationIssueCode, ValidationIssueSink};
+use crate::{InstancePath, ValidationProblemType, ValidationResultSink};
 use linkml_schemaview::schemaview::{ClassView, SlotView};
 use serde_json::Value as JsonValue;
 
@@ -17,7 +17,7 @@ pub struct SlotConstraintContext<'a> {
 
 pub trait SlotConstraint: Send + Sync {
     fn applies(&self, ctx: &SlotConstraintContext) -> bool;
-    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationIssueSink);
+    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationResultSink);
 }
 
 static SLOT_CONSTRAINTS: &[&dyn SlotConstraint] =
@@ -28,7 +28,7 @@ pub fn run_slot_constraints(
     slot: &SlotView,
     value: &JsonValue,
     path: InstancePath,
-    sink: &mut ValidationIssueSink,
+    sink: &mut ValidationResultSink,
 ) {
     let ctx = SlotConstraintContext {
         class,
@@ -50,13 +50,13 @@ impl SlotConstraint for EnumConstraint {
         ctx.slot.get_range_enum().is_some() && !ctx.value.is_null()
     }
 
-    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationIssueSink) {
+    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationResultSink) {
         let Some(enum_view) = ctx.slot.get_range_enum() else {
             return;
         };
         let JsonValue::String(s) = ctx.value else {
             sink.push_error(
-                ValidationIssueCode::InvalidEnumValue,
+                ValidationProblemType::SlotRangeViolation,
                 ctx.path.clone(),
                 format!(
                     "expected string for enum '{}' in slot '{}'",
@@ -70,7 +70,7 @@ impl SlotConstraint for EnumConstraint {
             Ok(keys) => {
                 if !keys.contains(s) {
                     sink.push_error(
-                        ValidationIssueCode::InvalidEnumValue,
+                        ValidationProblemType::SlotRangeViolation,
                         ctx.path.clone(),
                         format!(
                             "invalid enum value '{}' for slot '{}' (allowed: {:?})",
@@ -80,7 +80,7 @@ impl SlotConstraint for EnumConstraint {
                 }
             }
             Err(err) => sink.push_error(
-                ValidationIssueCode::InvalidEnumValue,
+                ValidationProblemType::SlotRangeViolation,
                 ctx.path.clone(),
                 format!("failed to resolve enum '{}': {:?}", enum_view.name(), err),
             ),
@@ -108,7 +108,7 @@ impl SlotConstraint for RangeConstraint {
         (def.minimum_value.is_some() || def.maximum_value.is_some()) && !ctx.value.is_null()
     }
 
-    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationIssueSink) {
+    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationResultSink) {
         let value = match numeric_value(ctx.value) {
             Some(v) => v,
             None => return,
@@ -117,7 +117,7 @@ impl SlotConstraint for RangeConstraint {
         if let Some(minimum) = def.minimum_value.as_ref().and_then(anything_to_f64) {
             if value < minimum {
                 sink.push_error(
-                    ValidationIssueCode::MinimumValueViolation,
+                    ValidationProblemType::SlotRangeViolation,
                     ctx.path.clone(),
                     format!(
                         "value {} is below minimum {} for slot '{}'",
@@ -129,7 +129,7 @@ impl SlotConstraint for RangeConstraint {
         if let Some(maximum) = def.maximum_value.as_ref().and_then(anything_to_f64) {
             if value > maximum {
                 sink.push_error(
-                    ValidationIssueCode::MaximumValueViolation,
+                    ValidationProblemType::SlotRangeViolation,
                     ctx.path.clone(),
                     format!(
                         "value {} exceeds maximum {} for slot '{}'",
@@ -183,13 +183,13 @@ impl SlotConstraint for RegexConstraint {
             && !ctx.value.is_null()
     }
 
-    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationIssueSink) {
+    fn evaluate(&self, ctx: &SlotConstraintContext, sink: &mut ValidationResultSink) {
         let Some(pattern) = ctx.slot.definition().pattern.as_ref() else {
             return;
         };
         let Some(regex) = compile_regex(pattern) else {
             sink.push_error(
-                ValidationIssueCode::RegexCompileError,
+                ValidationProblemType::ParsingError,
                 ctx.path.clone(),
                 format!("invalid regex '{}' for slot '{}'", pattern, ctx.slot.name),
             );
@@ -197,7 +197,7 @@ impl SlotConstraint for RegexConstraint {
         };
         let JsonValue::String(s) = ctx.value else {
             sink.push_error(
-                ValidationIssueCode::RegexMismatch,
+                ValidationProblemType::SlotRangeViolation,
                 ctx.path.clone(),
                 format!(
                     "pattern '{}' requires string value in slot '{}'",
@@ -208,7 +208,7 @@ impl SlotConstraint for RegexConstraint {
         };
         if !regex.is_match(s) {
             sink.push_error(
-                ValidationIssueCode::RegexMismatch,
+                ValidationProblemType::SlotRangeViolation,
                 ctx.path.clone(),
                 format!(
                     "value '{}' does not match pattern '{}' for slot '{}'",

@@ -1,4 +1,4 @@
-use linkml_runtime::{load_yaml_file, validate, LinkMLInstance, ValidationIssueCode};
+use linkml_runtime::{load_yaml_file, validate, LinkMLInstance, ValidationProblemType};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
@@ -70,5 +70,5 @@ fn enum_invalid_value() {
     assert!(outcome
         .validation_issues
         .iter()
-        .any(|d| matches!(d.code, ValidationIssueCode::InvalidEnumValue)));
+        .any(|d| matches!(d.problem_type, ValidationProblemType::SlotRangeViolation)));
 }

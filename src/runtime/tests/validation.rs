@@ -1,5 +1,5 @@
 use linkml_runtime::{
-    load_yaml_file, validate, validate_issues, LinkMLInstance, ValidationIssueCode,
+    load_yaml_file, validate, validate_issues, LinkMLInstance, ValidationProblemType,
 };
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -127,8 +127,11 @@ fn validation_issues_report_regex_pattern_violation() {
     .unwrap();
     let diags = outcome.validation_issues;
     assert!(diags.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::RegexMismatch)
-            && d.path.last().map(|p| p == "primary_email").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::SlotRangeViolation)
+            && d.subject
+                .last()
+                .map(|p| p == "primary_email")
+                .unwrap_or(false)
     }));
 }
 
@@ -154,8 +157,8 @@ fn validation_issue_paths_include_list_indices_once() {
     ];
     let diag_paths: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(d.code, ValidationIssueCode::UnknownSlot))
-        .map(|d| d.path.clone())
+        .filter(|d| matches!(d.problem_type, ValidationProblemType::UndeclaredSlot))
+        .map(|d| d.subject.clone())
         .collect();
     assert!(
         diag_paths.iter().any(|p| p == &expected_path),
@@ -177,8 +180,8 @@ fn validation_issues_report_missing_required_slot() {
     .unwrap();
     let diags = outcome.validation_issues;
     assert!(diags.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::MissingRequiredSlot)
-            && d.path.last().map(|p| p == "type").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::MissingSlotValue)
+            && d.subject.last().map(|p| p == "type").unwrap_or(false)
     }));
 }
 
@@ -195,8 +198,11 @@ fn validation_issues_report_unknown_slot_and_fields() {
     .unwrap();
     let diags = outcome.validation_issues;
     assert!(diags.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::UnknownSlot)
-            && d.path.last().map(|p| p == "unknown_attr").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::UndeclaredSlot)
+            && d.subject
+                .last()
+                .map(|p| p == "unknown_attr")
+                .unwrap_or(false)
     }));
     if let Some(LinkMLInstance::Object { unknown_fields, .. }) = outcome.instance {
         assert!(unknown_fields.contains_key("unknown_attr"));
@@ -217,8 +223,11 @@ fn minimum_value_violation_reported() {
     )
     .unwrap();
     assert!(outcome.validation_issues.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::MinimumValueViolation)
-            && d.path.last().map(|p| p == "age_in_years").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::SlotRangeViolation)
+            && d.subject
+                .last()
+                .map(|p| p == "age_in_years")
+                .unwrap_or(false)
     }));
 }
 
@@ -234,8 +243,11 @@ fn maximum_value_violation_reported() {
     )
     .unwrap();
     assert!(outcome.validation_issues.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::MaximumValueViolation)
-            && d.path.last().map(|p| p == "age_in_years").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::SlotRangeViolation)
+            && d.subject
+                .last()
+                .map(|p| p == "age_in_years")
+                .unwrap_or(false)
     }));
 }
 
@@ -267,8 +279,8 @@ fn min_cardinality_violation_reported() {
     )
     .unwrap();
     assert!(outcome.validation_issues.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::MinCardinalityViolation)
-            && d.path.last().map(|p| p == "names").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::MissingSlotValue)
+            && d.subject.last().map(|p| p == "names").unwrap_or(false)
     }));
 }
 
@@ -284,8 +296,8 @@ fn max_cardinality_violation_reported() {
     )
     .unwrap();
     assert!(outcome.validation_issues.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::MaxCardinalityViolation)
-            && d.path.last().map(|p| p == "tags").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::MaxCountViolation)
+            && d.subject.last().map(|p| p == "tags").unwrap_or(false)
     }));
 }
 
@@ -301,8 +313,8 @@ fn exact_cardinality_violation_when_missing() {
     )
     .unwrap();
     assert!(outcome.validation_issues.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::ExactCardinalityViolation)
-            && d.path.last().map(|p| p == "ids").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::MaxCountViolation)
+            && d.subject.last().map(|p| p == "ids").unwrap_or(false)
     }));
 }
 
@@ -318,7 +330,7 @@ fn exact_cardinality_violation_when_multiple() {
     )
     .unwrap();
     assert!(outcome.validation_issues.iter().any(|d| {
-        matches!(d.code, ValidationIssueCode::ExactCardinalityViolation)
-            && d.path.last().map(|p| p == "ids").unwrap_or(false)
+        matches!(d.problem_type, ValidationProblemType::MaxCountViolation)
+            && d.subject.last().map(|p| p == "ids").unwrap_or(false)
     }));
 }

@@ -32,29 +32,29 @@ pub use blame::{
 pub use diff::{diff, patch, Delta, DiffOptions, PatchOptions, PatchTrace};
 #[derive(Debug)]
 pub struct LinkMLError {
-    validation_issues: Vec<ValidationIssue>,
+    validation_issues: Vec<ValidationResult>,
 }
 
 impl LinkMLError {
-    pub fn new(validation_issues: Vec<ValidationIssue>) -> Self {
+    pub fn new(validation_issues: Vec<ValidationResult>) -> Self {
         Self { validation_issues }
     }
 
     pub fn single(
-        code: ValidationIssueCode,
+        problem_type: ValidationProblemType,
         path: InstancePath,
-        message: impl Into<String>,
+        detail: impl Into<String>,
     ) -> Self {
         Self {
-            validation_issues: vec![ValidationIssue::error(code, path, message.into())],
+            validation_issues: vec![ValidationResult::error(problem_type, path, detail.into())],
         }
     }
 
-    pub fn validation_issues(&self) -> &[ValidationIssue] {
+    pub fn validation_issues(&self) -> &[ValidationResult] {
         &self.validation_issues
     }
 
-    pub fn into_validation_issues(self) -> Vec<ValidationIssue> {
+    pub fn into_validation_issues(self) -> Vec<ValidationResult> {
         self.validation_issues
     }
 }
@@ -62,7 +62,7 @@ impl LinkMLError {
 impl std::fmt::Display for LinkMLError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(first) = self.validation_issues.first() {
-            write!(f, "{}", first.message)
+            write!(f, "{}", first.detail)
         } else {
             write!(f, "LinkML error")
         }
@@ -105,92 +105,107 @@ fn slot_matches_key(slot: &SlotView, key: &str) -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Severity {
+pub enum ValidationSeverity {
+    Fatal,
     Error,
     Warning,
+    Info,
+}
+
+impl ValidationSeverity {
+    pub fn is_error(&self) -> bool {
+        matches!(self, Self::Fatal | Self::Error)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ValidationIssueCode {
-    UnknownSlot,
-    MissingSlotContext,
-    MissingClassContext,
-    InvalidContainerType,
-    InvalidEnumValue,
-    RegexMismatch,
-    RegexCompileError,
-    MissingRequiredSlot,
-    MinCardinalityViolation,
-    MaxCardinalityViolation,
-    ExactCardinalityViolation,
-    MinimumValueViolation,
-    MaximumValueViolation,
-    ParseError,
+pub enum ValidationProblemType {
+    UndeclaredSlot,
+    InapplicableSlot,
+    MissingSlotValue,
+    SlotRangeViolation,
+    MaxCountViolation,
+    ParsingError,
 }
 
 pub type InstancePath = Vec<String>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ValidationIssue {
-    pub code: ValidationIssueCode,
-    pub message: String,
-    pub path: InstancePath,
-    pub severity: Severity,
-    pub candidate: Option<String>,
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum ValidationValue {
+    #[default]
+    None,
+    Node(InstancePath),
+    Literal(String),
 }
 
-impl ValidationIssue {
-    pub fn error<C: Into<String>>(
-        code: ValidationIssueCode,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValidationResult {
+    pub problem_type: ValidationProblemType,
+    pub severity: ValidationSeverity,
+    pub subject: InstancePath,
+    pub predicate: InstancePath,
+    pub instantiates: Option<String>,
+    pub node_source: InstancePath,
+    pub object: ValidationValue,
+    pub detail: String,
+}
+
+impl ValidationResult {
+    fn from_path<C: Into<String>>(
+        problem_type: ValidationProblemType,
+        severity: ValidationSeverity,
         path: InstancePath,
-        message: C,
+        detail: C,
     ) -> Self {
+        let subject = path.clone();
         Self {
-            code,
-            message: message.into(),
-            path,
-            severity: Severity::Error,
-            candidate: None,
+            problem_type,
+            severity,
+            subject: subject.clone(),
+            predicate: subject.clone(),
+            instantiates: None,
+            node_source: subject,
+            object: ValidationValue::None,
+            detail: detail.into(),
         }
     }
 
-    pub fn warning<C: Into<String>>(
-        code: ValidationIssueCode,
+    pub fn error<C: Into<String>>(
+        problem_type: ValidationProblemType,
         path: InstancePath,
-        message: C,
+        detail: C,
     ) -> Self {
-        Self {
-            code,
-            message: message.into(),
-            path,
-            severity: Severity::Warning,
-            candidate: None,
-        }
+        Self::from_path(problem_type, ValidationSeverity::Error, path, detail)
+    }
+
+    pub fn warning<C: Into<String>>(
+        problem_type: ValidationProblemType,
+        path: InstancePath,
+        detail: C,
+    ) -> Self {
+        Self::from_path(problem_type, ValidationSeverity::Warning, path, detail)
     }
 }
 
 #[cfg(feature = "python")]
 mod python_error {
-    use super::{path_to_string, LinkMLError, ValidationIssue};
+    use super::{path_to_string, LinkMLError, ValidationResult, ValidationSeverity};
     use pyo3::exceptions::PyValueError;
     use pyo3::PyErr;
 
     impl From<LinkMLError> for PyErr {
         fn from(error: LinkMLError) -> Self {
-            fn format_issue(issue: &ValidationIssue) -> String {
+            fn format_issue(issue: &ValidationResult) -> String {
                 let severity = match issue.severity {
-                    super::Severity::Error => "error",
-                    super::Severity::Warning => "warning",
+                    ValidationSeverity::Fatal => "fatal",
+                    ValidationSeverity::Error => "error",
+                    ValidationSeverity::Warning => "warning",
+                    ValidationSeverity::Info => "info",
                 };
-                let path = path_to_string(&issue.path);
-                let candidate = issue
-                    .candidate
-                    .as_ref()
-                    .map(|c| format!(" candidate='{}'", c))
-                    .unwrap_or_default();
+                let path = path_to_string(&issue.subject);
                 format!(
-                    "- [{}::{:?}] {}: {}{}",
-                    severity, issue.code, path, issue.message, candidate
+                    "- [{}::{:?}] {}: {}",
+                    severity, issue.problem_type, path, issue.detail
                 )
             }
 
@@ -211,54 +226,50 @@ mod python_error {
 }
 
 #[derive(Default)]
-pub struct ValidationIssueSink {
-    validation_issues: Vec<ValidationIssue>,
+pub struct ValidationResultSink {
+    validation_issues: Vec<ValidationResult>,
 }
 
-impl ValidationIssueSink {
-    pub fn push(&mut self, validation_issue: ValidationIssue) {
+impl ValidationResultSink {
+    pub fn push(&mut self, validation_issue: ValidationResult) {
         self.validation_issues.push(validation_issue);
     }
 
     pub fn push_error<C: Into<String>>(
         &mut self,
-        code: ValidationIssueCode,
+        problem_type: ValidationProblemType,
         path: InstancePath,
-        message: C,
+        detail: C,
     ) {
-        self.push(ValidationIssue::error(code, path, message));
+        self.push(ValidationResult::error(problem_type, path, detail));
     }
 
     pub fn push_warning<C: Into<String>>(
         &mut self,
-        code: ValidationIssueCode,
+        problem_type: ValidationProblemType,
         path: InstancePath,
-        message: C,
+        detail: C,
     ) {
-        self.push(ValidationIssue::warning(code, path, message));
+        self.push(ValidationResult::warning(problem_type, path, detail));
     }
 
     pub fn has_errors(&self) -> bool {
-        self.validation_issues
-            .iter()
-            .any(|d| d.severity == Severity::Error)
+        self.validation_issues.iter().any(|d| d.severity.is_error())
     }
 
-    pub fn into_vec(self) -> Vec<ValidationIssue> {
+    pub fn into_vec(self) -> Vec<ValidationResult> {
         self.validation_issues
     }
 }
 
 pub struct LoadResult {
     pub instance: Option<LinkMLInstance>,
-    pub validation_issues: Vec<ValidationIssue>,
+    pub validation_issues: Vec<ValidationResult>,
 }
 
 impl LoadResult {
     pub fn has_errors(&self) -> bool {
-        self.validation_issues
-            .iter()
-            .any(|d| d.severity == Severity::Error)
+        self.validation_issues.iter().any(|d| d.severity.is_error())
     }
 
     pub fn into_instance(self) -> std::result::Result<LinkMLInstance, LinkMLError> {
@@ -705,13 +716,13 @@ impl LinkMLInstance {
 
         let mut soft_match: Option<(&ClassView, usize)> = None;
         for c in &cand_refs {
-            let mut tmp_diags = ValidationIssueSink::default();
+            let mut tmp_diags = ValidationResultSink::default();
             if let Ok(_tmp) =
                 Self::parse_object_fixed_class(map.clone(), c, sv, conv, Vec::new(), &mut tmp_diags)
             {
                 let diag_vec = tmp_diags.into_vec();
                 let has_blocking_error = diag_vec.iter().any(|d| {
-                    d.severity == Severity::Error && d.code != ValidationIssueCode::UnknownSlot
+                    d.severity.is_error() && d.problem_type != ValidationProblemType::UndeclaredSlot
                 });
                 if has_blocking_error {
                     continue;
@@ -719,7 +730,8 @@ impl LinkMLInstance {
                 let unknown_count = diag_vec
                     .iter()
                     .filter(|d| {
-                        d.severity == Severity::Error && d.code == ValidationIssueCode::UnknownSlot
+                        d.severity.is_error()
+                            && d.problem_type == ValidationProblemType::UndeclaredSlot
                     })
                     .count();
                 if unknown_count == 0 {
@@ -742,7 +754,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         let mut values = HashMap::new();
         for (k, v) in map.into_iter() {
@@ -796,7 +808,7 @@ impl LinkMLInstance {
         conv: &Converter,
         inside_list: bool,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         match (inside_list, value) {
             (false, JsonValue::Array(arr)) => {
@@ -837,7 +849,7 @@ impl LinkMLInstance {
                     path_to_string(&path)
                 );
                 Err(LinkMLError::single(
-                    ValidationIssueCode::InvalidContainerType,
+                    ValidationProblemType::SlotRangeViolation,
                     path.clone(),
                     msg,
                 ))
@@ -859,7 +871,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         match value {
             JsonValue::Object(map) => {
@@ -902,7 +914,7 @@ impl LinkMLInstance {
                     path_to_string(&path)
                 );
                 Err(LinkMLError::single(
-                    ValidationIssueCode::InvalidContainerType,
+                    ValidationProblemType::SlotRangeViolation,
                     path.clone(),
                     msg,
                 ))
@@ -917,11 +929,11 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         let sl = slot.ok_or_else(|| {
             LinkMLError::single(
-                ValidationIssueCode::MissingSlotContext,
+                ValidationProblemType::ParsingError,
                 path.clone(),
                 format!(
                     "list requires slot at {} for class={}",
@@ -960,7 +972,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         let base_class = match slot {
             Some(sl) => sl.get_range_class(),
@@ -968,7 +980,7 @@ impl LinkMLInstance {
         }
         .ok_or_else(|| {
             LinkMLError::single(
-                ValidationIssueCode::MissingClassContext,
+                ValidationProblemType::ParsingError,
                 path.clone(),
                 format!("object requires class or slot at {}", path_to_string(&path)),
             )
@@ -1029,12 +1041,12 @@ impl LinkMLInstance {
         slot: Option<SlotView>,
         sv: &SchemaView,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         let sl = slot.ok_or_else(|| {
             let classview_name = class.name().to_string();
             LinkMLError::single(
-                ValidationIssueCode::MissingSlotContext,
+                ValidationProblemType::ParsingError,
                 path.clone(),
                 format!(
                     "scalar requires slot for at {} {}",
@@ -1071,7 +1083,7 @@ impl LinkMLInstance {
         conv: &Converter,
         inside_list: bool,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         if let Some(ref sl) = slot {
             let container_mode = sl.determine_slot_container_mode();
@@ -1122,7 +1134,7 @@ impl LinkMLInstance {
         conv: &Converter,
         inside_list: bool,
     ) -> LoadResult {
-        let mut sink = ValidationIssueSink::default();
+        let mut sink = ValidationResultSink::default();
         let result = Self::from_json_internal(
             value,
             class,
@@ -1155,7 +1167,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         let class_range: Option<ClassView> = list_slot.get_range_class();
         let slot_for_item = if class_range.is_some() {
@@ -1183,7 +1195,7 @@ impl LinkMLInstance {
                 .cloned()
                 .ok_or_else(|| {
                     LinkMLError::single(
-                        ValidationIssueCode::MissingClassContext,
+                        ValidationProblemType::ParsingError,
                         path.clone(),
                         "list item class context",
                     )
@@ -1203,7 +1215,7 @@ impl LinkMLInstance {
         sv: &SchemaView,
         conv: &Converter,
         path: Vec<String>,
-        validation_issues: &mut ValidationIssueSink,
+        validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         let range_cv = map_slot
             .definition()
@@ -1212,7 +1224,7 @@ impl LinkMLInstance {
             .and_then(|r| sv.get_class(&Identifier::new(r), conv).ok().flatten())
             .ok_or_else(|| {
                 LinkMLError::single(
-                    ValidationIssueCode::MissingClassContext,
+                    ValidationProblemType::ParsingError,
                     path.clone(),
                     format!(
                         "mapping slot must have class range at {}",
@@ -1273,7 +1285,7 @@ impl LinkMLInstance {
                 let scalar_slot = Self::find_scalar_slot_for_inlined_map(&range_cv, key_slot_name)
                     .ok_or_else(|| {
                         LinkMLError::single(
-                            ValidationIssueCode::MissingSlotContext,
+                            ValidationProblemType::ParsingError,
                             path.clone(),
                             format!(
                                 "no scalar slot available for inlined mapping at {}",
@@ -1369,7 +1381,7 @@ pub fn load_json_str(
 fn collect_validation_issues(
     value: &LinkMLInstance,
     path: &mut Vec<String>,
-    sink: &mut ValidationIssueSink,
+    sink: &mut ValidationResultSink,
 ) {
     match value {
         LinkMLInstance::Scalar {
@@ -1414,8 +1426,8 @@ fn collect_validation_issues(
     }
 }
 
-pub fn validate_issues(value: &LinkMLInstance) -> Vec<ValidationIssue> {
-    let mut sink = ValidationIssueSink::default();
+pub fn validate_issues(value: &LinkMLInstance) -> Vec<ValidationResult> {
+    let mut sink = ValidationResultSink::default();
     let mut path = Vec::new();
     collect_validation_issues(value, &mut path, &mut sink);
     sink.into_vec()
@@ -1423,11 +1435,8 @@ pub fn validate_issues(value: &LinkMLInstance) -> Vec<ValidationIssue> {
 
 pub fn validate(value: &LinkMLInstance) -> std::result::Result<(), String> {
     let validation_issues = validate_issues(value);
-    match validation_issues
-        .iter()
-        .find(|d| matches!(d.severity, Severity::Error))
-    {
-        Some(diag) => Err(diag.message.clone()),
+    match validation_issues.iter().find(|d| d.severity.is_error()) {
+        Some(diag) => Err(diag.detail.clone()),
         None => Ok(()),
     }
 }
