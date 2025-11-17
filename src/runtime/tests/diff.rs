@@ -304,3 +304,79 @@ fn personinfo_invalid_fails() {
             && d.subject.iter().any(|seg| seg == "unknown_attr")
     ));
 }
+
+#[test]
+fn diff_and_patch_tolerate_validation_errors() {
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let container = class_in_schema(&sv, &schema, "Container");
+    let invalid_result = load_yaml_file(
+        Path::new(&info_path("container_person_bad_email.yaml")),
+        &sv,
+        &container,
+        &conv,
+    )
+    .unwrap();
+    assert!(invalid_result.has_errors());
+    let invalid_instance = invalid_result
+        .into_instance_tolerate_errors()
+        .expect("instance should still be returned");
+    let valid_instance = load_instance(
+        Path::new(&info_path("example_personinfo_data.yaml")),
+        &sv,
+        &container,
+        &conv,
+    );
+    let deltas = diff(&invalid_instance, &valid_instance, DiffOptions::default());
+    assert!(!deltas.is_empty());
+    let (patched, _trace) = patch(
+        &invalid_instance,
+        &deltas,
+        linkml_runtime::diff::PatchOptions {
+            ignore_no_ops: true,
+            treat_missing_as_null: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(patched.to_json(), valid_instance.to_json());
+}
+
+#[test]
+fn diff_and_patch_invalid_target() {
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let container = class_in_schema(&sv, &schema, "Container");
+    let valid_instance = load_instance(
+        Path::new(&info_path("example_personinfo_data.yaml")),
+        &sv,
+        &container,
+        &conv,
+    );
+    let invalid_result = load_yaml_file(
+        Path::new(&info_path("container_person_bad_email.yaml")),
+        &sv,
+        &container,
+        &conv,
+    )
+    .unwrap();
+    assert!(invalid_result.has_errors());
+    let invalid_instance = invalid_result
+        .into_instance_tolerate_errors()
+        .expect("instance should still be returned");
+    let deltas = diff(&valid_instance, &invalid_instance, DiffOptions::default());
+    assert!(!deltas.is_empty());
+    let (patched, _trace) = patch(
+        &valid_instance,
+        &deltas,
+        linkml_runtime::diff::PatchOptions {
+            ignore_no_ops: true,
+            treat_missing_as_null: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(patched.to_json(), invalid_instance.to_json());
+}

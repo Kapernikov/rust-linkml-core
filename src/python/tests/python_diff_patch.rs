@@ -39,6 +39,26 @@ fn diff_and_patch_via_python() {
                 data_path("person_valid.yaml").to_str().unwrap(),
             )
             .unwrap();
+        locals
+            .set_item(
+                "personinfo_schema_path",
+                data_path("personinfo.yaml").to_str().unwrap(),
+            )
+            .unwrap();
+        locals
+            .set_item(
+                "container_valid_path",
+                data_path("example_personinfo_data.yaml").to_str().unwrap(),
+            )
+            .unwrap();
+        locals
+            .set_item(
+                "container_invalid_path",
+                data_path("container_person_bad_email.yaml")
+                    .to_str()
+                    .unwrap(),
+            )
+            .unwrap();
 
         pyo3::py_run!(
             py,
@@ -97,6 +117,28 @@ assert result2.trace.failed == []
 bad_delta = lr.Delta(['bogus'], 'remove', old='x')
 bad_result = lr.patch(older, [bad_delta])
 assert bad_result.trace.failed == [['bogus']]
+
+# Containers under personinfo schema still deserialize when validation errors exist.
+sv_info = lr.make_schema_view(personinfo_schema_path)
+container_cls = sv_info.get_class_view('Container')
+valid_container, valid_issues = lr.load_yaml(container_valid_path, sv_info, container_cls)
+invalid_container, invalid_issues = lr.load_yaml(container_invalid_path, sv_info, container_cls)
+assert valid_container is not None
+assert invalid_container is not None
+assert_no_errors(valid_issues)
+assert any(issue.severity == 'error' for issue in invalid_issues), invalid_issues
+
+deltas_invalid = lr.diff(valid_container, invalid_container)
+assert deltas_invalid
+patched_invalid = lr.patch(valid_container, deltas_invalid)
+assert patched_invalid.trace.failed == []
+assert patched_invalid.value.as_python() == invalid_container.as_python()
+
+deltas_valid = lr.diff(invalid_container, valid_container)
+assert deltas_valid
+patched_valid = lr.patch(invalid_container, deltas_valid)
+assert patched_valid.trace.failed == []
+assert patched_valid.value.as_python() == valid_container.as_python()
 "#
         );
     });

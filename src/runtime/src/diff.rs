@@ -1,4 +1,4 @@
-use crate::{LResult, LinkMLError, LinkMLInstance, NodeId, ValidationResultSink};
+use crate::{LResult, LinkMLInstance, NodeId, ValidationResultSink};
 use linkml_schemaview::{
     converter::Converter,
     schemaview::{ClassView, SchemaView, SlotView},
@@ -691,7 +691,7 @@ fn apply_delta_root(
                 let slot_clone = slot_opt.clone();
                 let new_node = with_converter(schema_view, v, move |value, sv, conv| {
                     LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
-                        .into_instance()
+                        .into_instance_tolerate_errors()
                 })?;
                 mark_added_subtree(&new_node, trace);
                 *current = new_node;
@@ -708,7 +708,7 @@ fn apply_delta_root(
                     let slot_clone = slot_opt.clone();
                     let new_node = with_converter(schema_view, v, move |value, sv, conv| {
                         LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
-                            .into_instance()
+                            .into_instance_tolerate_errors()
                     })?;
                     if should_skip_update(current, &new_node, opts) {
                         return Ok(true);
@@ -752,7 +752,7 @@ fn apply_delta_object(
             || {
                 with_converter(schema_view, value, move |val, sv, conv| {
                     LinkMLInstance::from_json(val, class_clone, slot_clone, sv, conv, false)
-                        .into_instance()
+                        .into_instance_tolerate_errors()
                 })
             },
             OBJECT_DELTA_CONFIG,
@@ -798,9 +798,8 @@ fn apply_delta_mapping(
                         Vec::new(),
                         &mut diags,
                     )?;
-                    if diags.has_errors() {
-                        return Err(LinkMLError::new(diags.into_vec()));
-                    }
+                    // Diagnostics recorded in `diags` are intentionally ignored here so patching
+                    // can proceed even if validation failures were observed.
                     Ok(value)
                 })
             },
@@ -844,9 +843,8 @@ fn apply_delta_list(
                     Vec::new(),
                     &mut diags,
                 )?;
-                if diags.has_errors() {
-                    return Err(LinkMLError::new(diags.into_vec()));
-                }
+                // Diagnostics recorded in `diags` are intentionally ignored here so patching
+                // can proceed even if validation failures were observed.
                 Ok(value)
             })
         });

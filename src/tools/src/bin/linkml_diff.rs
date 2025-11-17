@@ -9,6 +9,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use linkml_tools::validation_utils::report_validation_issues;
+
 #[derive(Parser)]
 #[command(name = "linkml-diff")]
 struct Args {
@@ -41,8 +43,9 @@ fn load_value(
     } else {
         load_yaml_file(path, sv, class, conv)
     }?;
+    report_validation_issues(path, &result.validation_issues);
     result
-        .into_instance()
+        .into_instance_tolerate_errors()
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
 
