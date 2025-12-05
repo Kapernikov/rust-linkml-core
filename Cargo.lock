@@ -936,7 +936,6 @@ name = "linkml_runtime"
 version = "0.1.0"
 dependencies = [
  "assert_cmd",
- "clap",
  "linkml_meta",
  "once_cell",
  "oxrdf",
