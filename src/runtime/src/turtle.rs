@@ -634,7 +634,8 @@ fn replace_iris(out: &str, conv: &Converter) -> IoResult<String> {
             continue;
         };
         result.push_str(&out[last..full_match.start()]);
-        let replacement = if iri_match.as_str() == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" {
+        let replacement = if iri_match.as_str() == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+        {
             "a".to_string()
         } else if let Ok(curie) = conv.compress(iri_match.as_str()) {
             curie
