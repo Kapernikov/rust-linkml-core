@@ -18,6 +18,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+mod regex_support;
 mod constraints;
 use constraints::{run_object_constraints, run_slot_constraints};
 

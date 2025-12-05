@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
-use regex::Regex;
 
+use crate::regex_support::Regex;
 use crate::{InstancePath, ValidationProblemType, ValidationResultSink};
 use linkml_schemaview::schemaview::{ClassView, SlotView};
 use serde_json::Value as JsonValue;
