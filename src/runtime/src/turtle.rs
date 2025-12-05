@@ -11,8 +11,8 @@ use oxrdf::{BlankNode, Literal, NamedNode, Subject, Term, Triple};
 use oxttl::turtle::WriterTurtleSerializer;
 use oxttl::TurtleSerializer;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use regex::Regex;
 
+use crate::regex_support::Regex;
 use crate::LinkMLInstance;
 
 pub struct TurtleOptions {
@@ -602,21 +602,8 @@ pub fn write_turtle<W: Write>(
         LinkMLInstance::Null { .. } => {}
     }
     let out_buf = formatter.finish()?;
-    let mut out = String::from_utf8(out_buf).unwrap_or_default();
-    let iri_re = Regex::new(r"<([^>]+)>")
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-    out = iri_re
-        .replace_all(&out, |caps: &regex::Captures| {
-            let iri = &caps[1];
-            if iri == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" {
-                "a".to_string()
-            } else if let Ok(curie) = conv.compress(iri) {
-                curie
-            } else {
-                caps[0].to_string()
-            }
-        })
-        .to_string();
+    let out = String::from_utf8(out_buf).unwrap_or_default();
+    let out = replace_iris(&out, conv)?;
     w.write_all(header.as_bytes())?;
     w.write_all(out.as_bytes())?;
     Ok(())
@@ -632,4 +619,32 @@ pub fn turtle_to_string(
     let mut buf = Vec::new();
     write_turtle(value, sv, schema, conv, &mut buf, options)?;
     String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+fn replace_iris(out: &str, conv: &Converter) -> IoResult<String> {
+    let iri_re = Regex::new(r"<([^>]+)>")
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
+    let mut result = String::with_capacity(out.len());
+    let mut last = 0;
+    for caps in iri_re.captures_iter(out) {
+        let Some(full_match) = caps.get(0) else {
+            continue;
+        };
+        let Some(iri_match) = caps.get(1) else {
+            continue;
+        };
+        result.push_str(&out[last..full_match.start()]);
+        let replacement = if iri_match.as_str() == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+        {
+            "a".to_string()
+        } else if let Ok(curie) = conv.compress(iri_match.as_str()) {
+            curie
+        } else {
+            full_match.as_str().to_string()
+        };
+        result.push_str(&replacement);
+        last = full_match.end();
+    }
+    result.push_str(&out[last..]);
+    Ok(result)
 }

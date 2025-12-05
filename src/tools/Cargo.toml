@@ -40,7 +40,9 @@ predicates = "2"
 tempfile = "3"
 
 [features]
-default = ["resolve", "ttl", "curies"]
+default = ["resolve", "ttl", "curies", "full_regex"]
 resolve = ["linkml_schemaview/resolve", "linkml_runtime/resolve"]
 ttl = ["linkml_runtime/ttl"]
 curies = ["linkml_runtime/curies", "linkml_schemaview/curies"]
+full_regex = ["linkml_runtime/full_regex"]
+slim = ["linkml_runtime/slim"]

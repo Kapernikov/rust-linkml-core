@@ -18,6 +18,8 @@ serde_yml = "0.0.12"
 serde_path_to_error = "0.1.17"
 
 [features]
-default = []
+default = ["full_regex"]
 stubgen = ["dep:pyo3-stub-gen", "linkml_meta/stubgen"]
 curies = ["linkml_runtime/curies"]
+full_regex = ["linkml_runtime/full_regex"]
+slim = ["linkml_runtime/slim"]
