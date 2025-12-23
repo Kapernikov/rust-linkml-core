@@ -238,3 +238,56 @@ fn invalid_path_after_index() {
 
     assert!(matches.is_empty(), "invalid slot after index should fail");
 }
+
+// ============================================================================
+// Tests for subclass slot resolution
+// ============================================================================
+
+#[test]
+fn resolves_base_class_slot_through_index() {
+    let sv = load_indexed_schema();
+
+    // Path: ["locations", "0", "name"] - name is on BaseLocation
+    let matches = sv
+        .slots_for_path(&Identifier::new("Container"), ["locations", "0", "name"])
+        .unwrap();
+
+    assert!(!matches.is_empty(), "should resolve base class slot");
+    assert!(matches.iter().any(|s| s.name == "name"));
+}
+
+#[test]
+fn resolves_subclass_slot_through_index() {
+    let sv = load_indexed_schema();
+
+    // Path: ["locations", "0", "coordinates"] - coordinates is on SpotLocation (subclass)
+    // Range is BaseLocation, but SpotLocation inherits from it
+    let matches = sv
+        .slots_for_path(
+            &Identifier::new("Container"),
+            ["locations", "0", "coordinates"],
+        )
+        .unwrap();
+
+    assert!(!matches.is_empty(), "should resolve subclass slot");
+    assert!(matches.iter().any(|s| s.name == "coordinates"));
+}
+
+#[test]
+fn resolves_multiple_subclass_slots() {
+    let sv = load_indexed_schema();
+
+    // Both SpotLocation.coordinates and AreaLocation.boundary should be findable
+    let coords = sv
+        .slots_for_path(
+            &Identifier::new("Container"),
+            ["locations", "0", "coordinates"],
+        )
+        .unwrap();
+    let boundary = sv
+        .slots_for_path(&Identifier::new("Container"), ["locations", "0", "boundary"])
+        .unwrap();
+
+    assert!(!coords.is_empty(), "should resolve SpotLocation.coordinates");
+    assert!(!boundary.is_empty(), "should resolve AreaLocation.boundary");
+}

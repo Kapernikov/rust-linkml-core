@@ -121,12 +121,28 @@ impl SchemaView {
                     .iter()
                     .filter_map(|ri| ri.range_class.clone())
                 {
+                    // Add the range class itself
                     let key = (
                         range_class.schema_id().to_string(),
                         range_class.name().to_string(),
                     );
                     if seen_next.insert(key) {
-                        next_classes.push(range_class);
+                        next_classes.push(range_class.clone());
+                    }
+
+                    // Also add all subclasses (descendants) of the range class
+                    // This allows paths like ["locations", "0", "SpotLocation_coordinates"]
+                    // where locations has range BaseLocation but SpotLocation inherits from it
+                    if let Ok(descendants) = range_class.get_descendants(true, true) {
+                        for descendant in descendants {
+                            let desc_key = (
+                                descendant.schema_id().to_string(),
+                                descendant.name().to_string(),
+                            );
+                            if seen_next.insert(desc_key) {
+                                next_classes.push(descendant);
+                            }
+                        }
                     }
                 }
             }

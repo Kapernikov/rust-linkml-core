@@ -49,3 +49,29 @@ classes:
     attributes:
       label:
         range: string
+
+  # Classes for testing subclass slot resolution
+  BaseLocation:
+    attributes:
+      name:
+        range: string
+
+  SpotLocation:
+    is_a: BaseLocation
+    attributes:
+      coordinates:
+        range: string
+
+  AreaLocation:
+    is_a: BaseLocation
+    attributes:
+      boundary:
+        range: string
+
+  Container:
+    attributes:
+      locations:
+        description: Range is BaseLocation, but subclasses should be resolvable
+        range: BaseLocation
+        multivalued: true
+        inlined_as_list: true
