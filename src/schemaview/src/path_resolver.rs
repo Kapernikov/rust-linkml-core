@@ -3,15 +3,18 @@ use std::collections::HashSet;
 use crate::classview::ClassView;
 use crate::identifier::Identifier;
 use crate::schemaview::{SchemaView, SchemaViewError};
-use crate::slotview::SlotView;
+use crate::slotview::{SlotContainerMode, SlotView};
 
 impl SchemaView {
     /// Resolve a slot path starting from `class_id`, returning every [`SlotView`]
     /// reachable at the terminal segment.
     ///
-    /// The `path` must contain slot names (no object data paths), and each step
-    /// is matched against the slots visible on the current class context. When
-    /// a segment fans out (e.g. due to unions, mixins, or subclass overrides),
+    /// The path may contain:
+    /// - Slot names matched against the current class context
+    /// - List indices (numeric like "0" or identifier-based like "person_id")
+    /// - Mapping keys (any string) for slots with `inlined: true` and a key slot
+    ///
+    /// When a segment fans out (e.g. due to unions, mixins, or subclass overrides),
     /// the traversal keeps every branch so ambiguity is preserved in the final
     /// result.
     pub fn slots_for_path<'a, I>(
@@ -40,20 +43,61 @@ impl SchemaView {
                 Self::collect_segment_matches(&current_classes, segment);
 
             if segment_matches.is_empty() {
+                // No slot matched - path invalid
                 return Ok(Vec::new());
             }
 
-            terminal_matches = segment_matches;
+            terminal_matches = segment_matches.clone();
 
-            if segments.peek().is_some() {
+            // Check if the matched slots have indexed container modes (List or Mapping)
+            let requires_index = Self::slots_require_index(&segment_matches);
+
+            if let Some(next_segment) = segments.peek() {
                 if next_classes.is_empty() {
-                    return Ok(Vec::new());
+                    // Scalar slot with no range class - if requires index, consume it
+                    if requires_index {
+                        segments.next(); // consume the index segment
+                        // No more traversal possible after scalar list
+                    }
+                    // If there are still segments after this, path is invalid
+                    if segments.peek().is_some() {
+                        return Ok(Vec::new());
+                    }
+                } else if requires_index {
+                    // Consume the index/key segment - it's not a slot name
+                    // First check if it could also be a valid slot name (ambiguity)
+                    let (potential_slot_matches, _) =
+                        Self::collect_segment_matches(&next_classes, next_segment);
+
+                    if potential_slot_matches.is_empty() {
+                        // Not a slot name, must be an index/key - skip it
+                        segments.next();
+                    }
+                    // If it IS a valid slot name, don't consume - let next iteration handle it
+                    // (This handles cases where someone writes ["items", "name"] instead of
+                    // ["items", "0", "name"] - we try slot name first)
+
+                    current_classes = next_classes;
+                } else {
+                    current_classes = next_classes;
                 }
-                current_classes = next_classes;
             }
         }
 
         Ok(terminal_matches)
+    }
+
+    /// Check if any of the matched slots have List or Mapping container mode,
+    /// meaning the next path segment should be treated as an index/key.
+    fn slots_require_index(slots: &[SlotView]) -> bool {
+        slots.iter().any(|slot| {
+            slot.get_range_info().iter().any(|ri| {
+                matches!(
+                    ri.slot_container_mode,
+                    SlotContainerMode::List | SlotContainerMode::Mapping
+                )
+            })
+        })
     }
 
     fn collect_segment_matches(
