@@ -291,3 +291,20 @@ fn resolves_multiple_subclass_slots() {
     assert!(!coords.is_empty(), "should resolve SpotLocation.coordinates");
     assert!(!boundary.is_empty(), "should resolve AreaLocation.boundary");
 }
+
+#[test]
+fn resolves_subclass_slot_with_identifier_index() {
+    let sv = load_indexed_schema();
+
+    // Path: ["locations", "SOME_IDENTIFIER", "coordinates"]
+    // Using a non-numeric identifier as the index, then resolving a subclass slot
+    let matches = sv
+        .slots_for_path(
+            &Identifier::new("Container"),
+            ["locations", "SOME_IDENTIFIER", "coordinates"],
+        )
+        .unwrap();
+
+    assert!(!matches.is_empty(), "should resolve subclass slot with identifier index");
+    assert!(matches.iter().any(|s| s.name == "coordinates"));
+}
