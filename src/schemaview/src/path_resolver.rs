@@ -57,7 +57,7 @@ impl SchemaView {
                     // Scalar slot with no range class - if requires index, consume it
                     if requires_index {
                         segments.next(); // consume the index segment
-                        // No more traversal possible after scalar list
+                                         // No more traversal possible after scalar list
                     }
                     // If there are still segments after this, path is invalid
                     if segments.peek().is_some() {

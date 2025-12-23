@@ -137,7 +137,11 @@ fn resolves_list_index_identifier() {
         .slots_for_path(&Identifier::new("Root"), ["items", "some_id", "name"])
         .unwrap();
 
-    assert_eq!(matches.len(), 1, "should resolve through identifier-based index");
+    assert_eq!(
+        matches.len(),
+        1,
+        "should resolve through identifier-based index"
+    );
     assert_eq!(matches[0].name, "name");
 }
 
@@ -285,10 +289,16 @@ fn resolves_multiple_subclass_slots() {
         )
         .unwrap();
     let boundary = sv
-        .slots_for_path(&Identifier::new("Container"), ["locations", "0", "boundary"])
+        .slots_for_path(
+            &Identifier::new("Container"),
+            ["locations", "0", "boundary"],
+        )
         .unwrap();
 
-    assert!(!coords.is_empty(), "should resolve SpotLocation.coordinates");
+    assert!(
+        !coords.is_empty(),
+        "should resolve SpotLocation.coordinates"
+    );
     assert!(!boundary.is_empty(), "should resolve AreaLocation.boundary");
 }
 
@@ -305,6 +315,9 @@ fn resolves_subclass_slot_with_identifier_index() {
         )
         .unwrap();
 
-    assert!(!matches.is_empty(), "should resolve subclass slot with identifier index");
+    assert!(
+        !matches.is_empty(),
+        "should resolve subclass slot with identifier index"
+    );
     assert!(matches.iter().any(|s| s.name == "coordinates"));
 }
