@@ -321,3 +321,100 @@ fn resolves_subclass_slot_with_identifier_index() {
     );
     assert!(matches.iter().any(|s| s.name == "coordinates"));
 }
+
+// ============================================================================
+// Tests for subclass slots on starting class (no indexing needed)
+// ============================================================================
+
+#[test]
+fn resolves_subclass_slot_directly() {
+    let sv = load_indexed_schema();
+
+    // Path: ["signallingpost_code"] starting from Asset
+    // signallingpost_code is on SignallingPost which inherits from Asset
+    let matches = sv
+        .slots_for_path(&Identifier::new("Asset"), ["signallingpost_code"])
+        .unwrap();
+
+    assert!(
+        !matches.is_empty(),
+        "should find subclass slot when starting from base class"
+    );
+    assert!(matches.iter().any(|s| s.name == "signallingpost_code"));
+}
+
+#[test]
+fn resolves_base_class_slot_directly() {
+    let sv = load_indexed_schema();
+
+    // Path: ["asset_name"] starting from Asset - should still work
+    let matches = sv
+        .slots_for_path(&Identifier::new("Asset"), ["asset_name"])
+        .unwrap();
+
+    assert!(!matches.is_empty(), "should find base class slot");
+    assert!(matches.iter().any(|s| s.name == "asset_name"));
+}
+
+// ============================================================================
+// Tests for non-inlined references (should NOT traverse)
+// ============================================================================
+
+#[test]
+fn does_not_traverse_non_inlined_reference() {
+    let sv = load_indexed_schema();
+
+    // Path: ["owned_asset", "asset_name"]
+    // owned_asset is inlined: false (just a foreign key), should NOT traverse
+    let matches = sv
+        .slots_for_path(
+            &Identifier::new("AssetHolder"),
+            ["owned_asset", "asset_name"],
+        )
+        .unwrap();
+
+    assert!(
+        matches.is_empty(),
+        "should NOT traverse through non-inlined reference"
+    );
+}
+
+#[test]
+fn traverses_inlined_reference() {
+    let sv = load_indexed_schema();
+
+    // Path: ["embedded_asset", "asset_name"]
+    // embedded_asset is inlined: true, SHOULD traverse
+    let matches = sv
+        .slots_for_path(
+            &Identifier::new("AssetHolder"),
+            ["embedded_asset", "asset_name"],
+        )
+        .unwrap();
+
+    assert!(
+        !matches.is_empty(),
+        "should traverse through inlined reference"
+    );
+    assert!(matches.iter().any(|s| s.name == "asset_name"));
+}
+
+#[test]
+fn traverses_inlined_to_subclass_slot() {
+    let sv = load_indexed_schema();
+
+    // Path: ["embedded_asset", "signallingpost_code"]
+    // embedded_asset is inlined, and signallingpost_code is on SignallingPost subclass
+    let matches = sv
+        .slots_for_path(
+            &Identifier::new("AssetHolder"),
+            ["embedded_asset", "signallingpost_code"],
+        )
+        .unwrap();
+
+    assert!(
+        !matches.is_empty(),
+        "should traverse inlined and find subclass slot"
+    );
+    assert!(matches.iter().any(|s| s.name == "signallingpost_code"));
+}

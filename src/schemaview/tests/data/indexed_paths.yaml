@@ -75,3 +75,29 @@ classes:
         range: BaseLocation
         multivalued: true
         inlined_as_list: true
+
+  # Classes for testing non-inlined references
+  Asset:
+    attributes:
+      asset_id:
+        identifier: true
+        range: string
+      asset_name:
+        range: string
+
+  SignallingPost:
+    is_a: Asset
+    attributes:
+      signallingpost_code:
+        range: string
+
+  AssetHolder:
+    attributes:
+      owned_asset:
+        description: Non-inlined reference (just a foreign key)
+        range: Asset
+        inlined: false
+      embedded_asset:
+        description: Inlined asset (embedded data)
+        range: Asset
+        inlined: true

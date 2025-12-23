@@ -3,20 +3,23 @@ use std::collections::HashSet;
 use crate::classview::ClassView;
 use crate::identifier::Identifier;
 use crate::schemaview::{SchemaView, SchemaViewError};
-use crate::slotview::{SlotContainerMode, SlotView};
+use crate::slotview::{SlotContainerMode, SlotInlineMode, SlotView};
 
 impl SchemaView {
     /// Resolve a slot path starting from `class_id`, returning every [`SlotView`]
     /// reachable at the terminal segment.
     ///
     /// The path may contain:
-    /// - Slot names matched against the current class context
+    /// - Slot names matched against the current class context (and subclasses)
     /// - List indices (numeric like "0" or identifier-based like "person_id")
     /// - Mapping keys (any string) for slots with `inlined: true` and a key slot
     ///
     /// When a segment fans out (e.g. due to unions, mixins, or subclass overrides),
     /// the traversal keeps every branch so ambiguity is preserved in the final
     /// result.
+    ///
+    /// Note: Non-inlined (reference) slots are not traversed since they only
+    /// contain foreign keys, not embedded data.
     pub fn slots_for_path<'a, I>(
         &self,
         class_id: &Identifier,
@@ -31,10 +34,13 @@ impl SchemaView {
         }
 
         let conv = self.converter();
-        let mut current_classes = match self.get_class(class_id, &conv)? {
-            Some(cv) => vec![cv],
+        let base_class = match self.get_class(class_id, &conv)? {
+            Some(cv) => cv,
             None => return Err(SchemaViewError::NotFound),
         };
+
+        // Include the base class and all its subclasses for initial slot matching
+        let mut current_classes = Self::expand_with_descendants(&[base_class]);
 
         let mut terminal_matches: Vec<SlotView> = Vec::new();
 
@@ -100,6 +106,33 @@ impl SchemaView {
         })
     }
 
+    /// Expand a list of classes to include all their descendants (subclasses).
+    fn expand_with_descendants(classes: &[ClassView]) -> Vec<ClassView> {
+        let mut result = Vec::new();
+        let mut seen = HashSet::new();
+
+        for class in classes {
+            let key = (class.schema_id().to_string(), class.name().to_string());
+            if seen.insert(key) {
+                result.push(class.clone());
+            }
+
+            if let Ok(descendants) = class.get_descendants(true, true) {
+                for descendant in descendants {
+                    let desc_key = (
+                        descendant.schema_id().to_string(),
+                        descendant.name().to_string(),
+                    );
+                    if seen.insert(desc_key) {
+                        result.push(descendant);
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
     fn collect_segment_matches(
         classes: &[ClassView],
         segment: &str,
@@ -116,31 +149,35 @@ impl SchemaView {
             {
                 matches.push(slot.clone());
 
-                for range_class in slot
-                    .get_range_info()
-                    .iter()
-                    .filter_map(|ri| ri.range_class.clone())
-                {
-                    // Add the range class itself
-                    let key = (
-                        range_class.schema_id().to_string(),
-                        range_class.name().to_string(),
-                    );
-                    if seen_next.insert(key) {
-                        next_classes.push(range_class.clone());
+                for ri in slot.get_range_info().iter() {
+                    // Skip non-inlined references - they're just foreign keys,
+                    // not embedded data that can be traversed
+                    if ri.slot_inline_mode == SlotInlineMode::Reference {
+                        continue;
                     }
 
-                    // Also add all subclasses (descendants) of the range class
-                    // This allows paths like ["locations", "0", "SpotLocation_coordinates"]
-                    // where locations has range BaseLocation but SpotLocation inherits from it
-                    if let Ok(descendants) = range_class.get_descendants(true, true) {
-                        for descendant in descendants {
-                            let desc_key = (
-                                descendant.schema_id().to_string(),
-                                descendant.name().to_string(),
-                            );
-                            if seen_next.insert(desc_key) {
-                                next_classes.push(descendant);
+                    if let Some(range_class) = ri.range_class.clone() {
+                        // Add the range class itself
+                        let key = (
+                            range_class.schema_id().to_string(),
+                            range_class.name().to_string(),
+                        );
+                        if seen_next.insert(key) {
+                            next_classes.push(range_class.clone());
+                        }
+
+                        // Also add all subclasses (descendants) of the range class
+                        // This allows paths like ["locations", "0", "SpotLocation_coordinates"]
+                        // where locations has range BaseLocation but SpotLocation inherits from it
+                        if let Ok(descendants) = range_class.get_descendants(true, true) {
+                            for descendant in descendants {
+                                let desc_key = (
+                                    descendant.schema_id().to_string(),
+                                    descendant.name().to_string(),
+                                );
+                                if seen_next.insert(desc_key) {
+                                    next_classes.push(descendant);
+                                }
                             }
                         }
                     }
