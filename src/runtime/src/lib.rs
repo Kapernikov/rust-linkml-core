@@ -10,7 +10,9 @@
 )]
 
 use linkml_schemaview::identifier::Identifier;
-use linkml_schemaview::schemaview::{ClassView, SchemaView, SlotContainerMode, SlotView};
+use linkml_schemaview::schemaview::{
+    ClassView, SchemaView, SlotContainerMode, SlotInlineMode, SlotView,
+};
 use linkml_schemaview::Converter;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
@@ -1171,23 +1173,22 @@ impl LinkMLInstance {
         validation_issues: &mut ValidationResultSink,
     ) -> LResult<Self> {
         let class_range: Option<ClassView> = list_slot.get_range_class();
-        let slot_for_item = if class_range.is_some() {
-            None
-        } else {
-            Some(list_slot.clone())
+        let inline_mode = list_slot.determine_slot_inline_mode();
+        let slot_for_item = match inline_mode {
+            SlotInlineMode::Inline => None,
+            SlotInlineMode::Primitive | SlotInlineMode::Reference => Some(list_slot.clone()),
         };
-        let v_transformed = if let (Some(cr), JsonValue::String(s)) = (class_range.as_ref(), &value)
-        {
-            if let Some(id_slot) = cr.identifier_slot() {
-                let mut m = serde_json::Map::new();
-                m.insert(id_slot.name.clone(), JsonValue::String(s.clone()));
-                JsonValue::Object(m)
-            } else {
-                value
+
+        let mut v_transformed = value;
+        if matches!(inline_mode, SlotInlineMode::Inline) {
+            if let (Some(cr), JsonValue::String(s)) = (class_range.as_ref(), &v_transformed) {
+                if let Some(id_slot) = cr.identifier_slot() {
+                    let mut m = serde_json::Map::new();
+                    m.insert(id_slot.name.clone(), JsonValue::String(s.clone()));
+                    v_transformed = JsonValue::Object(m);
+                }
             }
-        } else {
-            value
-        };
+        }
         Self::from_json_internal(
             v_transformed,
             class_range
