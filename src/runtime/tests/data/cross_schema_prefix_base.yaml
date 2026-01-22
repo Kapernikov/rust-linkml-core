@@ -1,0 +1,10 @@
+id: https://example.com/base
+name: base
+prefixes:
+  base: https://example.com/base/
+default_prefix: base
+classes:
+  BaseClass:
+    attributes:
+      base_attr:
+        range: string

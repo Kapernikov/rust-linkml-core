@@ -38,7 +38,7 @@ fn convert_person_to_ttl() {
     .unwrap();
     let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
     assert!(ttl.contains("@prefix test: <https://example.com/test/> ."));
-    assert!(ttl.contains("<test:name> \"Alice\""));
+    assert!(ttl.contains("test:name \"Alice\""));
 }
 
 #[test]

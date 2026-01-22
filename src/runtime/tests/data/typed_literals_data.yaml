@@ -1,0 +1,4 @@
+name: test
+count: 42
+score: 3.14
+active: true

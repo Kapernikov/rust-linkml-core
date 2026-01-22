@@ -51,7 +51,6 @@ struct State {
     counter: usize,
     base: String,
     skolem: bool,
-    default_prefix: String,
 }
 
 impl State {
@@ -88,11 +87,25 @@ fn encode_path_part(s: &str) -> String {
     utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
 }
 
+fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> String {
+    // Get the canonical URI from the slot (respects slot_uri and originating schema's default_prefix)
+    let canonical = slot.canonical_uri();
+    canonical
+        .to_uri(conv)
+        .map(|u| u.0)
+        .unwrap_or_else(|_| canonical.to_string())
+}
+
 fn literal_and_type(value: &JsonValue, slot: &SlotView) -> (String, Option<String>) {
     let lit = literal_value(value);
     let dt = match slot.definition().range.as_deref() {
         Some("date") => Some("http://www.w3.org/2001/XMLSchema#date".to_string()),
         Some("datetime") => Some("http://www.w3.org/2001/XMLSchema#dateTime".to_string()),
+        Some("integer") => Some("http://www.w3.org/2001/XMLSchema#integer".to_string()),
+        Some("float") => Some("http://www.w3.org/2001/XMLSchema#float".to_string()),
+        Some("double") => Some("http://www.w3.org/2001/XMLSchema#double".to_string()),
+        Some("boolean") => Some("http://www.w3.org/2001/XMLSchema#boolean".to_string()),
+        Some("decimal") => Some("http://www.w3.org/2001/XMLSchema#decimal".to_string()),
         _ => None,
     };
     (lit, dt)
@@ -186,7 +199,29 @@ fn serialize_map<W: Write>(
         if skip {
             continue;
         }
-        let pred_iri = format!("{}:{}", state.default_prefix, k);
+        // Get predicate IRI from the slot's canonical URI
+        let pred_iri = match v {
+            LinkMLInstance::Scalar { slot, .. }
+            | LinkMLInstance::Null { slot, .. }
+            | LinkMLInstance::List { slot, .. }
+            | LinkMLInstance::Mapping { slot, .. } => slot_predicate_iri(slot, conv),
+            LinkMLInstance::Object { .. } => {
+                // For Object, look up the slot from the parent class
+                if let Some(cv) = class {
+                    if let Some(slot) = cv.slots().iter().find(|s| s.name == *k) {
+                        slot_predicate_iri(slot, conv)
+                    } else {
+                        // Slot not found in class - this shouldn't happen for valid data
+                        let canonical = cv.canonical_uri();
+                        let base = canonical.to_uri(conv).map(|u| u.0).unwrap_or_default();
+                        format!("{}/{}", base.trim_end_matches('/'), k)
+                    }
+                } else {
+                    // No class context - shouldn't happen
+                    k.clone()
+                }
+            }
+        };
         let predicate = NamedNode::new_unchecked(pred_iri.clone());
         match v {
             LinkMLInstance::Scalar { value, slot, .. } => {
@@ -447,11 +482,6 @@ pub fn write_turtle<W: Write>(
             format!("{}/", base)
         },
         skolem: options.skolem,
-        default_prefix: schema
-            .default_prefix
-            .as_deref()
-            .unwrap_or(&schema.name)
-            .to_string(),
     };
     let mut formatter = TurtleSerializer::new().for_writer(Vec::new());
     match value {

@@ -1,0 +1,18 @@
+id: https://example.com/sloturi
+name: sloturi
+prefixes:
+  sloturi: https://example.com/sloturi/
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+  skos: http://www.w3.org/2004/02/skos/core#
+default_prefix: sloturi
+classes:
+  Thing:
+    attributes:
+      name:
+        range: string
+      label:
+        slot_uri: rdfs:label
+        range: string
+      definition:
+        slot_uri: skos:definition
+        range: string
