@@ -1,0 +1,16 @@
+id: https://example.com/typed
+name: typed
+prefixes:
+  typed: https://example.com/typed/
+default_prefix: typed
+classes:
+  Thing:
+    attributes:
+      name:
+        range: string
+      count:
+        range: integer
+      score:
+        range: float
+      active:
+        range: boolean

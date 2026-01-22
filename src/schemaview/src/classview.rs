@@ -75,14 +75,18 @@ impl ClassView {
             }
 
             if let Some(parent) = &class_def.is_a {
-                if let Some(cv) = sv.get_classdefinition(&Identifier::new(parent), conv)? {
-                    gather(&cv, schema_uri, sv, conv, visited, acc)?;
+                if let Some((cv, parent_schema_uri)) =
+                    sv.get_classdefinition(&Identifier::new(parent), conv)?
+                {
+                    gather(&cv, &parent_schema_uri, sv, conv, visited, acc)?;
                 }
             }
             if let Some(mixins) = &class_def.mixins {
                 for mixin in mixins {
-                    if let Some(cv) = sv.get_classdefinition(&Identifier::new(mixin), conv)? {
-                        gather(&cv, schema_uri, sv, conv, visited, acc)?;
+                    if let Some((cv, mixin_schema_uri)) =
+                        sv.get_classdefinition(&Identifier::new(mixin), conv)?
+                    {
+                        gather(&cv, &mixin_schema_uri, sv, conv, visited, acc)?;
                     }
                 }
             }

@@ -1,0 +1,14 @@
+id: https://example.com/derived
+name: derived
+prefixes:
+  derived: https://example.com/derived/
+  base: https://example.com/base/
+default_prefix: derived
+imports:
+  - ./cross_schema_prefix_base
+classes:
+  DerivedClass:
+    is_a: BaseClass
+    attributes:
+      derived_attr:
+        range: string

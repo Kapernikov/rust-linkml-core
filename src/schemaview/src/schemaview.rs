@@ -1211,11 +1211,20 @@ impl SchemaView {
         }
     }
 
+    /// Returns the class definition and the URI of the schema where it is defined.
+    ///
+    /// # Returns
+    /// - `Ok(Some((class_def, schema_uri)))` - The class definition and the schema URI
+    ///   (e.g., `"https://example.com/myschema"`) where the class is defined. This is
+    ///   important for resolving the correct default prefix when the class is inherited
+    ///   across schemas with different default prefixes.
+    /// - `Ok(None)` - Class not found
+    /// - `Err(_)` - Error during lookup
     pub fn get_classdefinition(
         &self,
         id: &Identifier,
         conv: &Converter,
-    ) -> Result<Option<linkml_meta::ClassDefinition>, SchemaViewError> {
+    ) -> Result<Option<(linkml_meta::ClassDefinition, String)>, SchemaViewError> {
         // avoid using get_class
         match id {
             Identifier::Name(name) => {
@@ -1229,7 +1238,7 @@ impl SchemaView {
                                 .and_then(|classes| classes.get(&class_name).cloned())
                         })
                     });
-                    return Ok(class_opt);
+                    return Ok(class_opt.map(|c| (c, schema)));
                 }
                 Ok(None)
             }
@@ -1251,7 +1260,7 @@ impl SchemaView {
                                     .and_then(|classes| classes.get(&class_name).cloned())
                             })
                     });
-                    return Ok(class_opt);
+                    return Ok(class_opt.map(|c| (c, schema_uri)));
                 }
                 Ok(None)
             }
