@@ -553,10 +553,36 @@ impl PySlotView {
         self.inner.is_range_scalar()
     }
 
+    /// Resolved container shape for this slot's serialized form.
+    ///
+    /// Returns one of:
+    ///   - ``"SingleValue"`` — the slot holds a single value.
+    ///   - ``"List"`` — the slot serializes as a list.
+    ///   - ``"Mapping"`` — the slot serializes as a dict keyed by the range
+    ///     class's key/identifier slot.
+    ///
+    /// This resolves the interacting ``multivalued``, ``inlined``, and
+    /// ``inlined_as_list`` booleans from the LinkML slot definition, also
+    /// considering whether the range class has a key or identifier slot.
+    ///
+    /// For the raw booleans, use ``slot.definition.multivalued`` etc.
     fn container_mode(&self) -> String {
         format!("{:?}", self.inner.determine_slot_container_mode())
     }
 
+    /// Resolved inline behavior for this slot's serialized form.
+    ///
+    /// Returns one of:
+    ///   - ``"Inline"`` — the range object is serialized inline (nested).
+    ///   - ``"Primitive"`` — the range is a primitive type or enum, not a class.
+    ///   - ``"Reference"`` — the slot holds a reference (foreign key) to the
+    ///     range class rather than the object itself.
+    ///
+    /// This resolves the interacting ``inlined`` and ``inlined_as_list``
+    /// booleans, also considering whether the range class has an identifier
+    /// slot (classes without an identifier slot are always inlined).
+    ///
+    /// For the raw booleans, use ``slot.definition.inlined`` etc.
     fn inline_mode(&self) -> String {
         format!("{:?}", self.inner.determine_slot_inline_mode())
     }

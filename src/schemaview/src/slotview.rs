@@ -6,20 +6,57 @@ use crate::schemaview::{EnumView, SchemaView};
 use linkml_meta::poly::SlotExpression;
 use linkml_meta::{SlotDefinition, SlotExpressionOrSubtype};
 
+/// Resolved container shape for a slot's serialized form.
+///
+/// In the Python LinkML runtime, container behavior is controlled by the
+/// interacting `multivalued`, `inlined`, and `inlined_as_list` booleans on
+/// [`SlotDefinition`]. These booleans can conflict; `SlotContainerMode` is the
+/// resolved outcome after considering the slot definition, its range class,
+/// and whether that class has a key or identifier slot.
+///
+/// If you need the raw booleans, use [`SlotView::definition()`] to access the
+/// underlying [`SlotDefinition`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotContainerMode {
+    /// The slot holds a single value (Python: `multivalued=False`).
     SingleValue,
+    /// The slot serializes as a dictionary keyed by the range class's
+    /// key/identifier slot (Python: `multivalued=True`, `inlined=True`,
+    /// and the range class has a key or identifier slot).
     Mapping,
+    /// The slot serializes as a list (Python: `multivalued=True` and either
+    /// the range is a scalar, `inlined_as_list=True`, or the range class has
+    /// no key/identifier slot).
     List,
 }
 
+/// Resolved inline behavior for a slot's serialized form.
+///
+/// In the Python LinkML runtime, inline behavior is controlled by the
+/// interacting `inlined` and `inlined_as_list` booleans, plus whether the
+/// range class has an identifier slot. `SlotInlineMode` is the resolved
+/// outcome.
+///
+/// If you need the raw booleans, use [`SlotView::definition()`] to access the
+/// underlying [`SlotDefinition`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlotInlineMode {
+    /// The range object is serialized inline (nested) at this slot's position.
+    /// This is the case when the range class has no identifier slot (it
+    /// *must* be inlined), or when `inlined=True` / `inlined_as_list=True`.
     Inline,
+    /// The range is a primitive type or enum — there is no class to inline.
     Primitive,
+    /// The range class has an identifier slot and `inlined` is false, so the
+    /// slot holds a reference (e.g. a foreign key) rather than the object.
     Reference,
 }
 
+/// Pre-computed range information for a slot expression.
+///
+/// Caches the resolved range class/enum, whether the range is scalar, and the
+/// resolved [`SlotContainerMode`] and [`SlotInlineMode`] for a single slot
+/// expression (or any-of branch).
 #[derive(Clone)]
 pub struct RangeInfo {
     pub e: SlotExpressionOrSubtype,
@@ -310,12 +347,29 @@ impl SlotView {
             .is_none_or(|ri| ri.is_range_scalar)
     }
 
+    /// Returns the resolved container shape for this slot.
+    ///
+    /// This resolves the interacting `multivalued`, `inlined`, and
+    /// `inlined_as_list` booleans from the slot definition into a single
+    /// [`SlotContainerMode`] value, also considering whether the range class
+    /// has a key or identifier slot.
+    ///
+    /// See [`SlotContainerMode`] for the possible values and their meaning.
+    /// For the raw booleans, use [`SlotView::definition()`].
     pub fn determine_slot_container_mode(&self) -> SlotContainerMode {
         self.get_range_info()
             .first()
             .map_or(SlotContainerMode::SingleValue, |ri| ri.slot_container_mode)
     }
 
+    /// Returns the resolved inline behavior for this slot.
+    ///
+    /// This resolves the interacting `inlined` and `inlined_as_list` booleans
+    /// from the slot definition into a single [`SlotInlineMode`] value, also
+    /// considering whether the range class has an identifier slot.
+    ///
+    /// See [`SlotInlineMode`] for the possible values and their meaning.
+    /// For the raw booleans, use [`SlotView::definition()`].
     pub fn determine_slot_inline_mode(&self) -> SlotInlineMode {
         self.get_range_info()
             .first()
