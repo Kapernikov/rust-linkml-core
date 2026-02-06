@@ -293,6 +293,14 @@ impl SchemaViewData {
     }
 }
 
+/// Central entry point for querying a collection of LinkML schemas.
+///
+/// A `SchemaView` holds one or more [`SchemaDefinition`]s (a primary schema
+/// plus its imports) and provides lookup methods for classes, slots, enums,
+/// and types across all loaded schemas. Prefix/URI resolution is handled
+/// automatically via per-schema [`Converter`]s.
+///
+/// Cloning is cheap (shared `Arc` internals).
 #[derive(Clone)]
 pub struct SchemaView {
     pub(crate) data: Arc<ArcSwap<SchemaViewData>>,
@@ -562,6 +570,8 @@ impl SchemaView {
         self.index().enum_id_index.get(&key).cloned()
     }
 
+    /// Returns the tree root class: either the explicitly named class, or
+    /// the class marked with `tree_root=True` in the primary schema.
     pub fn get_tree_root_or(&self, class_name: Option<&str>) -> Option<ClassView> {
         let converter = self.converter_for_primary_schema()?;
         // if there is a class_name then its simple!
@@ -628,6 +638,7 @@ impl SchemaView {
         res
     }
 
+    /// Adds a schema to the view. The first schema added becomes the primary schema.
     pub fn add_schema(&mut self, schema: SchemaDefinition) -> Result<bool, String> {
         self.add_schema_with_import_ref(schema, None)
     }
@@ -744,10 +755,14 @@ impl SchemaView {
         self.with_data(|data| converter_from_schemas(data.schema_definitions.values()))
     }
 
+    /// Returns the CURIE converter for a single schema, built from that
+    /// schema's prefix declarations only.
     pub fn converter_for_schema(&self, schema_uri: &str) -> Option<Converter> {
         self.with_data(|data| data.converters.get(schema_uri).cloned())
     }
 
+    /// Returns the CURIE converter for the primary schema, or `None` if no
+    /// primary schema has been set.
     pub fn converter_for_primary_schema(&self) -> Option<Converter> {
         self.with_data(|data| {
             data.primary_schema
@@ -1078,6 +1093,8 @@ impl SchemaView {
         }
     }
 
+    /// Returns the import URI that was used to resolve the given schema, if
+    /// it was added via [`add_schema_with_import_ref`](Self::add_schema_with_import_ref).
     pub fn get_resolution_uri_of_schema(&self, schema_id: &str) -> Option<String> {
         let data = self.data();
         data.resolved_schema_imports
@@ -1091,6 +1108,8 @@ impl SchemaView {
             })
     }
 
+    /// Returns `(importing_schema_id, import_uri)` pairs for imports that
+    /// have not yet been satisfied by a call to [`add_schema_with_import_ref`](Self::add_schema_with_import_ref).
     pub fn get_unresolved_schemas(&self) -> Vec<(String, String)> {
         // every schemadefinition has imports. check if an import is not in our list
         let mut unresolved = Vec::new();
@@ -1267,6 +1286,8 @@ impl SchemaView {
         }
     }
 
+    /// Looks up a class by name, CURIE, or URI and returns a fully resolved
+    /// [`ClassView`] (with inherited slots).
     pub fn get_class(
         &self,
         id: &Identifier,
@@ -1419,6 +1440,7 @@ impl SchemaView {
         Ok(self.index().slot_entries.values().cloned().collect())
     }
 
+    /// Looks up a top-level slot by name, CURIE, or URI.
     pub fn get_slot(
         &self,
         id: &Identifier,
@@ -1463,6 +1485,8 @@ impl SchemaView {
         }
     }
 
+    /// Walks the `typeof` chain for a LinkML type and returns all ancestors
+    /// (the type itself first, then its parent, and so on up to the root).
     pub fn type_ancestors(
         &self,
         id: &Identifier,
@@ -1519,6 +1543,7 @@ impl SchemaView {
         Ok(out)
     }
 
+    /// Returns the primary schema (the first schema that was added to this view).
     pub fn primary_schema(&self) -> Option<SchemaDefinition> {
         self.with_data(|data| {
             data.primary_schema

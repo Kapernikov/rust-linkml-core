@@ -176,14 +176,22 @@ impl ClassView {
         })
     }
 
+    /// Returns the effective slots for this class, including slots inherited
+    /// from `is_a` parents and mixins, with `slot_usage` overrides applied.
     pub fn slots(&self) -> &[SlotView] {
         &self.data.slots
     }
 
+    /// Returns the raw [`ClassDefinition`] for this class (without inheritance).
     pub fn def(&self) -> &ClassDefinition {
         &self.data.class
     }
 
+    /// Returns a URI for this class, controlled by `native` and `expand`.
+    ///
+    /// - `native=true` uses the schema's default prefix; `native=false` prefers
+    ///   an explicit `class_uri` when set.
+    /// - `expand=true` returns a full URI; `expand=false` returns a CURIE.
     pub fn get_uri(
         &self,
         conv: &Converter,
@@ -278,6 +286,11 @@ impl ClassView {
         }
     }
 
+    /// Returns the slot marked with `designates_type=True`, if any.
+    ///
+    /// This is the type designator slot used during polymorphic
+    /// serialization/deserialization to indicate which subclass an instance
+    /// belongs to.
     pub fn get_type_designator_slot(&self) -> Option<&SlotDefinition> {
         self.data.slots.iter().find_map(|s| {
             if s.definition().designates_type.unwrap_or(false) {
@@ -288,6 +301,10 @@ impl ClassView {
         })
     }
 
+    /// Returns the value this class writes into the type designator slot.
+    ///
+    /// The format depends on the slot's range type: a full URI for `uri`
+    /// ranges, a CURIE for `uriorcurie`, or the plain class name for `string`.
     pub fn get_type_designator_value(
         &self,
         type_slot: &SlotDefinition,
@@ -306,6 +323,11 @@ impl ClassView {
         self.get_uri(conv, false, false)
     }
 
+    /// Returns all values that should be accepted as valid type designators
+    /// for this class during deserialization.
+    ///
+    /// This includes the canonical URI, native URI, and CURIE forms so that
+    /// data produced with different prefix settings can be round-tripped.
     pub fn get_accepted_type_designator_values(
         &self,
         type_slot: &SlotDefinition,
@@ -429,6 +451,12 @@ impl ClassView {
         Ok(())
     }
 
+    /// Returns classes that inherit from this class.
+    ///
+    /// - `recurse` — when `true`, returns the full transitive closure of
+    ///   descendants; when `false`, only direct children.
+    /// - `include_mixins` — when `true`, also considers classes that use this
+    ///   class as a mixin.
     pub fn get_descendants(
         &self,
         recurse: bool,
@@ -468,6 +496,7 @@ impl ClassView {
             .collect()
     }
 
+    /// Returns the `is_a` parent class, or `None` if this is a root class.
     pub fn parent_class(&self) -> Result<Option<ClassView>, SchemaViewError> {
         let conv = match self.data.sv.converter_for_schema(&self.data.schema_uri) {
             Some(c) => c,
@@ -479,6 +508,11 @@ impl ClassView {
         }
     }
 
+    /// Returns the slot marked as `key=True` or `identifier=True`, if any.
+    ///
+    /// This is the slot whose value uniquely identifies instances of this class.
+    /// Unlike [`identifier_slot`](Self::identifier_slot), this also matches
+    /// `key` slots (which are unique within a container but not globally).
     pub fn key_or_identifier_slot(&self) -> Option<&SlotView> {
         self.data.slots.iter().find(|s| {
             let d = s.definition();
@@ -486,6 +520,10 @@ impl ClassView {
         })
     }
 
+    /// Returns the slot marked as `identifier=True`, if any.
+    ///
+    /// An identifier slot provides a globally unique key for instances of this
+    /// class (as opposed to `key`, which is unique only within a container).
     pub fn identifier_slot(&self) -> Option<&SlotView> {
         self.data
             .slots

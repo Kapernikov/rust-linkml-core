@@ -246,6 +246,11 @@ impl SlotView {
         }
     }
 
+    /// Returns the effective (merged) slot definition.
+    ///
+    /// When a slot is inherited and refined via `slot_usage`, the definition
+    /// chain is merged so that overrides take precedence. For the raw,
+    /// unmerged definition list, use [`definitions()`](Self::definitions).
     pub fn definition(&self) -> &SlotDefinition {
         self.data.cached_definition.get_or_init(|| {
             let mut b = self.data.definitions[0].clone();
@@ -268,6 +273,8 @@ impl SlotView {
         })
     }
 
+    /// Returns the raw, unmerged slot definition chain (base slot first,
+    /// then `slot_usage` overrides in inheritance order).
     pub fn definitions(&self) -> &Vec<SlotDefinition> {
         &self.data.definitions
     }
@@ -306,6 +313,10 @@ impl SlotView {
         fallback
     }
 
+    /// Returns pre-computed [`RangeInfo`] for this slot's range expressions.
+    ///
+    /// When the slot uses `any_of`, one entry is returned per branch;
+    /// otherwise a single entry covers the slot's range.
     pub fn get_range_info(&self) -> &Vec<RangeInfo> {
         self.data.cached_range_info.get_or_init(|| {
             let def = self.definition();
@@ -329,18 +340,24 @@ impl SlotView {
         })
     }
 
+    /// Returns the range class for the primary range expression, if the range
+    /// is a class (as opposed to a type or enum).
     pub fn get_range_class(&self) -> Option<ClassView> {
         self.get_range_info()
             .first()
             .and_then(|ri| ri.range_class.clone())
     }
 
+    /// Returns the range enum for the primary range expression, if the range
+    /// is an enum.
     pub fn get_range_enum(&self) -> Option<EnumView> {
         self.get_range_info()
             .first()
             .and_then(|ri| ri.range_enum.clone())
     }
 
+    /// Returns `true` when the range is a scalar (type, enum, or the special
+    /// `Anything`/`AnyValue` classes) rather than a regular class.
     pub fn is_range_scalar(&self) -> bool {
         self.get_range_info()
             .first()

@@ -184,6 +184,7 @@ impl PySchemaView {
         })
     }
 
+    /// Returns the map of resolved imports: ``{(importing_schema_id, import_uri): resolved_schema_id}``.
     fn _get_resolved_schema_imports(&self) -> HashMap<(String, String), String> {
         self.inner._get_resolved_schema_imports()
     }
@@ -192,6 +193,7 @@ impl PySchemaView {
         self.inner.get_default_prefix_for_schema(schema_id, expand)
     }
 
+    /// Parse a YAML schema file and add it to the view.
     fn add_schema_from_path(&mut self, path: &str) -> PyResult<bool> {
         let schema =
             io::from_yaml(Path::new(path)).map_err(|e| PyException::new_err(e.to_string()))?;
@@ -202,6 +204,7 @@ impl PySchemaView {
         }
     }
 
+    /// Parse a YAML/JSON schema string and add it to the view.
     fn add_schema_str(&mut self, data: &str) -> PyResult<bool> {
         let deser = serde_yml::Deserializer::from_str(data);
         let schema: SchemaDefinition = serde_path_to_error::deserialize(deser)
@@ -213,6 +216,10 @@ impl PySchemaView {
         }
     }
 
+    /// Returns import URIs that have not yet been satisfied.
+    ///
+    /// Use ``get_unresolved_schema_refs()`` if you also need the importing
+    /// schema ID for each entry.
     fn get_unresolved_schemas(&self) -> Vec<String> {
         self.inner
             .get_unresolved_schemas()
@@ -221,10 +228,12 @@ impl PySchemaView {
             .collect()
     }
 
+    /// Returns ``(importing_schema_id, import_uri)`` pairs for unsatisfied imports.
     fn get_unresolved_schema_refs(&self) -> Vec<(String, String)> {
         self.inner.get_unresolved_schemas()
     }
 
+    /// Returns the import URI that was used to resolve the given schema ID.
     fn get_resolution_uri_of_schema(&self, id: &str) -> Option<String> {
         self.inner.get_resolution_uri_of_schema(id)
     }
@@ -313,6 +322,7 @@ impl PySchemaView {
             .map_err(|e| PyException::new_err(e.to_string()))
     }
 
+    /// Look up a class by name, CURIE, or URI.
     fn get_class_view(&self, id: &str) -> PyResult<Option<PyClassView>> {
         let conv = self.inner.converter();
         Ok(self
@@ -322,6 +332,7 @@ impl PySchemaView {
             .map(PyClassView::from))
     }
 
+    /// Look up a class by its expanded URI.
     fn get_class_view_by_uri(&self, uri: &str) -> PyResult<Option<PyClassView>> {
         Ok(self
             .inner
@@ -330,6 +341,7 @@ impl PySchemaView {
             .map(PyClassView::from))
     }
 
+    /// Look up a top-level slot by name, CURIE, or URI.
     fn get_slot_view(&self, id: &str) -> PyResult<Option<PySlotView>> {
         let conv = self.inner.converter();
         Ok(self
@@ -339,6 +351,7 @@ impl PySchemaView {
             .map(PySlotView::from))
     }
 
+    /// Look up a slot by its expanded URI.
     fn get_slot_view_by_uri(&self, uri: &str) -> PyResult<Option<PySlotView>> {
         Ok(self
             .inner
@@ -347,6 +360,7 @@ impl PySchemaView {
             .map(PySlotView::from))
     }
 
+    /// Look up an enum by name, CURIE, or URI.
     fn get_enum_view(&self, id: &str) -> PyResult<Option<PyEnumView>> {
         let conv = self.inner.converter();
         Ok(self
@@ -388,6 +402,7 @@ impl PySchemaView {
                                   ids.into_iter().collect()*/
     }
 
+    /// Returns all classes across every loaded schema.
     fn class_views(&self) -> PyResult<Vec<PyClassView>> {
         self.inner
             .class_views()
@@ -395,6 +410,7 @@ impl PySchemaView {
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
     }
 
+    /// Returns all enums across every loaded schema.
     fn enum_views(&self) -> PyResult<Vec<PyEnumView>> {
         self.inner
             .enum_views()
@@ -402,6 +418,7 @@ impl PySchemaView {
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
     }
 
+    /// Returns all unique slots across every loaded schema.
     fn slot_views(&self) -> PyResult<Vec<PySlotView>> {
         self.inner
             .slot_views()
@@ -409,6 +426,11 @@ impl PySchemaView {
             .map_err(|e| PyException::new_err(format!("{:?}", e)))
     }
 
+    /// Resolve a sequence of slot names starting from ``class_id``, walking
+    /// through range classes at each step.
+    ///
+    /// Returns multiple ``SlotView``s when the path is ambiguous (e.g. a slot
+    /// exists on several subclasses of an intermediate range class).
     fn slots_for_path(&self, class_id: &str, path: Vec<String>) -> PyResult<Vec<PySlotView>> {
         let slots = self
             .inner
@@ -463,6 +485,8 @@ impl PyClassView {
         self.inner.def().clone()
     }
 
+    /// Returns the effective slots for this class, including inherited slots
+    /// from ``is_a`` parents and mixins, with ``slot_usage`` overrides applied.
     fn slots(&self) -> PyResult<Vec<PySlotView>> {
         Ok(self
             .inner
@@ -473,6 +497,7 @@ impl PyClassView {
             .collect())
     }
 
+    /// Returns the ``is_a`` parent class, or ``None`` for a root class.
     fn parent_class(&self) -> PyResult<Option<PyClassView>> {
         self.inner
             .parent_class()
@@ -480,18 +505,24 @@ impl PyClassView {
             .map(|opt| opt.map(PyClassView::from))
     }
 
+    /// Returns the slot marked ``identifier=True`` (globally unique key), if any.
     fn identifier_slot(&self) -> Option<PySlotView> {
         self.inner
             .identifier_slot()
             .map(|sv| PySlotView { inner: sv.clone() })
     }
 
+    /// Returns the slot marked ``key=True`` or ``identifier=True``, if any.
     fn key_or_identifier_slot(&self) -> Option<PySlotView> {
         self.inner
             .key_or_identifier_slot()
             .map(|sv| PySlotView { inner: sv.clone() })
     }
 
+    /// Returns classes that inherit from this class.
+    ///
+    /// With ``recurse=True`` the full transitive closure is returned.
+    /// With ``include_mixins=True`` classes using this as a mixin are included.
     fn get_descendants(&self, recurse: bool, include_mixins: bool) -> PyResult<Vec<PyClassView>> {
         self.inner
             .get_descendants(recurse, include_mixins)
@@ -541,14 +572,18 @@ impl PySlotView {
         self.inner.canonical_uri().to_string()
     }
 
+    /// Returns the range class, if the range is a class (not a type or enum).
     fn range_class(&self) -> Option<PyClassView> {
         self.inner.get_range_class().map(PyClassView::from)
     }
 
+    /// Returns the range enum, if the range is an enum.
     fn range_enum(&self) -> Option<PyEnumView> {
         self.inner.get_range_enum().map(PyEnumView::from)
     }
 
+    /// Returns ``True`` when the range is a scalar (type, enum, or
+    /// ``Anything``/``AnyValue``) rather than a regular class.
     fn is_range_scalar(&self) -> bool {
         self.inner.is_range_scalar()
     }
@@ -619,6 +654,7 @@ impl PyEnumView {
         self.inner.definition().clone()
     }
 
+    /// Returns the sorted keys of all permissible values, including inherited ones.
     fn permissible_value_keys(&self) -> PyResult<Vec<String>> {
         self.inner
             .permissible_value_keys()

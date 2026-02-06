@@ -1355,11 +1355,30 @@ class ClassView:
     def definition(self) -> ClassDefinition: ...
     @classmethod
     def most_specific_common_ancestor(cls, class_views:typing.Sequence[ClassView], include_mixins:builtins.bool=False) -> typing.Optional[ClassView]: ...
-    def slots(self) -> builtins.list[SlotView]: ...
-    def parent_class(self) -> typing.Optional[ClassView]: ...
-    def identifier_slot(self) -> typing.Optional[SlotView]: ...
-    def key_or_identifier_slot(self) -> typing.Optional[SlotView]: ...
-    def get_descendants(self, recurse:builtins.bool, include_mixins:builtins.bool) -> builtins.list[ClassView]: ...
+    def slots(self) -> builtins.list[SlotView]:
+        r"""
+        Returns the effective slots for this class, including inherited slots
+        from ``is_a`` parents and mixins, with ``slot_usage`` overrides applied.
+        """
+    def parent_class(self) -> typing.Optional[ClassView]:
+        r"""
+        Returns the ``is_a`` parent class, or ``None`` for a root class.
+        """
+    def identifier_slot(self) -> typing.Optional[SlotView]:
+        r"""
+        Returns the slot marked ``identifier=True`` (globally unique key), if any.
+        """
+    def key_or_identifier_slot(self) -> typing.Optional[SlotView]:
+        r"""
+        Returns the slot marked ``key=True`` or ``identifier=True``, if any.
+        """
+    def get_descendants(self, recurse:builtins.bool, include_mixins:builtins.bool) -> builtins.list[ClassView]:
+        r"""
+        Returns classes that inherit from this class.
+        
+        With ``recurse=True`` the full transitive closure is returned.
+        With ``include_mixins=True`` classes using this as a mixin are included.
+        """
     def schema_id(self) -> builtins.str: ...
     def canonical_uri(self) -> builtins.str: ...
     def __repr__(self) -> builtins.str: ...
@@ -2513,7 +2532,10 @@ class EnumView:
     def name(self) -> builtins.str: ...
     @property
     def definition(self) -> EnumDefinition: ...
-    def permissible_value_keys(self) -> builtins.list[builtins.str]: ...
+    def permissible_value_keys(self) -> builtins.list[builtins.str]:
+        r"""
+        Returns the sorted keys of all permissible values, including inherited ones.
+        """
     def schema_id(self) -> builtins.str: ...
     def canonical_uri(self) -> builtins.str: ...
     def __repr__(self) -> builtins.str: ...
@@ -3596,13 +3618,34 @@ class SchemaDefinition:
 
 class SchemaView:
     def __new__(cls, source:typing.Optional[typing.Any]=None) -> SchemaView: ...
-    def _get_resolved_schema_imports(self) -> builtins.dict[tuple[builtins.str, builtins.str], builtins.str]: ...
+    def _get_resolved_schema_imports(self) -> builtins.dict[tuple[builtins.str, builtins.str], builtins.str]:
+        r"""
+        Returns the map of resolved imports: ``{(importing_schema_id, import_uri): resolved_schema_id}``.
+        """
     def get_default_prefix_for_schema(self, schema_id:builtins.str, expand:builtins.bool) -> typing.Optional[builtins.str]: ...
-    def add_schema_from_path(self, path:builtins.str) -> builtins.bool: ...
-    def add_schema_str(self, data:builtins.str) -> builtins.bool: ...
-    def get_unresolved_schemas(self) -> builtins.list[builtins.str]: ...
-    def get_unresolved_schema_refs(self) -> builtins.list[tuple[builtins.str, builtins.str]]: ...
-    def get_resolution_uri_of_schema(self, id:builtins.str) -> typing.Optional[builtins.str]: ...
+    def add_schema_from_path(self, path:builtins.str) -> builtins.bool:
+        r"""
+        Parse a YAML schema file and add it to the view.
+        """
+    def add_schema_str(self, data:builtins.str) -> builtins.bool:
+        r"""
+        Parse a YAML/JSON schema string and add it to the view.
+        """
+    def get_unresolved_schemas(self) -> builtins.list[builtins.str]:
+        r"""
+        Returns import URIs that have not yet been satisfied.
+        
+        Use ``get_unresolved_schema_refs()`` if you also need the importing
+        schema ID for each entry.
+        """
+    def get_unresolved_schema_refs(self) -> builtins.list[tuple[builtins.str, builtins.str]]:
+        r"""
+        Returns ``(importing_schema_id, import_uri)`` pairs for unsatisfied imports.
+        """
+    def get_resolution_uri_of_schema(self, id:builtins.str) -> typing.Optional[builtins.str]:
+        r"""
+        Returns the import URI that was used to resolve the given schema ID.
+        """
     def add_schema_str_with_import_ref(self, data:builtins.str, schema_id:builtins.str, uri:builtins.str) -> None:
         r"""
         Add a schema payload that satisfies an unresolved import reference.
@@ -3638,18 +3681,49 @@ class SchemaView:
     def from_snapshot_file(cls, path:builtins.str) -> SchemaView: ...
     def to_snapshot_yaml(self) -> builtins.str: ...
     def to_snapshot_file(self, path:builtins.str) -> None: ...
-    def get_class_view(self, id:builtins.str) -> typing.Optional[ClassView]: ...
-    def get_class_view_by_uri(self, uri:builtins.str) -> typing.Optional[ClassView]: ...
-    def get_slot_view(self, id:builtins.str) -> typing.Optional[SlotView]: ...
-    def get_slot_view_by_uri(self, uri:builtins.str) -> typing.Optional[SlotView]: ...
-    def get_enum_view(self, id:builtins.str) -> typing.Optional[EnumView]: ...
+    def get_class_view(self, id:builtins.str) -> typing.Optional[ClassView]:
+        r"""
+        Look up a class by name, CURIE, or URI.
+        """
+    def get_class_view_by_uri(self, uri:builtins.str) -> typing.Optional[ClassView]:
+        r"""
+        Look up a class by its expanded URI.
+        """
+    def get_slot_view(self, id:builtins.str) -> typing.Optional[SlotView]:
+        r"""
+        Look up a top-level slot by name, CURIE, or URI.
+        """
+    def get_slot_view_by_uri(self, uri:builtins.str) -> typing.Optional[SlotView]:
+        r"""
+        Look up a slot by its expanded URI.
+        """
+    def get_enum_view(self, id:builtins.str) -> typing.Optional[EnumView]:
+        r"""
+        Look up an enum by name, CURIE, or URI.
+        """
     def schema_ids(self) -> builtins.list[builtins.str]: ...
     def get_class_ids(self) -> builtins.list[builtins.str]: ...
     def get_slot_ids(self) -> builtins.list[builtins.str]: ...
-    def class_views(self) -> builtins.list[ClassView]: ...
-    def enum_views(self) -> builtins.list[EnumView]: ...
-    def slot_views(self) -> builtins.list[SlotView]: ...
-    def slots_for_path(self, class_id:builtins.str, path:typing.Sequence[builtins.str]) -> builtins.list[SlotView]: ...
+    def class_views(self) -> builtins.list[ClassView]:
+        r"""
+        Returns all classes across every loaded schema.
+        """
+    def enum_views(self) -> builtins.list[EnumView]:
+        r"""
+        Returns all enums across every loaded schema.
+        """
+    def slot_views(self) -> builtins.list[SlotView]:
+        r"""
+        Returns all unique slots across every loaded schema.
+        """
+    def slots_for_path(self, class_id:builtins.str, path:typing.Sequence[builtins.str]) -> builtins.list[SlotView]:
+        r"""
+        Resolve a sequence of slot names starting from ``class_id``, walking
+        through range classes at each step.
+        
+        Returns multiple ``SlotView``s when the path is ambiguous (e.g. a slot
+        exists on several subclasses of an intermediate range class).
+        """
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
 
@@ -4261,41 +4335,51 @@ class SlotView:
     def definition(self) -> SlotDefinition: ...
     def schema_id(self) -> builtins.str: ...
     def canonical_uri(self) -> builtins.str: ...
-    def range_class(self) -> typing.Optional[ClassView]: ...
-    def range_enum(self) -> typing.Optional[EnumView]: ...
-    def is_range_scalar(self) -> builtins.bool: ...
+    def range_class(self) -> typing.Optional[ClassView]:
+        r"""
+        Returns the range class, if the range is a class (not a type or enum).
+        """
+    def range_enum(self) -> typing.Optional[EnumView]:
+        r"""
+        Returns the range enum, if the range is an enum.
+        """
+    def is_range_scalar(self) -> builtins.bool:
+        r"""
+        Returns ``True`` when the range is a scalar (type, enum, or
+        ``Anything``/``AnyValue``) rather than a regular class.
+        """
     def container_mode(self) -> builtins.str:
-        """Resolved container shape for this slot's serialized form.
-
+        r"""
+        Resolved container shape for this slot's serialized form.
+        
         Returns one of:
-          - "SingleValue" -- the slot holds a single value.
-          - "List" -- the slot serializes as a list.
-          - "Mapping" -- the slot serializes as a dict keyed by the range
+          - ``"SingleValue"`` — the slot holds a single value.
+          - ``"List"`` — the slot serializes as a list.
+          - ``"Mapping"`` — the slot serializes as a dict keyed by the range
             class's key/identifier slot.
-
+        
         This resolves the interacting ``multivalued``, ``inlined``, and
         ``inlined_as_list`` booleans from the LinkML slot definition, also
         considering whether the range class has a key or identifier slot.
-
+        
         For the raw booleans, use ``slot.definition.multivalued`` etc.
         """
-        ...
     def inline_mode(self) -> builtins.str:
-        """Resolved inline behavior for this slot's serialized form.
-
+        r"""
+        Resolved inline behavior for this slot's serialized form.
+        
         Returns one of:
-          - "Inline" -- the range object is serialized inline (nested).
-          - "Primitive" -- the range is a primitive type or enum, not a class.
-          - "Reference" -- the slot holds a reference (foreign key) to the
+          - ``"Inline"`` — the range object is serialized inline (nested).
+          - ``"Primitive"`` — the range is a primitive type or enum, not a class.
+          - ``"Reference"`` — the slot holds a reference (foreign key) to the
             range class rather than the object itself.
-
+        
         This resolves the interacting ``inlined`` and ``inlined_as_list``
         booleans, also considering whether the range class has an identifier
         slot (classes without an identifier slot are always inlined).
-
+        
         For the raw booleans, use ``slot.definition.inlined`` etc.
         """
-        ...
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
 

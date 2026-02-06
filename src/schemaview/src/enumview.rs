@@ -54,6 +54,8 @@ impl EnumView {
         &self.data.enum_def
     }
 
+    /// Returns the canonical URI for this enum, preferring explicit `enum_uri`
+    /// declarations when available.
     pub fn canonical_uri(&self) -> Identifier {
         if let Some(ids) = self
             .data
@@ -85,6 +87,8 @@ impl EnumView {
         fallback
     }
 
+    /// Returns the sorted keys of all permissible values for this enum,
+    /// including values inherited via `inherits`.
     pub fn permissible_value_keys(&self) -> Result<&Vec<String>, SchemaViewError> {
         Ok(self.data.cached_pv_keys.get_or_init(|| {
             let mut keys: HashSet<String> = HashSet::new();
