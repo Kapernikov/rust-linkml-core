@@ -668,7 +668,11 @@ fn replace_iris(out: &str, conv: &Converter) -> IoResult<String> {
         {
             "a".to_string()
         } else if let Ok(curie) = conv.compress(iri_match.as_str()) {
-            curie
+            if is_valid_turtle_local_name(&curie) {
+                curie
+            } else {
+                full_match.as_str().to_string()
+            }
         } else {
             full_match.as_str().to_string()
         };
@@ -677,4 +681,109 @@ fn replace_iris(out: &str, conv: &Converter) -> IoResult<String> {
     }
     result.push_str(&out[last..]);
     Ok(result)
+}
+
+/// Check if the local name part of a CURIE is valid for Turtle syntax.
+/// Characters like `#` and `/` are not allowed in Turtle local names.
+fn is_valid_turtle_local_name(curie: &str) -> bool {
+    let Some((_prefix, local)) = curie.split_once(':') else {
+        return false;
+    };
+    !local.contains('#') && !local.contains('/')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use linkml_schemaview::converter::Record;
+
+    fn make_converter(prefixes: &[(&str, &str)]) -> Converter {
+        let mut conv = Converter::default();
+        for (prefix, uri_prefix) in prefixes {
+            conv.add_record(Record::new(prefix, uri_prefix)).unwrap();
+        }
+        conv
+    }
+
+    #[test]
+    fn replace_iris_keeps_iri_when_local_name_starts_with_hash() {
+        // RSM prefix maps to URI without trailing # or /
+        // So http://rsm.uic.org/RSM12#EAID_xxx compresses to RSM:#EAID_xxx (invalid)
+        let conv = make_converter(&[("RSM", "http://rsm.uic.org/RSM12")]);
+        let input = r#"<http://rsm.uic.org/RSM12#EAID_55DDBCD9> a RSM:Thing ."#;
+        let result = replace_iris(input, &conv).unwrap();
+        // Should keep the full IRI in angle brackets, not RSM:#EAID_55DDBCD9
+        assert!(
+            !result.contains("RSM:#"),
+            "Local name starting with # is invalid Turtle. Got: {}",
+            result
+        );
+        assert!(
+            result.contains("<http://rsm.uic.org/RSM12#EAID_55DDBCD9>"),
+            "Should keep angle-bracketed IRI. Got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn replace_iris_keeps_iri_when_local_name_contains_slash() {
+        // asset360 prefix maps to URI with trailing /
+        // So https://data.example.com/asset360/unit/Meter compresses to asset360:unit/Meter (invalid)
+        let conv = make_converter(&[("asset360", "https://data.example.com/asset360/")]);
+        let input = r#"<https://data.example.com/asset360/unit/Meter> a asset360:Thing ."#;
+        let result = replace_iris(input, &conv).unwrap();
+        // Should keep the full IRI in angle brackets, not asset360:unit/Meter
+        assert!(
+            !result.contains("asset360:unit/Meter"),
+            "Local name with / is invalid Turtle. Got: {}",
+            result
+        );
+        assert!(
+            result.contains("<https://data.example.com/asset360/unit/Meter>"),
+            "Should keep angle-bracketed IRI. Got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn replace_iris_compresses_valid_curies() {
+        // Normal case: prefix with trailing / or #, clean local name
+        let conv = make_converter(&[("ex", "http://example.com/")]);
+        let input = r#"<http://example.com/Thing> a <http://example.com/Class> ."#;
+        let result = replace_iris(input, &conv).unwrap();
+        assert!(
+            result.contains("ex:Thing"),
+            "Valid CURIE should be compressed. Got: {}",
+            result
+        );
+        assert!(
+            result.contains("ex:Class"),
+            "Valid CURIE should be compressed. Got: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn replace_iris_replaces_rdf_type_with_a() {
+        let conv = make_converter(&[]);
+        let input = r#"<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"#;
+        let result = replace_iris(input, &conv).unwrap();
+        assert_eq!(result, "a");
+    }
+
+    #[test]
+    fn is_valid_turtle_local_name_rejects_hash() {
+        assert!(!is_valid_turtle_local_name("RSM:#EAID_xxx"));
+    }
+
+    #[test]
+    fn is_valid_turtle_local_name_rejects_slash() {
+        assert!(!is_valid_turtle_local_name("asset360:unit/Meter"));
+    }
+
+    #[test]
+    fn is_valid_turtle_local_name_accepts_valid() {
+        assert!(is_valid_turtle_local_name("ex:Thing"));
+        assert!(is_valid_turtle_local_name("schema:Person"));
+    }
 }

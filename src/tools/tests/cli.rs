@@ -23,7 +23,13 @@ fn skolem_flag_creates_named_nodes() {
     cmd.assert().success();
 
     let ttl = std::fs::read_to_string(&out_path).unwrap();
-    assert!(ttl.contains("poly:root/gen1"));
+    // Skolem IRIs with slashes in the local name are kept as full IRIs
+    // because "poly:root/gen1" is invalid Turtle (slash in local name).
+    assert!(
+        ttl.contains("<https://example.com/poly/root/gen1>"),
+        "Expected full IRI for skolem node with slash in local name. Got:\n{}",
+        ttl
+    );
 }
 
 #[test]
