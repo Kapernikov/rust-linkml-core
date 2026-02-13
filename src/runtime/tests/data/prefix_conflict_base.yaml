@@ -1,0 +1,10 @@
+id: https://example.com/pfx-conflict-base
+name: pfx_conflict_base
+prefixes:
+  shared: https://example.com/b/
+default_prefix: shared
+classes:
+  BaseItem:
+    attributes:
+      base_field:
+        range: string

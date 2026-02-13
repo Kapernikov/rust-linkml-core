@@ -457,19 +457,32 @@ pub fn write_turtle<W: Write>(
     w: &mut W,
     options: TurtleOptions,
 ) -> IoResult<()> {
-    let mut header = String::new();
-    if let Some(prefixes) = &schema.prefixes {
-        for (pfx, pref) in prefixes {
-            header.push_str(&format!("@prefix {}: <{}> .\n", pfx, pref.prefix_reference));
+    // Collect prefixes from ALL loaded schemas (not just the primary one) so
+    // that Turtle output is valid even when classes/slots use prefixes defined
+    // in imported schemas.  On conflict (same prefix name, different URI) the
+    // first one wins; the loser's IRIs stay fully expanded (handled by
+    // replace_iris further down).
+    let mut prefix_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+    sv.with_schema_definitions(|schemas| {
+        for schema_def in schemas.values() {
+            if let Some(prefixes) = &schema_def.prefixes {
+                for (pfx, pref) in prefixes {
+                    prefix_map
+                        .entry(pfx.clone())
+                        .or_insert_with(|| pref.prefix_reference.clone());
+                }
+            }
         }
+    });
+    let mut header = String::new();
+    for (pfx, uri) in &prefix_map {
+        header.push_str(&format!("@prefix {}: <{}> .\n", pfx, uri));
     }
-    header.push_str("@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n");
-    if !schema
-        .prefixes
-        .as_ref()
-        .map(|x| x.contains_key("xsd"))
-        .unwrap_or(false)
-    {
+    if !prefix_map.contains_key("rdf") {
+        header.push_str("@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n");
+    }
+    if !prefix_map.contains_key("xsd") {
         header.push_str("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
     }
     header.push('\n');

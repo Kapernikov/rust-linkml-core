@@ -1,0 +1,14 @@
+id: https://example.com/pfx-conflict-derived
+name: pfx_conflict_derived
+prefixes:
+  shared: https://example.com/a/
+  altbase: https://example.com/b/
+default_prefix: shared
+imports:
+  - ./prefix_conflict_base
+classes:
+  DerivedItem:
+    is_a: BaseItem
+    attributes:
+      derived_field:
+        range: string
