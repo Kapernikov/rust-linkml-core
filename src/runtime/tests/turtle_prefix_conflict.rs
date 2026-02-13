@@ -28,8 +28,7 @@ fn turtle_prefix_conflict_produces_valid_output() {
     // The output must be parseable as valid Turtle.
 
     let base_schema = from_yaml(Path::new(&data_path("prefix_conflict_base.yaml"))).unwrap();
-    let derived_schema =
-        from_yaml(Path::new(&data_path("prefix_conflict_derived.yaml"))).unwrap();
+    let derived_schema = from_yaml(Path::new(&data_path("prefix_conflict_derived.yaml"))).unwrap();
 
     let mut sv = SchemaView::new();
     sv.add_schema(derived_schema.clone()).unwrap();
@@ -116,8 +115,7 @@ fn turtle_all_imported_prefixes_are_declared() {
     // Turtle header.  This is the basic bug: write_turtle used to only emit
     // prefixes from the primary schema.
 
-    let base_schema =
-        from_yaml(Path::new(&data_path("cross_schema_prefix_base.yaml"))).unwrap();
+    let base_schema = from_yaml(Path::new(&data_path("cross_schema_prefix_base.yaml"))).unwrap();
     let derived_schema =
         from_yaml(Path::new(&data_path("cross_schema_prefix_derived.yaml"))).unwrap();
 
