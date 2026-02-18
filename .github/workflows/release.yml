@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-latest
+            target: x86_64
+          - runner: ubuntu-latest
+            target: x86
+          - runner: ubuntu-latest
+            target: aarch64
+          - runner: ubuntu-latest
+            target: armv7
+          - runner: ubuntu-latest
+            target: s390x
+          - runner: ubuntu-latest
+            target: ppc64le
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: Set python crate version from tag
+        shell: bash
+        run: |
+          VER="${GITHUB_REF#refs/tags/}"
+          VER="${VER#v}"
+          echo "Setting src/python/Cargo.toml version to ${VER}"
+          sed -i -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: src/python
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --find-interpreter
+          sccache: 'true'
+          manylinux: ${{ matrix.platform.target == 'aarch64' && 'manylinux_2_28' || 'auto' }}
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-${{ matrix.platform.target }}
+          path: src/python/dist
+          retention-days: 1
+
+  musllinux:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-latest
+            target: x86_64
+          - runner: ubuntu-latest
+            target: x86
+          - runner: ubuntu-latest
+            target: aarch64
+          - runner: ubuntu-latest
+            target: armv7
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: Set python crate version from tag
+        shell: bash
+        run: |
+          VER="${GITHUB_REF#refs/tags/}"
+          VER="${VER#v}"
+          echo "Setting src/python/Cargo.toml version to ${VER}"
+          sed -i -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: src/python
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --find-interpreter
+          sccache: 'true'
+          manylinux: musllinux_1_2
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-musllinux-${{ matrix.platform.target }}
+          path: src/python/dist
+          retention-days: 1
+
+  windows:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: windows-latest
+            target: x64
+          - runner: windows-latest
+            target: x86
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+          architecture: ${{ matrix.platform.target }}
+      - name: Set python crate version from tag
+        shell: pwsh
+        run: |
+          $ver = $env:GITHUB_REF -replace '^refs/tags/', '' -replace '^v',''
+          Write-Host "Setting src/python/Cargo.toml version to $ver"
+          $path = "src/python/Cargo.toml"
+          $content = Get-Content -Raw $path
+          $pattern = '^version\s*=\s*".*"$'
+          $replacement = "version = `"$ver`""
+          $new = [regex]::Replace($content, $pattern, $replacement, 'Multiline')
+          Set-Content -NoNewline -Path $path -Value $new
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: src/python
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --find-interpreter
+          sccache: 'true'
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-${{ matrix.platform.target }}
+          path: src/python/dist
+          retention-days: 1
+
+  macos:
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: macos-14
+            target: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - name: Set python crate version from tag
+        shell: bash
+        run: |
+          VER="${GITHUB_REF#refs/tags/}"
+          VER="${VER#v}"
+          echo "Setting src/python/Cargo.toml version to ${VER}"
+          sed -i '' -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: src/python
+          target: ${{ matrix.platform.target }}
+          args: --release --out dist --find-interpreter
+          sccache: 'true'
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-${{ matrix.platform.target }}
+          path: src/python/dist
+          retention-days: 1
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set python crate version from tag
+        shell: bash
+        run: |
+          VER="${GITHUB_REF#refs/tags/}"
+          VER="${VER#v}"
+          echo "Setting src/python/Cargo.toml version to ${VER}"
+          sed -i -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: src/python
+          command: sdist
+          args: --out dist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: src/python/dist
+          retention-days: 1
+
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [linux, musllinux, windows, macos, sdist]
+    environment: release
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'wheels-*/*'
+      - name: Collect wheels into dist/
+        run: |
+          mkdir -p dist
+          cp wheels-*/* dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: wheels-*/*
