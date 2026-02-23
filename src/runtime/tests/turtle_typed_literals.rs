@@ -287,3 +287,44 @@ fn turtle_inherited_slots_use_originating_schema_prefix() {
         ttl
     );
 }
+
+#[test]
+fn turtle_builtin_prefix_declared_when_used() {
+    // Regression test: a slot with slot_uri set to the expanded rdfs:label URI
+    // (http://www.w3.org/2000/01/rdf-schema#label) gets compressed to the CURIE
+    // rdfs:label because the Converter has rdfs as a built-in prefix.  The schema
+    // itself does NOT declare rdfs in its prefixes block.  The @prefix rdfs: header
+    // must still be emitted.
+    let schema = from_yaml(Path::new(&data_path("builtin_prefix_schema.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let class = sv
+        .get_class(&Identifier::new("Thing"), &conv)
+        .unwrap()
+        .unwrap();
+    let v = load_yaml_file(
+        Path::new(&data_path("builtin_prefix_data.yaml")),
+        &sv,
+        &class,
+        &conv,
+    )
+    .unwrap()
+    .into_instance()
+    .unwrap();
+    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+
+    // The predicate must be compressed to rdfs:label (not the full IRI)
+    assert!(
+        ttl.contains("rdfs:label"),
+        "Expected rdfs:label CURIE in body. Got:\n{}",
+        ttl
+    );
+
+    // The @prefix rdfs: declaration MUST be present
+    assert!(
+        ttl.contains("@prefix rdfs:"),
+        "Expected @prefix rdfs: declaration for built-in prefix used via slot_uri. Got:\n{}",
+        ttl
+    );
+}

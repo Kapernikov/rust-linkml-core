@@ -457,35 +457,6 @@ pub fn write_turtle<W: Write>(
     w: &mut W,
     options: TurtleOptions,
 ) -> IoResult<()> {
-    // Collect prefixes from ALL loaded schemas (not just the primary one) so
-    // that Turtle output is valid even when classes/slots use prefixes defined
-    // in imported schemas.  On conflict (same prefix name, different URI) the
-    // first one wins; the loser's IRIs stay fully expanded (handled by
-    // replace_iris further down).
-    let mut prefix_map: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    sv.with_schema_definitions(|schemas| {
-        for schema_def in schemas.values() {
-            if let Some(prefixes) = &schema_def.prefixes {
-                for (pfx, pref) in prefixes {
-                    prefix_map
-                        .entry(pfx.clone())
-                        .or_insert_with(|| pref.prefix_reference.clone());
-                }
-            }
-        }
-    });
-    let mut header = String::new();
-    for (pfx, uri) in &prefix_map {
-        header.push_str(&format!("@prefix {}: <{}> .\n", pfx, uri));
-    }
-    if !prefix_map.contains_key("rdf") {
-        header.push_str("@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n");
-    }
-    if !prefix_map.contains_key("xsd") {
-        header.push_str("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
-    }
-    header.push('\n');
     let base = schema.id.trim_end_matches('#').to_string();
     let mut state = State {
         counter: 0,
@@ -646,7 +617,22 @@ pub fn write_turtle<W: Write>(
     }
     let out_buf = formatter.finish()?;
     let out = String::from_utf8(out_buf).unwrap_or_default();
-    let out = replace_iris(&out, conv)?;
+    let (out, used_prefixes) = replace_iris(&out, conv)?;
+
+    // Build the @prefix header from only the prefixes that replace_iris
+    // actually used.  This ensures the header is always in sync with the
+    // body and avoids emitting unused or colliding prefixes.
+    let mut header = String::new();
+    let mut sorted_prefixes: Vec<_> = used_prefixes.iter().collect();
+    sorted_prefixes.sort_by_key(|(k, _)| k.as_str());
+    for (pfx, uri) in &sorted_prefixes {
+        header.push_str(&format!("@prefix {}: <{}> .\n", pfx, uri));
+    }
+    if !used_prefixes.contains_key("xsd") {
+        header.push_str("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
+    }
+    header.push('\n');
+
     w.write_all(header.as_bytes())?;
     w.write_all(out.as_bytes())?;
     Ok(())
@@ -664,10 +650,19 @@ pub fn turtle_to_string(
     String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
-fn replace_iris(out: &str, conv: &Converter) -> IoResult<String> {
+/// Replace full IRIs with CURIEs where possible, returning the transformed
+/// string together with a map of prefix→URI-prefix for every prefix that was
+/// actually used.  This lets the caller emit exactly the `@prefix` declarations
+/// needed and nothing more.
+fn replace_iris(
+    out: &str,
+    conv: &Converter,
+) -> IoResult<(String, std::collections::HashMap<String, String>)> {
     let iri_re = Regex::new(r"<([^>]+)>")
         .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
     let mut result = String::with_capacity(out.len());
+    let mut used_prefixes: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     let mut last = 0;
     for caps in iri_re.captures_iter(out) {
         let Some(full_match) = caps.get(0) else {
@@ -677,11 +672,19 @@ fn replace_iris(out: &str, conv: &Converter) -> IoResult<String> {
             continue;
         };
         result.push_str(&out[last..full_match.start()]);
-        let replacement = if iri_match.as_str() == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-        {
+        let iri = iri_match.as_str();
+        let replacement = if iri == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" {
             "a".to_string()
-        } else if let Ok(curie) = conv.compress(iri_match.as_str()) {
+        } else if let Ok(curie) = conv.compress(iri) {
             if is_valid_turtle_local_name(&curie) {
+                // Record the prefix and derive its URI-prefix from the
+                // original IRI (IRI minus the local-name portion).
+                if let Some((prefix, local)) = curie.split_once(':') {
+                    let uri_prefix = &iri[..iri.len() - local.len()];
+                    used_prefixes
+                        .entry(prefix.to_string())
+                        .or_insert_with(|| uri_prefix.to_string());
+                }
                 curie
             } else {
                 full_match.as_str().to_string()
@@ -693,7 +696,7 @@ fn replace_iris(out: &str, conv: &Converter) -> IoResult<String> {
         last = full_match.end();
     }
     result.push_str(&out[last..]);
-    Ok(result)
+    Ok((result, used_prefixes))
 }
 
 /// Check if the local name part of a CURIE is valid for Turtle syntax.
@@ -724,7 +727,7 @@ mod tests {
         // So http://rsm.uic.org/RSM12#EAID_xxx compresses to RSM:#EAID_xxx (invalid)
         let conv = make_converter(&[("RSM", "http://rsm.uic.org/RSM12")]);
         let input = r#"<http://rsm.uic.org/RSM12#EAID_55DDBCD9> a RSM:Thing ."#;
-        let result = replace_iris(input, &conv).unwrap();
+        let (result, used) = replace_iris(input, &conv).unwrap();
         // Should keep the full IRI in angle brackets, not RSM:#EAID_55DDBCD9
         assert!(
             !result.contains("RSM:#"),
@@ -736,6 +739,8 @@ mod tests {
             "Should keep angle-bracketed IRI. Got: {}",
             result
         );
+        // RSM prefix should NOT be in used_prefixes since it was rejected
+        assert!(!used.contains_key("RSM"));
     }
 
     #[test]
@@ -744,7 +749,7 @@ mod tests {
         // So https://data.example.com/asset360/unit/Meter compresses to asset360:unit/Meter (invalid)
         let conv = make_converter(&[("asset360", "https://data.example.com/asset360/")]);
         let input = r#"<https://data.example.com/asset360/unit/Meter> a asset360:Thing ."#;
-        let result = replace_iris(input, &conv).unwrap();
+        let (result, used) = replace_iris(input, &conv).unwrap();
         // Should keep the full IRI in angle brackets, not asset360:unit/Meter
         assert!(
             !result.contains("asset360:unit/Meter"),
@@ -756,6 +761,8 @@ mod tests {
             "Should keep angle-bracketed IRI. Got: {}",
             result
         );
+        // asset360 prefix should NOT be in used_prefixes since it was rejected
+        assert!(!used.contains_key("asset360"));
     }
 
     #[test]
@@ -763,7 +770,7 @@ mod tests {
         // Normal case: prefix with trailing / or #, clean local name
         let conv = make_converter(&[("ex", "http://example.com/")]);
         let input = r#"<http://example.com/Thing> a <http://example.com/Class> ."#;
-        let result = replace_iris(input, &conv).unwrap();
+        let (result, used) = replace_iris(input, &conv).unwrap();
         assert!(
             result.contains("ex:Thing"),
             "Valid CURIE should be compressed. Got: {}",
@@ -774,13 +781,15 @@ mod tests {
             "Valid CURIE should be compressed. Got: {}",
             result
         );
+        // ex prefix should be in used_prefixes
+        assert_eq!(used.get("ex").unwrap(), "http://example.com/");
     }
 
     #[test]
     fn replace_iris_replaces_rdf_type_with_a() {
         let conv = make_converter(&[]);
         let input = r#"<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"#;
-        let result = replace_iris(input, &conv).unwrap();
+        let (result, _used) = replace_iris(input, &conv).unwrap();
         assert_eq!(result, "a");
     }
 

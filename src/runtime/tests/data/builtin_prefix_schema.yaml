@@ -1,0 +1,13 @@
+id: https://example.com/builtin
+name: builtin
+prefixes:
+  builtin: https://example.com/builtin/
+default_prefix: builtin
+classes:
+  Thing:
+    attributes:
+      name:
+        range: string
+      label:
+        slot_uri: http://www.w3.org/2000/01/rdf-schema#label
+        range: string
