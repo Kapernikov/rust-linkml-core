@@ -1,0 +1,25 @@
+id: https://example.com/enum-meaning-test
+name: enum-meaning-test
+prefixes:
+  ex: https://example.com/enum-meaning-test/
+  sstatus: https://example.com/status/
+default_prefix: ex
+enums:
+  StatusEnum:
+    permissible_values:
+      active:
+        meaning: sstatus:Active
+      retired:
+        meaning: sstatus:Retired
+      unknown: {}
+classes:
+  Item:
+    attributes:
+      id:
+        identifier: true
+      status:
+        range: StatusEnum
+      statuses:
+        range: StatusEnum
+        multivalued: true
+        inlined_as_list: true

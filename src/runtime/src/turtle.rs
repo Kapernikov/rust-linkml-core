@@ -111,6 +111,25 @@ fn literal_and_type(value: &JsonValue, slot: &SlotView) -> (String, Option<Strin
     (lit, dt)
 }
 
+/// If the slot's range is an enum and the scalar value matches a permissible
+/// value that has a `meaning` URI, resolve and return that URI.  Otherwise
+/// return `None` so the caller falls through to literal serialization.
+fn enum_meaning_iri(value: &JsonValue, slot: &SlotView, conv: &Converter) -> Option<String> {
+    let text = match value {
+        JsonValue::String(s) => s.as_str(),
+        _ => return None,
+    };
+    let enum_view = slot.get_range_enum()?;
+    let pv_map = enum_view.definition().permissible_values.as_ref()?;
+    let pv = pv_map.get(text)?;
+    let meaning = pv.meaning.as_ref()?;
+    let iri = Identifier::new(meaning)
+        .to_uri(conv)
+        .map(|u| u.0)
+        .unwrap_or_else(|_| meaning.clone());
+    Some(iri)
+}
+
 fn identifier_node(
     map: &std::collections::HashMap<String, LinkMLInstance>,
     class: &ClassView,
@@ -238,6 +257,13 @@ fn serialize_map<W: Write>(
                         object: Term::NamedNode(NamedNode::new_unchecked(iri)),
                     };
                     formatter.serialize_triple(triple.as_ref())?;
+                } else if let Some(iri) = enum_meaning_iri(value, slot, conv) {
+                    let triple = Triple {
+                        subject: subject.as_subject(),
+                        predicate: predicate.clone(),
+                        object: Term::NamedNode(NamedNode::new_unchecked(iri)),
+                    };
+                    formatter.serialize_triple(triple.as_ref())?;
                 } else {
                     let (lit, dt_opt) = literal_and_type(value, slot);
                     if let Some(dt) = dt_opt {
@@ -297,6 +323,13 @@ fn serialize_map<W: Write>(
                                     .to_uri(conv)
                                     .map(|u| u.0)
                                     .unwrap_or(lit);
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object: Term::NamedNode(NamedNode::new_unchecked(iri)),
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
+                            } else if let Some(iri) = enum_meaning_iri(value, slot, conv) {
                                 let triple = Triple {
                                     subject: subject.as_subject(),
                                     predicate: predicate.clone(),
@@ -376,6 +409,13 @@ fn serialize_map<W: Write>(
                                     .to_uri(conv)
                                     .map(|u| u.0)
                                     .unwrap_or(lit);
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object: Term::NamedNode(NamedNode::new_unchecked(iri)),
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
+                            } else if let Some(iri) = enum_meaning_iri(v, slot, conv) {
                                 let triple = Triple {
                                     subject: subject.as_subject(),
                                     predicate: predicate.clone(),

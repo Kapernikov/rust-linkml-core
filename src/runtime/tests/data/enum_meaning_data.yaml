@@ -1,0 +1,5 @@
+id: https://example.com/item/1
+status: active
+statuses:
+  - active
+  - retired
