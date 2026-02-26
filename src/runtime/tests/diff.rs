@@ -1,5 +1,6 @@
 use linkml_runtime::{
-    diff, load_json_str, load_yaml_file, patch, DiffOptions, LinkMLInstance, ValidationProblemType,
+    diff, load_json_str, load_yaml_file, patch, DeltaOp, DiffOptions, LinkMLInstance,
+    ValidationProblemType,
 };
 use linkml_schemaview::identifier::converter_from_schema;
 use linkml_schemaview::io::from_yaml;
@@ -379,4 +380,68 @@ fn diff_and_patch_invalid_target() {
     )
     .unwrap();
     assert_eq!(patched.to_json(), invalid_instance.to_json());
+}
+
+/// Regression: `treat_missing_as_null=false` must suppress `Remove` deltas for
+/// mapping entries that are present in the source but absent in the target.
+#[test]
+fn diff_mapping_ignore_missing_target() {
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let person = class_in_schema(&sv, &schema, "Person");
+
+    // Source has two familial relationships (mapping keyed by `role`).
+    let source = load_json_instance(
+        r#"{
+            "id": "P:100",
+            "name": "alice",
+            "has_familial_relationships": {
+                "brother": { "related_to": "P:001", "type": "SIBLING_OF" },
+                "mother":  { "related_to": "P:002", "type": "PARENT_OF" }
+            }
+        }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+
+    // Target only has one — "mother" is absent.
+    let target = load_json_instance(
+        r#"{
+            "id": "P:100",
+            "name": "alice",
+            "has_familial_relationships": {
+                "brother": { "related_to": "P:001", "type": "SIBLING_OF" }
+            }
+        }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+
+    // Default: treat_missing_as_null=false → no Remove for "mother"
+    let deltas = diff(&source, &target, DiffOptions::default());
+    assert!(
+        !deltas.iter().any(|d| d.op == DeltaOp::Remove),
+        "expected no Remove deltas with treat_missing_as_null=false, got: {deltas:?}"
+    );
+
+    // With treat_missing_as_null=true → should produce a Remove for "mother"
+    let deltas_strict = diff(
+        &source,
+        &target,
+        DiffOptions {
+            treat_missing_as_null: true,
+            ..DiffOptions::default()
+        },
+    );
+    assert!(
+        deltas_strict.iter().any(|d| d.op == DeltaOp::Remove
+            && d.path
+                .iter()
+                .any(|seg| seg == "mother")),
+        "expected a Remove delta for 'mother' with treat_missing_as_null=true, got: {deltas_strict:?}"
+    );
 }

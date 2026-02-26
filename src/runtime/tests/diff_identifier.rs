@@ -310,7 +310,15 @@ fn mapping_inlined_identifier_change_is_add_delete() {
     }
     let tgt = load_json_instance(&serde_json::to_string(&tgt_json).unwrap(), &sv, &bag, &conv);
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    // With treat_missing_as_null=true, renaming a mapping key produces delete + add.
+    let deltas = diff(
+        &src,
+        &tgt,
+        DiffOptions {
+            treat_missing_as_null: true,
+            ..DiffOptions::default()
+        },
+    );
     // Expect one delete and one add at mapping keys; no inner key-slot deltas
     assert!(deltas
         .iter()

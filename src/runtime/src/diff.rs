@@ -58,6 +58,22 @@ pub struct Delta {
 
 #[derive(Clone, Copy, Debug)]
 pub struct DiffOptions {
+    /// When `false` (the default), entries present in the source but absent in
+    /// the target are silently ignored for **object slots** and **mapping keys**.
+    /// This supports partial-update semantics where the target only supplies the
+    /// fields / keys it cares about.
+    ///
+    /// When `true`, every absent entry is treated as an explicit removal:
+    /// - Object slots produce an `Update` delta with `new = null`.
+    /// - Mapping keys produce a `Remove` delta.
+    ///
+    /// **Lists** are always treated as complete regardless of this flag: a
+    /// shorter target list produces `Remove` deltas for the trailing source
+    /// elements.
+    ///
+    /// **Note:** detecting a mapping key *rename* (delete old key + add new key)
+    /// requires `treat_missing_as_null = true`, because the old key is absent
+    /// from the target and would otherwise be silently ignored.
     pub treat_missing_as_null: bool,
     pub treat_changed_identifier_as_new_object: bool,
 }
@@ -74,10 +90,12 @@ impl Default for DiffOptions {
 /// Compute a semantic diff between two LinkMLInstance trees.
 ///
 /// Semantics of nulls and missing values:
-/// - X -> null: update to null (old = X, new = null).
-/// - null -> X: update from null (old = null, new = X).
-/// - missing -> X: add (old = None, new = X).
-/// - X -> missing: ignored by default; if `treat_missing_as_null` is true, update to null (old = X, new = null).
+/// - X → null: `Update` (old = X, new = null).
+/// - null → X: `Update` (old = null, new = X).
+/// - missing → X: `Add` (old = None, new = X).
+/// - X → missing (object slot): ignored by default; `Update` to null when `treat_missing_as_null`.
+/// - X → missing (mapping key): ignored by default; `Remove` when `treat_missing_as_null`.
+/// - X → missing (list element): always `Remove` (lists are positional/complete).
 pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions) -> Vec<Delta> {
     fn inner(
         path: &mut Vec<String>,
@@ -233,12 +251,16 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                     path.push(k.clone());
                     match (sm.get(&k), tm.get(&k)) {
                         (Some(sv), Some(tv)) => inner(path, None, sv, tv, opts, out),
-                        (Some(sv), None) => out.push(Delta {
-                            path: path.clone(),
-                            op: DeltaOp::Remove,
-                            old: Some(sv.to_json()),
-                            new: None,
-                        }),
+                        (Some(sv), None) => {
+                            if opts.treat_missing_as_null {
+                                out.push(Delta {
+                                    path: path.clone(),
+                                    op: DeltaOp::Remove,
+                                    old: Some(sv.to_json()),
+                                    new: None,
+                                });
+                            }
+                        }
                         (None, Some(tv)) => out.push(Delta {
                             path: path.clone(),
                             op: DeltaOp::Add,
