@@ -1,0 +1,10 @@
+id: "https://example.com/langtest/station1"
+opName: "Brussels North"
+description: "A major station"
+labels:
+  - lang: en
+    text: "Brussels North"
+  - lang: fr
+    text: "Bruxelles-Nord"
+  - lang: nl
+    text: "Brussel-Noord"

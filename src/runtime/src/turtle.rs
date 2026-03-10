@@ -111,6 +111,53 @@ fn is_range_iri(slot: &SlotView) -> bool {
         .is_some_and(|ri| ri.is_range_iri)
 }
 
+/// Build an RDF literal `Term` for a scalar value, respecting:
+/// 1. `in_language` on the slot definition → language-tagged literal
+/// 2. Custom RDF datatype IRI → typed literal
+/// 3. Otherwise → plain simple literal
+fn scalar_literal_term(value: &JsonValue, slot: &SlotView) -> Term {
+    let (lit, dt_opt) = literal_and_type(value, slot);
+    // Language tag takes priority over datatype (they are mutually exclusive in RDF)
+    if dt_opt.is_none() {
+        if let Some(lang) = &slot.definition().in_language {
+            if let Ok(tagged) = Literal::new_language_tagged_literal(lit.clone(), lang) {
+                return Term::Literal(tagged);
+            }
+        }
+    }
+    if let Some(dt) = dt_opt {
+        Term::Literal(Literal::new_typed_literal(
+            lit,
+            NamedNode::new_unchecked(dt),
+        ))
+    } else {
+        Term::Literal(Literal::new_simple_literal(lit))
+    }
+}
+
+/// Try to collapse an Object into a language-tagged literal if its class
+/// implements the `jsonld:language` / `jsonld:value` pattern.
+///
+/// Returns `Some(Term)` with the language-tagged literal on success, or `None`
+/// if the class is not a lang-tag class or the required fields are missing.
+fn try_lang_tag_collapse(
+    values: &std::collections::HashMap<String, LinkMLInstance>,
+    class: &ClassView,
+) -> Option<Term> {
+    let (lang_slot, value_slot) = class.lang_tag_slots()?;
+    let lang = match values.get(&lang_slot.name) {
+        Some(LinkMLInstance::Scalar { value, .. }) => literal_value(value),
+        _ => return None,
+    };
+    let val = match values.get(&value_slot.name) {
+        Some(LinkMLInstance::Scalar { value, .. }) => literal_value(value),
+        _ => return None,
+    };
+    Literal::new_language_tagged_literal(val, &lang)
+        .ok()
+        .map(Term::Literal)
+}
+
 /// If the slot's range is an enum and the scalar value matches a permissible
 /// value that has a `meaning` URI, resolve and return that URI.  Otherwise
 /// return `None` so the caller falls through to literal serialization.
@@ -265,27 +312,13 @@ fn serialize_map<W: Write>(
                     };
                     formatter.serialize_triple(triple.as_ref())?;
                 } else {
-                    let (lit, dt_opt) = literal_and_type(value, slot);
-                    if let Some(dt) = dt_opt {
-                        let object = Term::Literal(Literal::new_typed_literal(
-                            lit.clone(),
-                            NamedNode::new_unchecked(dt.clone()),
-                        ));
-                        let triple = Triple {
-                            subject: subject.as_subject(),
-                            predicate: predicate.clone(),
-                            object,
-                        };
-                        formatter.serialize_triple(triple.as_ref())?;
-                    } else {
-                        let object = Term::Literal(Literal::new_simple_literal(lit.clone()));
-                        let triple = Triple {
-                            subject: subject.as_subject(),
-                            predicate: predicate.clone(),
-                            object,
-                        };
-                        formatter.serialize_triple(triple.as_ref())?;
-                    }
+                    let object = scalar_literal_term(value, slot);
+                    let triple = Triple {
+                        subject: subject.as_subject(),
+                        predicate: predicate.clone(),
+                        object,
+                    };
+                    formatter.serialize_triple(triple.as_ref())?;
                 }
             }
             LinkMLInstance::Null { .. } => {
@@ -293,24 +326,34 @@ fn serialize_map<W: Write>(
             }
             LinkMLInstance::Object { values, class, .. } => {
                 let class_ref = &class;
-                let (obj, child_id) =
-                    identifier_node(values, class_ref, conv, state, Some(subject), None);
-                let triple = Triple {
-                    subject: subject.as_subject(),
-                    predicate: predicate.clone(),
-                    object: obj.as_term(),
-                };
-                formatter.serialize_triple(triple.as_ref())?;
-                serialize_map(
-                    &obj,
-                    values,
-                    Some(class_ref),
-                    formatter,
-                    _sv,
-                    conv,
-                    state,
-                    child_id.as_deref(),
-                )?;
+                // Try lang-tag collapse: emit "value"@lang instead of a blank node
+                if let Some(lang_term) = try_lang_tag_collapse(values, class_ref) {
+                    let triple = Triple {
+                        subject: subject.as_subject(),
+                        predicate: predicate.clone(),
+                        object: lang_term,
+                    };
+                    formatter.serialize_triple(triple.as_ref())?;
+                } else {
+                    let (obj, child_id) =
+                        identifier_node(values, class_ref, conv, state, Some(subject), None);
+                    let triple = Triple {
+                        subject: subject.as_subject(),
+                        predicate: predicate.clone(),
+                        object: obj.as_term(),
+                    };
+                    formatter.serialize_triple(triple.as_ref())?;
+                    serialize_map(
+                        &obj,
+                        values,
+                        Some(class_ref),
+                        formatter,
+                        _sv,
+                        conv,
+                        state,
+                        child_id.as_deref(),
+                    )?;
+                }
             }
             LinkMLInstance::List { values, slot, .. } => {
                 for (idx, item) in values.iter().enumerate() {
@@ -337,28 +380,13 @@ fn serialize_map<W: Write>(
                                 };
                                 formatter.serialize_triple(triple.as_ref())?;
                             } else {
-                                let (lit, dt_opt) = literal_and_type(value, slot);
-                                if let Some(dt) = dt_opt {
-                                    let object = Term::Literal(Literal::new_typed_literal(
-                                        lit.clone(),
-                                        NamedNode::new_unchecked(dt.clone()),
-                                    ));
-                                    let triple = Triple {
-                                        subject: subject.as_subject(),
-                                        predicate: predicate.clone(),
-                                        object,
-                                    };
-                                    formatter.serialize_triple(triple.as_ref())?;
-                                } else {
-                                    let object =
-                                        Term::Literal(Literal::new_simple_literal(lit.clone()));
-                                    let triple = Triple {
-                                        subject: subject.as_subject(),
-                                        predicate: predicate.clone(),
-                                        object,
-                                    };
-                                    formatter.serialize_triple(triple.as_ref())?;
-                                }
+                                let object = scalar_literal_term(value, slot);
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object,
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
                             }
                         }
                         LinkMLInstance::Null { .. } => {
@@ -368,30 +396,39 @@ fn serialize_map<W: Write>(
                             values: mv, class, ..
                         } => {
                             let class_ref = &class;
-                            let (obj, child_id) = identifier_node(
-                                mv,
-                                class_ref,
-                                conv,
-                                state,
-                                Some(subject),
-                                Some(idx),
-                            );
-                            let triple = Triple {
-                                subject: subject.as_subject(),
-                                predicate: predicate.clone(),
-                                object: obj.as_term(),
-                            };
-                            formatter.serialize_triple(triple.as_ref())?;
-                            serialize_map(
-                                &obj,
-                                mv,
-                                Some(class_ref),
-                                formatter,
-                                _sv,
-                                conv,
-                                state,
-                                child_id.as_deref(),
-                            )?;
+                            if let Some(lang_term) = try_lang_tag_collapse(mv, class_ref) {
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object: lang_term,
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
+                            } else {
+                                let (obj, child_id) = identifier_node(
+                                    mv,
+                                    class_ref,
+                                    conv,
+                                    state,
+                                    Some(subject),
+                                    Some(idx),
+                                );
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object: obj.as_term(),
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
+                                serialize_map(
+                                    &obj,
+                                    mv,
+                                    Some(class_ref),
+                                    formatter,
+                                    _sv,
+                                    conv,
+                                    state,
+                                    child_id.as_deref(),
+                                )?;
+                            }
                         }
                         LinkMLInstance::List { .. } => {}
                         LinkMLInstance::Mapping { .. } => {}
@@ -423,28 +460,13 @@ fn serialize_map<W: Write>(
                                 };
                                 formatter.serialize_triple(triple.as_ref())?;
                             } else {
-                                let (lit, dt_opt) = literal_and_type(v, slot);
-                                if let Some(dt) = dt_opt {
-                                    let object = Term::Literal(Literal::new_typed_literal(
-                                        lit.clone(),
-                                        NamedNode::new_unchecked(dt.clone()),
-                                    ));
-                                    let triple = Triple {
-                                        subject: subject.as_subject(),
-                                        predicate: predicate.clone(),
-                                        object,
-                                    };
-                                    formatter.serialize_triple(triple.as_ref())?;
-                                } else {
-                                    let object =
-                                        Term::Literal(Literal::new_simple_literal(lit.clone()));
-                                    let triple = Triple {
-                                        subject: subject.as_subject(),
-                                        predicate: predicate.clone(),
-                                        object,
-                                    };
-                                    formatter.serialize_triple(triple.as_ref())?;
-                                }
+                                let object = scalar_literal_term(v, slot);
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object,
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
                             }
                         }
                         LinkMLInstance::Null { .. } => {
@@ -454,30 +476,39 @@ fn serialize_map<W: Write>(
                             values: mv, class, ..
                         } => {
                             let class_ref = class;
-                            let (obj, child_id) = identifier_node(
-                                mv,
-                                class_ref,
-                                conv,
-                                state,
-                                Some(subject),
-                                Some(idx),
-                            );
-                            let triple = Triple {
-                                subject: subject.as_subject(),
-                                predicate: predicate.clone(),
-                                object: obj.as_term(),
-                            };
-                            formatter.serialize_triple(triple.as_ref())?;
-                            serialize_map(
-                                &obj,
-                                mv,
-                                Some(class_ref),
-                                formatter,
-                                _sv,
-                                conv,
-                                state,
-                                child_id.as_deref(),
-                            )?;
+                            if let Some(lang_term) = try_lang_tag_collapse(mv, class_ref) {
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object: lang_term,
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
+                            } else {
+                                let (obj, child_id) = identifier_node(
+                                    mv,
+                                    class_ref,
+                                    conv,
+                                    state,
+                                    Some(subject),
+                                    Some(idx),
+                                );
+                                let triple = Triple {
+                                    subject: subject.as_subject(),
+                                    predicate: predicate.clone(),
+                                    object: obj.as_term(),
+                                };
+                                formatter.serialize_triple(triple.as_ref())?;
+                                serialize_map(
+                                    &obj,
+                                    mv,
+                                    Some(class_ref),
+                                    formatter,
+                                    _sv,
+                                    conv,
+                                    state,
+                                    child_id.as_deref(),
+                                )?;
+                            }
                         }
                         LinkMLInstance::List { .. } => {}
                         LinkMLInstance::Mapping { .. } => {}

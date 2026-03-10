@@ -379,6 +379,34 @@ impl ClassView {
         fallback
     }
 
+    /// If this class implements the JSON-LD language-tagged string pattern,
+    /// returns `(language_slot, value_slot)`.
+    ///
+    /// A class is a "lang-tag class" when exactly one slot has
+    /// `implements: [jsonld:language]` and exactly one has
+    /// `implements: [jsonld:value]`.  During RDF serialization, instances of
+    /// such classes are collapsed from nested objects into language-tagged
+    /// literals (`"value"@lang`).
+    pub fn lang_tag_slots(&self) -> Option<(SlotView, SlotView)> {
+        let mut lang_slot = None;
+        let mut value_slot = None;
+        for slot in self.slots() {
+            if let Some(impls) = &slot.definition().implements {
+                for imp in impls {
+                    if imp == "jsonld:language" {
+                        lang_slot = Some(slot.clone());
+                    } else if imp == "jsonld:value" {
+                        value_slot = Some(slot.clone());
+                    }
+                }
+            }
+        }
+        match (lang_slot, value_slot) {
+            (Some(l), Some(v)) => Some((l, v)),
+            _ => None,
+        }
+    }
+
     fn compute_descendant_identifiers(
         &self,
         recurse: bool,

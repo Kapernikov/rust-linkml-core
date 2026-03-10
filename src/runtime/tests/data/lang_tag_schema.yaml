@@ -1,0 +1,41 @@
+id: https://example.com/langtest
+name: langtest
+prefixes:
+  langtest: https://example.com/langtest/
+  linkml: https://w3id.org/linkml/
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+  jsonld: https://www.w3.org/ns/json-ld#
+default_prefix: langtest
+imports:
+- linkml:types
+
+classes:
+  # Feature 1: static in_language on a slot
+  Station:
+    attributes:
+      id:
+        identifier: true
+        range: uri
+      opName:
+        range: string
+        in_language: en
+      description:
+        range: string
+      labels:
+        range: LangLabel
+        multivalued: true
+        inlined_as_list: true
+        inlined: true
+
+  # Feature 2: lang-tag class via implements
+  LangLabel:
+    attributes:
+      lang:
+        range: string
+        key: true
+        implements:
+          - jsonld:language
+      text:
+        range: string
+        implements:
+          - jsonld:value
