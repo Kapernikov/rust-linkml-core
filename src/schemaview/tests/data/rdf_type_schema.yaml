@@ -1,0 +1,30 @@
+id: https://example.com/rdftype
+name: rdftype
+prefixes:
+  rdftype: https://example.com/rdftype/
+  geosparql: http://www.opengis.net/ont/geosparql#
+  linkml: https://w3id.org/linkml/
+default_prefix: rdftype
+imports:
+- linkml:types
+types:
+  wktLiteral:
+    uri: geosparql:wktLiteral
+    typeof: string
+classes:
+  Thing:
+    attributes:
+      name:
+        range: string
+      count:
+        range: integer
+      score:
+        range: float
+      precise:
+        range: double
+      location:
+        range: wktLiteral
+      homepage:
+        range: uri
+      see_also:
+        range: uriorcurie

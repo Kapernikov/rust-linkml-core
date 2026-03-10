@@ -3,6 +3,8 @@ name: typed
 prefixes:
   typed: https://example.com/typed/
 default_prefix: typed
+imports:
+- linkml:types
 classes:
   Thing:
     attributes:

@@ -98,17 +98,17 @@ fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> String {
 
 fn literal_and_type(value: &JsonValue, slot: &SlotView) -> (String, Option<String>) {
     let lit = literal_value(value);
-    let dt = match slot.definition().range.as_deref() {
-        Some("date") => Some("http://www.w3.org/2001/XMLSchema#date".to_string()),
-        Some("datetime") => Some("http://www.w3.org/2001/XMLSchema#dateTime".to_string()),
-        Some("integer") => Some("http://www.w3.org/2001/XMLSchema#integer".to_string()),
-        Some("float") => Some("http://www.w3.org/2001/XMLSchema#float".to_string()),
-        Some("double") => Some("http://www.w3.org/2001/XMLSchema#double".to_string()),
-        Some("boolean") => Some("http://www.w3.org/2001/XMLSchema#boolean".to_string()),
-        Some("decimal") => Some("http://www.w3.org/2001/XMLSchema#decimal".to_string()),
-        _ => None,
-    };
+    let dt = slot
+        .get_range_info()
+        .first()
+        .and_then(|ri| ri.rdf_datatype_iri.clone());
     (lit, dt)
+}
+
+fn is_range_iri(slot: &SlotView) -> bool {
+    slot.get_range_info()
+        .first()
+        .is_some_and(|ri| ri.is_range_iri)
 }
 
 /// If the slot's range is an enum and the scalar value matches a permissible
@@ -245,7 +245,7 @@ fn serialize_map<W: Write>(
         match v {
             LinkMLInstance::Scalar { value, slot, .. } => {
                 let inline_mode = slot.determine_slot_inline_mode();
-                if inline_mode == SlotInlineMode::Reference {
+                if inline_mode == SlotInlineMode::Reference || is_range_iri(slot) {
                     let lit = literal_value(value);
                     let iri = Identifier::new(&lit)
                         .to_uri(conv)
@@ -317,7 +317,7 @@ fn serialize_map<W: Write>(
                     match item {
                         LinkMLInstance::Scalar { value, .. } => {
                             let inline_mode = slot.determine_slot_inline_mode();
-                            if inline_mode == SlotInlineMode::Reference {
+                            if inline_mode == SlotInlineMode::Reference || is_range_iri(slot) {
                                 let lit = literal_value(value);
                                 let iri = Identifier::new(&lit)
                                     .to_uri(conv)
@@ -403,7 +403,7 @@ fn serialize_map<W: Write>(
                     match item {
                         LinkMLInstance::Scalar { value: v, slot, .. } => {
                             let inline_mode = slot.determine_slot_inline_mode();
-                            if inline_mode == SlotInlineMode::Reference {
+                            if inline_mode == SlotInlineMode::Reference || is_range_iri(slot) {
                                 let lit = literal_value(v);
                                 let iri = Identifier::new(&lit)
                                     .to_uri(conv)

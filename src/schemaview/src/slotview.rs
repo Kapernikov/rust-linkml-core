@@ -66,15 +66,31 @@ pub struct RangeInfo {
     pub is_range_scalar: bool,
     pub slot_container_mode: SlotContainerMode,
     pub slot_inline_mode: SlotInlineMode,
+    /// The fully-expanded RDF datatype IRI for this slot's range type, if the
+    /// type defines one that differs from `xsd:string`.  For example,
+    /// `range: wktLiteral` resolves to `Some("http://www.opengis.net/ont/geosparql#wktLiteral")`,
+    /// `range: float` resolves to `Some("http://www.w3.org/2001/XMLSchema#float")`,
+    /// and `range: string` resolves to `None` (plain literal).
+    pub rdf_datatype_iri: Option<String>,
+    /// `true` when the range type's `typeof` chain includes `uri` or
+    /// `uriorcurie`, meaning the value should be serialized as an RDF named
+    /// node (IRI) rather than a literal.
+    pub is_range_iri: bool,
 }
 
 impl RangeInfo {
+    /// Well-known XSD string IRI — plain string literals should not carry an
+    /// explicit `^^xsd:string` datatype annotation since they are equivalent.
+    const XSD_STRING: &'static str = "http://www.w3.org/2001/XMLSchema#string";
+
     pub fn new(e: SlotExpressionOrSubtype, slotview: SlotView) -> Self {
         let range_class = Self::determine_range_class(&e, &slotview);
         let range_enum = Self::determine_range_enum(&e, &slotview);
         let is_range_scalar = Self::determine_range_scalar(&range_class);
         let slot_container_mode = Self::determine_slot_container_mode(&range_class, &e);
         let slot_inline_mode = Self::determine_slot_inline_mode(&range_class, &e);
+        let (rdf_datatype_iri, is_range_iri) =
+            Self::determine_rdf_type_info(&e, &slotview, &range_class, &range_enum);
         Self {
             e,
             slotview,
@@ -83,6 +99,8 @@ impl RangeInfo {
             is_range_scalar,
             slot_container_mode,
             slot_inline_mode,
+            rdf_datatype_iri,
+            is_range_iri,
         }
     }
 
@@ -202,6 +220,92 @@ impl RangeInfo {
         } else {
             SlotInlineMode::Inline
         }
+    }
+
+    /// Resolves the RDF datatype IRI and IRI-vs-literal disposition for a
+    /// scalar range type by walking the LinkML type hierarchy.
+    ///
+    /// Returns `(rdf_datatype_iri, is_range_iri)` where:
+    /// - `rdf_datatype_iri` is `Some(iri)` when the type's `uri` field
+    ///   resolves to something other than `xsd:string`, meaning the literal
+    ///   should carry a `^^<iri>` annotation.
+    /// - `is_range_iri` is `true` when the type hierarchy contains `uri` or
+    ///   `uriorcurie` (both map to `xsd:anyURI`), meaning the value should
+    ///   be emitted as a named node rather than a literal.
+    fn determine_rdf_type_info(
+        e: &SlotExpressionOrSubtype,
+        slotview: &SlotView,
+        range_class: &Option<ClassView>,
+        range_enum: &Option<EnumView>,
+    ) -> (Option<String>, bool) {
+        // Only relevant for scalar ranges (not classes or enums).
+        if range_class.is_some() || range_enum.is_some() {
+            return (None, false);
+        }
+        let range_name = match e.range() {
+            Some(r) => r.to_string(),
+            None => return (None, false),
+        };
+
+        let conv = slotview
+            .sv
+            .converter_for_schema(&slotview.schema_uri)
+            .unwrap_or_else(|| slotview.sv.converter());
+
+        let id = Identifier::Name(range_name);
+        let ancestors = match slotview.sv.type_ancestors(&id, &conv) {
+            Ok(a) => a,
+            Err(_) => return (None, false),
+        };
+        // Check if any ancestor is the `uri` or `uriorcurie` type by name.
+        let is_iri = ancestors.iter().any(|a| {
+            matches!(a, Identifier::Name(n) if n == "uri" || n == "uriorcurie")
+        });
+
+        if is_iri {
+            return (None, true);
+        }
+
+        // Walk the type hierarchy to find the most specific type_uri.
+        // The SchemaView stores TypeDefinitions; we look up each ancestor
+        // by name and check its type_uri field.
+        let data = slotview.sv.data();
+        let mut best_uri: Option<String> = None;
+        'outer: for ancestor in &ancestors {
+            let name = match ancestor {
+                Identifier::Name(n) => n,
+                _ => continue,
+            };
+            for (schema_uri, schema) in data.schema_definitions.iter() {
+                if let Some(types) = &schema.types {
+                    if let Some(td) = types.get(name.as_str()) {
+                        if let Some(type_uri_curie) = &td.type_uri {
+                            // Use the converter for the schema that defines this type,
+                            // since the CURIE prefix (e.g. "xsd:") is declared there.
+                            let schema_conv = slotview
+                                .sv
+                                .converter_for_schema(schema_uri)
+                                .unwrap_or_else(|| conv.clone());
+                            if let Ok(full) =
+                                Identifier::new(type_uri_curie).to_uri(&schema_conv)
+                            {
+                                if best_uri.is_none() {
+                                    best_uri = Some(full.0);
+                                }
+                            }
+                        }
+                        continue 'outer; // found this ancestor, move to next
+                    }
+                }
+            }
+        }
+
+        // Suppress xsd:string — plain literals are equivalent.
+        if best_uri.as_deref() == Some(Self::XSD_STRING) {
+            best_uri = None;
+        }
+
+        (best_uri, false)
     }
 }
 

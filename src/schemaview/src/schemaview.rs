@@ -321,7 +321,7 @@ impl SchemaView {
         }
     }
 
-    fn data(&self) -> Guard<Arc<SchemaViewData>> {
+    pub(crate) fn data(&self) -> Guard<Arc<SchemaViewData>> {
         self.data.load()
     }
 

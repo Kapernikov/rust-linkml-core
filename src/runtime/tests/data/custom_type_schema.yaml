@@ -1,0 +1,26 @@
+id: https://example.com/geo-test
+name: geo_test
+prefixes:
+  geotest: https://example.com/geo-test/
+  geosparql: http://www.opengis.net/ont/geosparql#
+  linkml: https://w3id.org/linkml/
+default_prefix: geotest
+imports:
+- linkml:types
+types:
+  wktLiteral:
+    uri: geosparql:wktLiteral
+    typeof: string
+    title: Well-known Text Literal
+    description: A Well-known Text serialization of a Geometry object.
+classes:
+  Place:
+    attributes:
+      name:
+        range: string
+      location:
+        range: wktLiteral
+      homepage:
+        range: uri
+      related_doc:
+        range: uriorcurie
