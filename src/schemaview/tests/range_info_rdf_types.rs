@@ -57,7 +57,10 @@ fn range_info_for_slot(
 fn string_range_has_no_datatype() {
     let (_schema, sv, conv) = load_schema_with_types("rdf_type_schema.yaml");
     let ri = range_info_for_slot(&sv, &conv, "Thing", "name");
-    assert_eq!(ri.rdf_datatype_iri, None, "string should suppress xsd:string");
+    assert_eq!(
+        ri.rdf_datatype_iri, None,
+        "string should suppress xsd:string"
+    );
     assert!(!ri.is_range_iri);
 }
 
@@ -109,7 +112,10 @@ fn wkt_literal_has_geosparql_datatype() {
 fn uri_range_is_iri() {
     let (_schema, sv, conv) = load_schema_with_types("rdf_type_schema.yaml");
     let ri = range_info_for_slot(&sv, &conv, "Thing", "homepage");
-    assert_eq!(ri.rdf_datatype_iri, None, "IRI ranges should not have a datatype");
+    assert_eq!(
+        ri.rdf_datatype_iri, None,
+        "IRI ranges should not have a datatype"
+    );
     assert!(ri.is_range_iri, "uri range should be flagged as IRI");
 }
 
@@ -117,6 +123,9 @@ fn uri_range_is_iri() {
 fn uriorcurie_range_is_iri() {
     let (_schema, sv, conv) = load_schema_with_types("rdf_type_schema.yaml");
     let ri = range_info_for_slot(&sv, &conv, "Thing", "see_also");
-    assert_eq!(ri.rdf_datatype_iri, None, "IRI ranges should not have a datatype");
+    assert_eq!(
+        ri.rdf_datatype_iri, None,
+        "IRI ranges should not have a datatype"
+    );
     assert!(ri.is_range_iri, "uriorcurie range should be flagged as IRI");
 }

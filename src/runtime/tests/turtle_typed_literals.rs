@@ -19,7 +19,13 @@ fn data_path(name: &str) -> PathBuf {
 
 /// Load a schema together with the standard LinkML types definitions.
 /// Returns (schema, SchemaView, Converter) ready for use in tests.
-fn load_schema_with_types(schema_file: &str) -> (linkml_meta::SchemaDefinition, SchemaView, linkml_schemaview::Converter) {
+fn load_schema_with_types(
+    schema_file: &str,
+) -> (
+    linkml_meta::SchemaDefinition,
+    SchemaView,
+    linkml_schemaview::Converter,
+) {
     let schema = from_yaml(Path::new(&data_path(schema_file))).unwrap();
     let types_schema = from_yaml(Path::new(&data_path("types.yaml"))).unwrap();
     let mut sv = SchemaView::new();

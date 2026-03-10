@@ -258,9 +258,9 @@ impl RangeInfo {
             Err(_) => return (None, false),
         };
         // Check if any ancestor is the `uri` or `uriorcurie` type by name.
-        let is_iri = ancestors.iter().any(|a| {
-            matches!(a, Identifier::Name(n) if n == "uri" || n == "uriorcurie")
-        });
+        let is_iri = ancestors
+            .iter()
+            .any(|a| matches!(a, Identifier::Name(n) if n == "uri" || n == "uriorcurie"));
 
         if is_iri {
             return (None, true);
@@ -286,9 +286,7 @@ impl RangeInfo {
                                 .sv
                                 .converter_for_schema(schema_uri)
                                 .unwrap_or_else(|| conv.clone());
-                            if let Ok(full) =
-                                Identifier::new(type_uri_curie).to_uri(&schema_conv)
-                            {
+                            if let Ok(full) = Identifier::new(type_uri_curie).to_uri(&schema_conv) {
                                 if best_uri.is_none() {
                                     best_uri = Some(full.0);
                                 }
