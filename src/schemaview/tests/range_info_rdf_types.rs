@@ -44,7 +44,7 @@ fn range_info_for_slot(
         .unwrap();
     let slot = class
         .slots()
-        .into_iter()
+        .iter()
         .find(|s| s.name == slot_name)
         .unwrap_or_else(|| panic!("slot '{}' not found on class '{}'", slot_name, class_name));
     slot.get_range_info()
