@@ -1848,12 +1848,18 @@ impl<'py> FromPyObject<'py> for Anything {
                 return Ok(Value::Unit);
             }
 
-            // Try simple primitives first
-            if let Ok(s) = o.extract::<&str>() {
-                return Ok(Value::String(s.to_string()));
-            }
+            // Try simple primitives first (bool before int — Python bool is a subclass of int)
             if let Ok(b) = o.extract::<bool>() {
                 return Ok(Value::Bool(b));
+            }
+            if let Ok(i) = o.extract::<i64>() {
+                return Ok(Value::I64(i));
+            }
+            if let Ok(f) = o.extract::<f64>() {
+                return Ok(Value::F64(f));
+            }
+            if let Ok(s) = o.extract::<&str>() {
+                return Ok(Value::String(s.to_string()));
             }
 
             // Sequences (list/tuple)
@@ -1930,14 +1936,23 @@ impl<'py> IntoPyObject<'py> for Anything {
                     }
                     Ok(dict.into_any())
                 }
-                // Best-effort for other serde_value variants
-                // (numbers, bytes, chars, etc.)
-                other => {
-                    // Try common cases without bringing extra deps
-                    // Numbers are converted via string if not covered above
-                    let s = format!("{:?}", other);
-                    Ok(PyString::new(py, &s).into_any())
-                }
+                Value::U8(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::U16(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::U32(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::U64(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I8(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I16(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I32(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I64(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::F32(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::F64(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::Char(c) => Ok(PyString::new(py, &c.to_string()).into_any()),
+                Value::Option(opt) => match opt {
+                    Some(inner) => value_to_py(py, inner),
+                    None => Ok(py.None().into_bound(py)),
+                },
+                Value::Newtype(inner) => value_to_py(py, inner),
+                Value::Bytes(b) => Ok(pyo3::types::PyBytes::new(py, b).into_any()),
             }
         }
 
