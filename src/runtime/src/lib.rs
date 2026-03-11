@@ -751,6 +751,42 @@ impl LinkMLInstance {
             .unwrap_or_else(|| base.clone())
     }
 
+    /// If the class has a `designates_type` slot and the values map does not
+    /// already contain it, insert a Scalar value with the class's type
+    /// designator value. This ensures round-trip fidelity for formats like
+    /// JSON that lack an intrinsic typing mechanism (unlike RDF's rdf:type).
+    fn populate_type_designator(
+        values: &mut HashMap<String, LinkMLInstance>,
+        class: &ClassView,
+        sv: &SchemaView,
+        conv: &Converter,
+    ) {
+        if let Some(type_slot_def) = class.get_type_designator_slot() {
+            let slot_name = &type_slot_def.name;
+            if !values.contains_key(slot_name) {
+                if let Ok(id) = class.get_type_designator_value(type_slot_def, conv) {
+                    // Find the SlotView for the type designator slot.
+                    if let Some(slot_view) = class
+                        .slots()
+                        .iter()
+                        .find(|s| s.definition().designates_type.unwrap_or(false))
+                    {
+                        values.insert(
+                            slot_name.clone(),
+                            LinkMLInstance::Scalar {
+                                node_id: new_node_id(),
+                                value: JsonValue::String(id.to_string()),
+                                slot: slot_view.clone(),
+                                class: Some(class.clone()),
+                                sv: sv.clone(),
+                            },
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     fn parse_object_fixed_class(
         map: serde_json::Map<String, JsonValue>,
         class: &ClassView,
@@ -793,6 +829,7 @@ impl LinkMLInstance {
             path.clone(),
             validation_issues,
         );
+        Self::populate_type_designator(&mut values, class, sv, conv);
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
             values,
@@ -1029,6 +1066,7 @@ impl LinkMLInstance {
             path.clone(),
             validation_issues,
         );
+        Self::populate_type_designator(&mut values, &chosen, sv, conv);
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
             values,
@@ -1271,6 +1309,7 @@ impl LinkMLInstance {
                     path.clone(),
                     validation_issues,
                 );
+                Self::populate_type_designator(&mut child_values, &selected, sv, conv);
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
                     values: child_values,
@@ -1313,6 +1352,7 @@ impl LinkMLInstance {
                     path.clone(),
                     validation_issues,
                 );
+                Self::populate_type_designator(&mut child_values, &range_cv, sv, conv);
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
                     values: child_values,

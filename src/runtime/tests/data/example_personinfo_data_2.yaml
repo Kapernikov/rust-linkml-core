@@ -28,9 +28,11 @@ objects:
         diagnosis:
           id: CODE:D0001
           name: headache
+          objecttype: https://w3id.org/linkml/examples/personinfo/DiagnosisConcept
         procedure:
           id: CODE:P0001
           name: trepanation
+          objecttype: https://w3id.org/linkml/examples/personinfo/ProcedureConcept
   - id: P:003
     objecttype: https://w3id.org/linkml/examples/personinfo/Person
     name: alice smith
@@ -42,5 +44,6 @@ objects:
 organizations:
   - id: ROR:1
     name: foo
+    objecttype: http://schema.org/Organization
 
   
