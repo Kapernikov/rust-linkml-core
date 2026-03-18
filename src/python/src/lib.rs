@@ -1552,7 +1552,7 @@ fn py_to_turtle(
 /// Args:
 ///     turtle_str: RDF/Turtle content as a string.
 ///     schema_view: A SchemaView with the schema loaded.
-///     root_classes: List of class names to extract as top-level instances.
+///     root_classes: List of classes to extract (names, CURIEs, or full URIs).
 ///
 /// Returns:
 ///     A dict mapping class names to lists of LinkMLInstance objects.

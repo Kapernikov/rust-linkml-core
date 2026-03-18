@@ -630,7 +630,7 @@ fn import_from_graph(
 ) -> Result<ImportResult, ImportError> {
     let total_triples = graph.len();
 
-    // Resolve root class names to ClassViews and their URIs
+    // Resolve root classes (names, CURIEs, or full URIs) to ClassViews and their URIs
     let mut root_class_info: Vec<(ClassView, NamedNode)> = Vec::new();
     for &name in root_classes {
         let cv = sv
@@ -680,8 +680,12 @@ fn import_from_graph(
 /// Import RDF/Turtle data into LinkML instances.
 ///
 /// Parses the Turtle from `reader`, then harvests instances of the specified
-/// `root_classes` from the graph. Subjects reachable as inlined sub-objects
-/// from another root instance are inlined there, not emitted as top-level.
+/// `root_classes` from the graph. Each root class can be specified as a plain
+/// name (`"OperationalPoint"`), CURIE (`"rinf:OperationalPoint"`), or full
+/// URI (`"http://data.europa.eu/949/OperationalPoint"`).
+///
+/// Subjects reachable as inlined sub-objects from another root instance are
+/// inlined there, not emitted as top-level.
 pub fn import_turtle(
     reader: impl Read,
     sv: &SchemaView,
