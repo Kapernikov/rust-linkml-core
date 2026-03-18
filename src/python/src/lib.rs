@@ -3,6 +3,7 @@ use linkml_runtime::diff::{
     diff as diff_internal, patch as patch_internal, Delta, DeltaOp, DiffOptions, PatchTrace,
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
+use linkml_runtime::turtle_import::import_turtle_from_string;
 use linkml_runtime::{
     load_json_str, load_yaml_str, validate_issues, LinkMLInstance, LoadResult, NodeId,
     ValidationProblemType, ValidationResult, ValidationSeverity, ValidationValue,
@@ -717,6 +718,7 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_diff, m)?)?;
     m.add_function(wrap_pyfunction!(py_patch, m)?)?;
     m.add_function(wrap_pyfunction!(py_to_turtle, m)?)?;
+    m.add_function(wrap_pyfunction!(py_from_turtle, m)?)?;
     m.add_class::<PyLinkMLInstance>()?;
     m.add_class::<PyDelta>()?;
     m.add_class::<PyValidationResult>()?;
@@ -1540,6 +1542,53 @@ fn py_to_turtle(
     skolem: Option<bool>,
 ) -> PyResult<String> {
     value.as_turtle(py, skolem)
+}
+
+/// Import RDF/Turtle data into LinkML instances.
+///
+/// Parses the given Turtle string and harvests instances of the specified
+/// root classes from the RDF graph, guided by the loaded schema.
+///
+/// Args:
+///     turtle_str: RDF/Turtle content as a string.
+///     schema_view: A SchemaView with the schema loaded.
+///     root_classes: List of class names to extract as top-level instances.
+///
+/// Returns:
+///     A dict mapping class names to lists of LinkMLInstance objects.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "from_turtle", signature = (turtle_str, schema_view, root_classes))]
+fn py_from_turtle(
+    py: Python<'_>,
+    turtle_str: &str,
+    schema_view: &PySchemaView,
+    root_classes: Vec<String>,
+) -> PyResult<HashMap<String, Vec<Py<PyLinkMLInstance>>>> {
+    let rust_sv = schema_view.as_rust();
+    let conv = rust_sv.converter();
+    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
+
+    let result = import_turtle_from_string(turtle_str, rust_sv, &conv, &class_refs)
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let sv_py: Py<PySchemaView> = Py::new(
+        py,
+        PySchemaView {
+            inner: schema_view.inner.clone(),
+        },
+    )?;
+
+    let mut py_result: HashMap<String, Vec<Py<PyLinkMLInstance>>> = HashMap::new();
+    for (class_name, instances) in result.instances {
+        let mut py_instances = Vec::new();
+        for instance in instances {
+            let py_inst = Py::new(py, PyLinkMLInstance::new(instance, sv_py.clone_ref(py)))?;
+            py_instances.push(py_inst);
+        }
+        py_result.insert(class_name, py_instances);
+    }
+
+    Ok(py_result)
 }
 
 #[cfg(feature = "stubgen")]

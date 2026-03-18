@@ -7,9 +7,9 @@ use linkml_schemaview::slotview::{SlotInlineMode, SlotView};
 use serde_json::Value as JsonValue;
 use std::io::{Result as IoResult, Write};
 
-use oxrdf::{BlankNode, Literal, NamedNode, Subject, Term, Triple};
+use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxttl::turtle::WriterTurtleSerializer;
-use oxttl::TurtleSerializer;
+use oxttl::{NTriplesSerializer, TurtleParser, TurtleSerializer};
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 use crate::regex_support::Regex;
@@ -25,10 +25,10 @@ enum Node {
 }
 
 impl Node {
-    fn as_subject(&self) -> Subject {
+    fn as_subject(&self) -> NamedOrBlankNode {
         match self {
-            Node::Named(iri) => Subject::NamedNode(NamedNode::new_unchecked(iri.clone())),
-            Node::Blank(id) => Subject::BlankNode(BlankNode::new_unchecked(id.clone())),
+            Node::Named(iri) => NamedOrBlankNode::NamedNode(NamedNode::new_unchecked(iri.clone())),
+            Node::Blank(id) => NamedOrBlankNode::BlankNode(BlankNode::new_unchecked(id.clone())),
         }
     }
 
@@ -719,6 +719,37 @@ pub fn turtle_to_string(
     let mut buf = Vec::new();
     write_turtle(value, sv, schema, conv, &mut buf, options)?;
     String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
+/// Write RDF data as N-Triples (one triple per line, full IRIs, no prefixes).
+///
+/// Generates Turtle internally, parses back, and re-serializes each triple
+/// through `NTriplesSerializer` for correct N-Triples output.
+/// Write RDF data as N-Triples (one triple per line, full IRIs, no prefixes).
+///
+/// Generates Turtle internally, parses back, and re-serializes each triple
+/// through `NTriplesSerializer` for correct N-Triples output.
+pub fn write_ntriples<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: TurtleOptions,
+) -> IoResult<()> {
+    let ttl = turtle_to_string(value, sv, schema, conv, options)?;
+    let mut buf = Vec::new();
+    let mut nt_ser = NTriplesSerializer::new().for_writer(&mut buf);
+    let parser = TurtleParser::new().for_reader(ttl.as_bytes());
+    for triple in parser {
+        let triple = triple.map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        nt_ser
+            .serialize_triple(triple.as_ref())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    }
+    drop(nt_ser);
+    w.write_all(&buf)?;
+    Ok(())
 }
 
 /// Replace full IRIs with CURIEs where possible, returning the transformed

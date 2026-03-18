@@ -5403,6 +5403,22 @@ def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:bui
     changes.
     """
 
+def from_turtle(turtle_str:builtins.str, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str]) -> builtins.dict[builtins.str, builtins.list[LinkMLInstance]]:
+    r"""
+    Import RDF/Turtle data into LinkML instances.
+    
+    Parses the given Turtle string and harvests instances of the specified
+    root classes from the RDF graph, guided by the loaded schema.
+    
+    Args:
+        turtle_str: RDF/Turtle content as a string.
+        schema_view: A SchemaView with the schema loaded.
+        root_classes: List of class names to extract as top-level instances.
+    
+    Returns:
+        A dict mapping class names to lists of LinkMLInstance objects.
+    """
+
 def load_json(source:typing.Any, sv:SchemaView, class_view:ClassView) -> tuple[typing.Optional[LinkMLInstance], builtins.list[ValidationResult]]: ...
 
 def load_yaml(source:typing.Any, sv:SchemaView, class_view:ClassView) -> tuple[typing.Optional[LinkMLInstance], builtins.list[ValidationResult]]: ...
