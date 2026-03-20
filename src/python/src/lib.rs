@@ -719,6 +719,7 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_patch, m)?)?;
     m.add_function(wrap_pyfunction!(py_to_turtle, m)?)?;
     m.add_function(wrap_pyfunction!(py_from_turtle, m)?)?;
+    m.add_function(wrap_pyfunction!(py_from_turtle_tracked, m)?)?;
     m.add_class::<PyLinkMLInstance>()?;
     m.add_class::<PyDelta>()?;
     m.add_class::<PyValidationResult>()?;
@@ -1589,6 +1590,69 @@ fn py_from_turtle(
     }
 
     Ok(py_result)
+}
+
+/// Parse RDF/Turtle into LinkML instances with tracking of unconsumed subjects.
+///
+/// Imports instances of the given root classes from the RDF graph, guided by the loaded schema.
+/// Unlike `from_turtle`, this function also returns the list of subject IRIs that were
+/// not consumed during the import, along with the number of triples each subject has.
+///
+/// Args:
+///     turtle_str: RDF/Turtle content as a string.
+///     schema_view: A SchemaView with the schema loaded.
+///     root_classes: List of classes to extract (names, CURIEs, or full URIs).
+///
+/// Returns:
+///     A tuple of (instances_dict, unconsumed_subjects) where instances_dict maps class
+///     names to lists of LinkMLInstance objects, and unconsumed_subjects is a list of
+///     subject IRIs that were not consumed during import.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "from_turtle_tracked", signature = (turtle_str, schema_view, root_classes))]
+#[allow(clippy::type_complexity)]
+fn py_from_turtle_tracked(
+    py: Python<'_>,
+    turtle_str: &str,
+    schema_view: &PySchemaView,
+    root_classes: Vec<String>,
+) -> PyResult<(HashMap<String, Vec<Py<PyLinkMLInstance>>>, Vec<String>)> {
+    use linkml_runtime::rdf_import_store::TrackingRdfImportStore;
+    use linkml_runtime::turtle_import::import_from_store;
+
+    let rust_sv = schema_view.as_rust();
+    let conv = rust_sv.converter();
+    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
+
+    let store = TrackingRdfImportStore::from_turtle(std::io::Cursor::new(turtle_str.as_bytes()))
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let result = import_from_store(&store, rust_sv, &conv, &class_refs)
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let sv_py: Py<PySchemaView> = Py::new(
+        py,
+        PySchemaView {
+            inner: schema_view.inner.clone(),
+        },
+    )?;
+
+    let mut py_result: HashMap<String, Vec<Py<PyLinkMLInstance>>> = HashMap::new();
+    for (class_name, instances) in result.instances {
+        let mut py_instances = Vec::new();
+        for instance in instances {
+            let py_inst = Py::new(py, PyLinkMLInstance::new(instance, sv_py.clone_ref(py)))?;
+            py_instances.push(py_inst);
+        }
+        py_result.insert(class_name, py_instances);
+    }
+
+    let unconsumed: Vec<String> = store
+        .unconsumed_subjects()
+        .into_iter()
+        .map(|(subj, _)| subj)
+        .collect();
+
+    Ok((py_result, unconsumed))
 }
 
 #[cfg(feature = "stubgen")]

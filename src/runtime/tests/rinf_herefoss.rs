@@ -190,7 +190,10 @@ fn import_era_with_tracking() {
 
     let consumed = store.consumed_subjects();
     eprintln!("Consumed subjects: {}", consumed.len());
-    assert!(!consumed.is_empty(), "Expected consumed subjects to be non-empty");
+    assert!(
+        !consumed.is_empty(),
+        "Expected consumed subjects to be non-empty"
+    );
     assert!(
         consumed.iter().any(|s| s.contains("matdata.eu")),
         "Expected at least one consumed subject containing 'matdata.eu'"

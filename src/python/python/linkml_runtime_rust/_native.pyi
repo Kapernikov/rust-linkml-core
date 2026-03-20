@@ -5413,10 +5413,29 @@ def from_turtle(turtle_str:builtins.str, schema_view:SchemaView, root_classes:ty
     Args:
         turtle_str: RDF/Turtle content as a string.
         schema_view: A SchemaView with the schema loaded.
-        root_classes: List of class names to extract as top-level instances.
+        root_classes: List of classes to extract (names, CURIEs, or full URIs).
     
     Returns:
         A dict mapping class names to lists of LinkMLInstance objects.
+    """
+
+def from_turtle_tracked(turtle_str:builtins.str, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str]) -> tuple[builtins.dict[builtins.str, builtins.list[LinkMLInstance]], builtins.list[builtins.str]]:
+    r"""
+    Parse RDF/Turtle into LinkML instances with tracking of unconsumed subjects.
+    
+    Imports instances of the given root classes from the RDF graph, guided by the loaded schema.
+    Unlike `from_turtle`, this function also returns the list of subject IRIs that were
+    not consumed during the import, along with the number of triples each subject has.
+    
+    Args:
+        turtle_str: RDF/Turtle content as a string.
+        schema_view: A SchemaView with the schema loaded.
+        root_classes: List of classes to extract (names, CURIEs, or full URIs).
+    
+    Returns:
+        A tuple of (instances_dict, unconsumed_subjects) where instances_dict maps class
+        names to lists of LinkMLInstance objects, and unconsumed_subjects is a list of
+        subject IRIs that were not consumed during import.
     """
 
 def load_json(source:typing.Any, sv:SchemaView, class_view:ClassView) -> tuple[typing.Optional[LinkMLInstance], builtins.list[ValidationResult]]: ...

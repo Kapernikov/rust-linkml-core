@@ -739,8 +739,7 @@ mod tests {
                     ex:name "ACME" .
         "#;
 
-        let store =
-            RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
+        let store = RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
 
         // Should have 4 triples (2 rdf:type + 2 ex:name)
         assert_eq!(store.len(), Some(4));
@@ -774,8 +773,7 @@ mod tests {
                        ex:address [ a ex:Address ; ex:street "123 Main St" ] .
         "#;
 
-        let store =
-            RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
+        let store = RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
         // person1 has: rdf:type, ex:address
         // blank node has: rdf:type, ex:street
         // plus the link from person1 to blank node
