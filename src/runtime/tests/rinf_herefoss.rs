@@ -141,7 +141,7 @@ fn import_era_enriched_ntriples() {
                 total += instances.len();
             }
             eprintln!("  Total instances: {total}");
-            eprintln!("  Unconsumed triples: {}", import_result.unconsumed_count);
+            eprintln!("  Unconsumed triples: {:?}", import_result.unconsumed_count);
             eprintln!("===================================\n");
 
             assert!(total > 0, "Expected at least some instances");

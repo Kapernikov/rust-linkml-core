@@ -156,10 +156,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 _ => import_turtle(reader, &sv, &conv, &class_refs).map_err(|e| e.to_string())?,
             };
+            let unconsumed_str = result
+                .unconsumed_count
+                .map(|n| format!("{n}"))
+                .unwrap_or_else(|| "unknown".to_string());
             eprintln!(
-                "Imported {} instances ({} unconsumed triples)",
+                "Imported {} instances ({unconsumed_str} unconsumed triples)",
                 result.instances.values().map(|v| v.len()).sum::<usize>(),
-                result.unconsumed_count,
             );
             result.instances.into_values().flatten().collect()
         }
