@@ -27,9 +27,11 @@ use constraints::{run_object_constraints, run_slot_constraints};
 pub mod blame;
 pub mod diff;
 #[cfg(feature = "ttl")]
-pub mod turtle;
+pub mod rdf_import_store;
 #[cfg(feature = "ttl")]
 pub mod triple_source;
+#[cfg(feature = "ttl")]
+pub mod turtle;
 #[cfg(feature = "ttl")]
 pub mod turtle_import;
 pub use blame::{

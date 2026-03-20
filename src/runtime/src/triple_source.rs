@@ -36,6 +36,12 @@ pub trait TripleSource {
     /// Returns `None` when counting would be expensive (e.g. remote store).
     fn len(&self) -> Option<usize>;
 
+    /// Returns `true` if the store is known to be empty.
+    /// Returns `false` if the store is non-empty or the count is unavailable.
+    fn is_empty(&self) -> bool {
+        self.len() == Some(0)
+    }
+
     /// Called when a triple is consumed by the harvest algorithm.
     /// Implementations may record this for tracking or ignore it.
     /// The full (subject, predicate, object) is provided so backends
