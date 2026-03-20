@@ -1,5 +1,6 @@
 #![cfg(feature = "ttl")]
 
+use linkml_runtime::rdf_import_store::{RdfImportStore, TrackingRdfImportStore};
 use linkml_runtime::turtle_import::import_ntriples;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::io::from_yaml;
@@ -153,4 +154,89 @@ fn import_era_enriched_ntriples() {
             panic!("Import failed: {e}");
         }
     }
+}
+
+#[test]
+fn import_era_with_tracking() {
+    let Some((sv, conv)) = load_rinf_sv_and_conv() else {
+        eprintln!("Skipping: schema not found");
+        return;
+    };
+    if !Path::new(ERA_NT_FILE).exists() {
+        eprintln!("Skipping: {ERA_NT_FILE} not found");
+        return;
+    }
+
+    let file = fs::File::open(ERA_NT_FILE).unwrap();
+    let reader = BufReader::new(file);
+
+    let store = TrackingRdfImportStore::from_ntriples(reader).unwrap();
+
+    let root_classes = &[
+        "OperationalPoint",
+        "SectionOfLine",
+        "RunningTrack",
+        "Siding",
+        "Tunnel",
+        "ContactLineSystem",
+        "TrainDetectionSystem",
+        "PlatformEdge",
+        "OrganisationRole",
+        "LinearPositioningSystem",
+        "ETCS",
+    ];
+
+    let result = store.import(&sv, &conv, root_classes).unwrap();
+
+    let consumed = store.consumed_subjects();
+    eprintln!("Consumed subjects: {}", consumed.len());
+    assert!(!consumed.is_empty(), "Expected consumed subjects to be non-empty");
+    assert!(
+        consumed.iter().any(|s| s.contains("matdata.eu")),
+        "Expected at least one consumed subject containing 'matdata.eu'"
+    );
+
+    let unconsumed = store.unconsumed_subjects();
+    eprintln!("Unconsumed subjects: {}", unconsumed.len());
+    assert!(
+        !unconsumed.is_empty(),
+        "Expected unconsumed subjects (Switch, Signal etc. not in schema)"
+    );
+
+    let total: usize = result.instances.values().map(|v| v.len()).sum();
+    eprintln!("Total instances: {total}");
+}
+
+#[test]
+fn import_era_with_tracking_via_conversion() {
+    let Some((sv, conv)) = load_rinf_sv_and_conv() else {
+        eprintln!("Skipping: schema not found");
+        return;
+    };
+    if !Path::new(ERA_NT_FILE).exists() {
+        eprintln!("Skipping: {ERA_NT_FILE} not found");
+        return;
+    }
+
+    let file = fs::File::open(ERA_NT_FILE).unwrap();
+    let reader = BufReader::new(file);
+
+    let plain_store = RdfImportStore::from_ntriples(reader).unwrap();
+    let store = plain_store.with_tracking();
+
+    let result = store.import(&sv, &conv, &["OperationalPoint"]).unwrap();
+
+    let ops = result.instances.get("OperationalPoint");
+    assert!(
+        ops.is_some_and(|v| !v.is_empty()),
+        "Expected OperationalPoint instances"
+    );
+    eprintln!("OperationalPoint instances: {}", ops.unwrap().len());
+
+    let consumed = store.consumed_subjects();
+    eprintln!("Consumed subjects: {}", consumed.len());
+    assert!(
+        !consumed.is_empty(),
+        "Expected consumed subjects to be non-empty"
+    );
 }
