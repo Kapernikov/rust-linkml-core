@@ -10,9 +10,8 @@ use std::io::Read;
 
 use oxrdf::{
     vocab::{rdf, xsd},
-    Graph, Literal, NamedNode, NamedOrBlankNode, TermRef,
+    Literal, NamedNode, NamedOrBlankNode, TermRef,
 };
-use oxttl::{NTriplesParser, TurtleParser};
 use serde_json::Value as JsonValue;
 
 use linkml_schemaview::identifier::{Identifier, IdentifierError};
@@ -21,6 +20,8 @@ use linkml_schemaview::schemaview::{
 };
 use linkml_schemaview::Converter;
 
+use crate::rdf_import_store::RdfImportStore;
+use crate::triple_source::TripleSource;
 use crate::{new_node_id, LinkMLInstance};
 
 // ── Error types ──────────────────────────────────────────────────────────────
@@ -89,31 +90,8 @@ pub struct ImportResult {
     /// Instances grouped by class name.
     pub instances: HashMap<String, Vec<LinkMLInstance>>,
     /// Number of triples in the graph that were not consumed during harvesting.
-    pub unconsumed_count: usize,
-}
-
-// ── Parsing ──────────────────────────────────────────────────────────────────
-
-/// Parse a Turtle document into an `oxrdf::Graph`.
-fn parse_turtle(reader: impl Read) -> Result<Graph, ImportError> {
-    let mut graph = Graph::new();
-    let parser = TurtleParser::new().for_reader(reader);
-    for result in parser {
-        let triple = result.map_err(|e| ImportError::Parse(e.to_string()))?;
-        graph.insert(&triple);
-    }
-    Ok(graph)
-}
-
-/// Parse an N-Triples document into an `oxrdf::Graph`.
-fn parse_ntriples(reader: impl Read) -> Result<Graph, ImportError> {
-    let mut graph = Graph::new();
-    let parser = NTriplesParser::new().for_reader(reader);
-    for result in parser {
-        let triple = result.map_err(|e| ImportError::Parse(e.to_string()))?;
-        graph.insert(&triple);
-    }
-    Ok(graph)
+    /// `None` when the store does not support counting.
+    pub unconsumed_count: Option<usize>,
 }
 
 /// Supported RDF serialization formats for import.
@@ -217,14 +195,14 @@ fn resolve_enum_value(
 
 /// Resolve the ClassView for a subject by looking at its rdf:type triple(s).
 /// Picks the most specific type defined in the schema.
-fn resolve_class(
-    graph: &Graph,
+fn resolve_class<T: TripleSource>(
+    store: &T,
     sv: &SchemaView,
     _conv: &Converter,
     subject: &NamedOrBlankNode,
 ) -> Result<ClassView, ImportError> {
     let type_node = rdf::TYPE.into_owned();
-    let types: Vec<_> = graph
+    let types: Vec<_> = store
         .objects_for_subject_predicate(subject, &type_node)
         .collect();
 
@@ -245,7 +223,7 @@ fn resolve_class(
 
     if candidates.is_empty() {
         // Report the first type IRI for the error
-        let first_type = graph
+        let first_type = store
             .objects_for_subject_predicate(subject, &type_node)
             .next()
             .map(|t| t.to_string())
@@ -291,8 +269,8 @@ fn ancestor_depth(cv: &ClassView) -> usize {
 // ── Harvest context & main algorithm ────────────────────────────────────────
 
 /// State carried through recursive instance assembly.
-struct HarvestContext<'a> {
-    graph: &'a Graph,
+struct HarvestContext<'a, T: TripleSource> {
+    store: &'a T,
     sv: &'a SchemaView,
     conv: &'a Converter,
     /// Subjects currently being assembled (for cycle detection on inlined paths).
@@ -303,10 +281,10 @@ struct HarvestContext<'a> {
     consumed_count: usize,
 }
 
-impl<'a> HarvestContext<'a> {
-    fn new(graph: &'a Graph, sv: &'a SchemaView, conv: &'a Converter) -> Self {
+impl<'a, T: TripleSource> HarvestContext<'a, T> {
+    fn new(store: &'a T, sv: &'a SchemaView, conv: &'a Converter) -> Self {
         Self {
-            graph,
+            store,
             sv,
             conv,
             visit_stack: HashSet::new(),
@@ -317,8 +295,8 @@ impl<'a> HarvestContext<'a> {
 }
 
 /// Assemble a single subject into a `LinkMLInstance::Object`.
-fn harvest_subject(
-    ctx: &mut HarvestContext<'_>,
+fn harvest_subject<T: TripleSource>(
+    ctx: &mut HarvestContext<'_, T>,
     subject: &NamedOrBlankNode,
     class: &ClassView,
 ) -> Result<LinkMLInstance, ImportError> {
@@ -334,6 +312,7 @@ fn harvest_subject(
 
     // Count rdf:type triple as consumed
     ctx.consumed_count += 1;
+    ctx.store.on_consumed(&subject_key, rdf::TYPE.as_str(), "");
 
     let mut values: HashMap<String, LinkMLInstance> = HashMap::new();
     let mut consumed_predicates: HashSet<String> = HashSet::new();
@@ -383,7 +362,7 @@ fn harvest_subject(
 
         let predicate = NamedNode::new_unchecked(&pred_iri);
         let objects: Vec<_> = ctx
-            .graph
+            .store
             .objects_for_subject_predicate(subject, &predicate)
             .collect();
 
@@ -391,6 +370,16 @@ fn harvest_subject(
             continue;
         }
 
+        for obj_term in &objects {
+            let obj_str = match *obj_term {
+                TermRef::Literal(l) => l.to_string(),
+                TermRef::NamedNode(n) => n.as_str().to_string(),
+                TermRef::BlankNode(b) => b.to_string(),
+                #[allow(unreachable_patterns)]
+                _ => String::new(),
+            };
+            ctx.store.on_consumed(&subject_key, &pred_iri, &obj_str);
+        }
         ctx.consumed_count += objects.len();
 
         let range_infos = slot.get_range_info();
@@ -489,7 +478,7 @@ fn harvest_subject(
                     } else if inline_mode == SlotInlineMode::Inline {
                         // Inline: recursively harvest
                         let obj_subject = NamedOrBlankNode::NamedNode(nn.into_owned());
-                        let obj_class = resolve_class(ctx.graph, ctx.sv, ctx.conv, &obj_subject)?;
+                        let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
                         let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
                         ctx.claimed.insert(obj_subject.to_string());
                         items.push(child);
@@ -507,7 +496,7 @@ fn harvest_subject(
                 TermRef::BlankNode(bn) => {
                     // Blank nodes are always inlined
                     let obj_subject = NamedOrBlankNode::BlankNode(bn.into_owned());
-                    let obj_class = resolve_class(ctx.graph, ctx.sv, ctx.conv, &obj_subject)?;
+                    let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
                     let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
                     ctx.claimed.insert(obj_subject.to_string());
                     items.push(child);
@@ -565,7 +554,7 @@ fn harvest_subject(
 
     // Collect unknown fields (predicates on subject not matching any slot)
     let mut unknown_fields: HashMap<String, JsonValue> = HashMap::new();
-    for triple in ctx.graph.triples_for_subject(subject) {
+    for triple in ctx.store.triples_for_subject(subject) {
         let pred = triple.predicate;
         let obj = triple.object;
         if !consumed_predicates.contains(pred.as_str()) {
@@ -621,14 +610,18 @@ fn extract_mapping_key(instance: &LinkMLInstance) -> String {
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
-/// Harvest instances from a pre-built graph.
-fn import_from_graph(
-    graph: Graph,
+/// Harvest instances from a triple source.
+///
+/// This is the core import function, generic over any [`TripleSource`]
+/// implementation. The one-shot functions (`import_turtle`, etc.) are thin
+/// wrappers that create an [`RdfImportStore`] and call this.
+pub fn import_from_store<T: TripleSource>(
+    store: &T,
     sv: &SchemaView,
     conv: &Converter,
     root_classes: &[&str],
 ) -> Result<ImportResult, ImportError> {
-    let total_triples = graph.len();
+    let total_triples = store.len();
 
     // Resolve root classes (names, CURIEs, or full URIs) to ClassViews and their URIs
     let mut root_class_info: Vec<(ClassView, NamedNode)> = Vec::new();
@@ -642,18 +635,17 @@ fn import_from_graph(
         root_class_info.push((cv, class_uri_node));
     }
 
-    let mut ctx = HarvestContext::new(&graph, sv, conv);
-
     // Collect all (subject, class) pairs for root classes
     let rdf_type_node = rdf::TYPE.into_owned();
     let mut candidates: Vec<(NamedOrBlankNode, ClassView)> = Vec::new();
     for (cv, class_uri_node) in &root_class_info {
-        for subject in graph.subjects_for_predicate_object(&rdf_type_node, class_uri_node) {
+        for subject in store.subjects_for_predicate_object(&rdf_type_node, class_uri_node) {
             candidates.push((subject.into_owned(), cv.clone()));
         }
     }
 
     // Harvest all candidates
+    let mut ctx = HarvestContext::new(store, sv, conv);
     let mut harvested: Vec<(String, NamedOrBlankNode, LinkMLInstance)> = Vec::new();
     for (subject, cv) in &candidates {
         let instance = harvest_subject(&mut ctx, subject, cv)?;
@@ -669,7 +661,7 @@ fn import_from_graph(
         }
     }
 
-    let unconsumed_count = total_triples.saturating_sub(ctx.consumed_count);
+    let unconsumed_count = total_triples.map(|total| total.saturating_sub(ctx.consumed_count));
 
     Ok(ImportResult {
         instances,
@@ -692,8 +684,8 @@ pub fn import_turtle(
     conv: &Converter,
     root_classes: &[&str],
 ) -> Result<ImportResult, ImportError> {
-    let graph = parse_turtle(reader)?;
-    import_from_graph(graph, sv, conv, root_classes)
+    let store = RdfImportStore::from_turtle(reader)?;
+    import_from_store(&store, sv, conv, root_classes)
 }
 
 /// Import RDF/N-Triples data into LinkML instances.
@@ -703,8 +695,8 @@ pub fn import_ntriples(
     conv: &Converter,
     root_classes: &[&str],
 ) -> Result<ImportResult, ImportError> {
-    let graph = parse_ntriples(reader)?;
-    import_from_graph(graph, sv, conv, root_classes)
+    let store = RdfImportStore::from_ntriples(reader)?;
+    import_from_store(&store, sv, conv, root_classes)
 }
 
 /// Import RDF data in the specified format into LinkML instances.
@@ -715,11 +707,8 @@ pub fn import_rdf(
     conv: &Converter,
     root_classes: &[&str],
 ) -> Result<ImportResult, ImportError> {
-    let graph = match format {
-        RdfFormat::Turtle => parse_turtle(reader)?,
-        RdfFormat::NTriples => parse_ntriples(reader)?,
-    };
-    import_from_graph(graph, sv, conv, root_classes)
+    let store = RdfImportStore::from_rdf(reader, format)?;
+    import_from_store(&store, sv, conv, root_classes)
 }
 
 /// Convenience: import from a Turtle string.
@@ -750,15 +739,16 @@ mod tests {
                     ex:name "ACME" .
         "#;
 
-        let graph = parse_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
+        let store =
+            RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
 
         // Should have 4 triples (2 rdf:type + 2 ex:name)
-        assert_eq!(graph.len(), 4);
+        assert_eq!(store.len(), Some(4));
 
         // Check subjects_for_predicate_object for Person
         let rdf_type = rdf::TYPE.into_owned();
         let person_type = NamedNode::new_unchecked("http://example.org/Person");
-        let person_subjects: Vec<_> = graph
+        let person_subjects: Vec<_> = store
             .subjects_for_predicate_object(&rdf_type, &person_type)
             .collect();
         assert_eq!(person_subjects.len(), 1);
@@ -767,7 +757,7 @@ mod tests {
         let person1 =
             NamedOrBlankNode::NamedNode(NamedNode::new_unchecked("http://example.org/person1"));
         let name_pred = NamedNode::new_unchecked("http://example.org/name");
-        let names: Vec<_> = graph
+        let names: Vec<_> = store
             .objects_for_subject_predicate(&person1, &name_pred)
             .collect();
         assert_eq!(names.len(), 1);
@@ -784,11 +774,12 @@ mod tests {
                        ex:address [ a ex:Address ; ex:street "123 Main St" ] .
         "#;
 
-        let graph = parse_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
+        let store =
+            RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
         // person1 has: rdf:type, ex:address
         // blank node has: rdf:type, ex:street
         // plus the link from person1 to blank node
-        assert!(graph.len() >= 4);
+        assert!(store.len().unwrap() >= 4);
     }
 
     #[test]
