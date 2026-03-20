@@ -29,6 +29,8 @@ pub mod diff;
 #[cfg(feature = "ttl")]
 pub mod turtle;
 #[cfg(feature = "ttl")]
+pub mod triple_source;
+#[cfg(feature = "ttl")]
 pub mod turtle_import;
 pub use blame::{
     blame_map_to_paths, format_blame_map, format_blame_map_with, get_blame_info, patch_with_blame,
