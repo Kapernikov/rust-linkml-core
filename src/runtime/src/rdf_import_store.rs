@@ -12,7 +12,9 @@ use oxrdf::{Graph, NamedNode, NamedOrBlankNode, NamedOrBlankNodeRef, TermRef, Tr
 use oxttl::{NTriplesParser, TurtleParser};
 
 use crate::triple_source::TripleSource;
-use crate::turtle_import::{ImportError, RdfFormat};
+use crate::turtle_import::{import_from_store, ImportError, ImportResult, RdfFormat};
+use linkml_schemaview::schemaview::SchemaView;
+use linkml_schemaview::Converter;
 
 // ── Parsing helpers ─────────────────────────────────────────────────────────
 
@@ -66,6 +68,16 @@ impl RdfImportStore {
 
     pub fn from_graph(graph: Graph) -> Self {
         Self { graph }
+    }
+
+    /// Run a full LinkML import against this store.
+    pub fn import(
+        &self,
+        sv: &SchemaView,
+        conv: &Converter,
+        root_classes: &[&str],
+    ) -> Result<ImportResult, ImportError> {
+        import_from_store(self, sv, conv, root_classes)
     }
 
     /// Convert into a tracking store.
@@ -172,6 +184,16 @@ impl TrackingRdfImportStore {
     /// Total number of triples belonging to unconsumed subjects.
     pub fn unconsumed_triple_count(&self) -> usize {
         self.unconsumed_subjects().iter().map(|(_, c)| c).sum()
+    }
+
+    /// Run a full LinkML import against this store.
+    pub fn import(
+        &self,
+        sv: &SchemaView,
+        conv: &Converter,
+        root_classes: &[&str],
+    ) -> Result<ImportResult, ImportError> {
+        import_from_store(self, sv, conv, root_classes)
     }
 }
 
