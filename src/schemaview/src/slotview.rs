@@ -250,7 +250,7 @@ impl RangeInfo {
         let conv = slotview
             .sv
             .converter_for_schema(&slotview.schema_uri)
-            .unwrap_or_else(|| slotview.sv.converter());
+            .unwrap_or_else(|| Arc::new(slotview.sv.converter()));
 
         let id = Identifier::Name(range_name);
         let ancestors = match slotview.sv.type_ancestors(&id, &conv) {

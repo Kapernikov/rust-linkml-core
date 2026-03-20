@@ -103,7 +103,7 @@ pub(crate) struct SchemaViewData {
      */
     pub(crate) resolved_schema_imports: HashMap<(String, String), String>,
     pub(crate) primary_schema: Option<String>,
-    pub(crate) converters: HashMap<String, Converter>,
+    pub(crate) converters: HashMap<String, Arc<Converter>>,
 }
 
 pub(crate) struct SchemaIndex {
@@ -673,10 +673,10 @@ impl SchemaView {
     ) -> Result<bool, String> {
         let schema_uri = schema.id.clone();
         let conv = converter_from_schema(&schema);
-        let conv_clone = conv.clone();
+        let conv_arc = Arc::new(conv.clone());
         let schema_uri_for_converter = schema_uri.clone();
         self.update_data(move |d| {
-            d.converters.insert(schema_uri_for_converter, conv_clone);
+            d.converters.insert(schema_uri_for_converter, conv_arc);
         });
         self.index_schema_classes(&schema_uri, &schema, &conv)
             .map_err(|e| format!("{:?}", e))?;
@@ -757,13 +757,13 @@ impl SchemaView {
 
     /// Returns the CURIE converter for a single schema, built from that
     /// schema's prefix declarations only.
-    pub fn converter_for_schema(&self, schema_uri: &str) -> Option<Converter> {
+    pub fn converter_for_schema(&self, schema_uri: &str) -> Option<Arc<Converter>> {
         self.with_data(|data| data.converters.get(schema_uri).cloned())
     }
 
     /// Returns the CURIE converter for the primary schema, or `None` if no
     /// primary schema has been set.
-    pub fn converter_for_primary_schema(&self) -> Option<Converter> {
+    pub fn converter_for_primary_schema(&self) -> Option<Arc<Converter>> {
         self.with_data(|data| {
             data.primary_schema
                 .as_ref()
