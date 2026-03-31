@@ -5,15 +5,29 @@ build-backend = "maturin"
 [project]
 name = "linkml-runtime-rust"
 requires-python = ">=3.8"
+description = "Rust-backed LinkML runtime for Python: schema loading, instance validation, diff/patch, Turtle import/export"
+authors = [
+    { name = "Frank Dekervel", email = "frank@kapernikov.com" },
+    { name = "Jonny Saunders" },
+]
+license = { text = "Apache-2.0" }
+readme = "../../README.md"
+keywords = ["linkml", "rdf", "turtle", "schema", "validation"]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+    "License :: OSI Approved :: Apache Software License",
 ]
 dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/Kapernikov/rust-linkml-core"
+Documentation = "https://github.com/Kapernikov/rust-linkml-core#readme"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "linkml_runtime_rust._native"
 python-source = "python"
-
