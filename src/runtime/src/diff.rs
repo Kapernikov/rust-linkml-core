@@ -345,13 +345,50 @@ pub fn patch(
 ) -> LResult<(LinkMLInstance, PatchTrace)> {
     let mut out = source.clone();
     let mut trace = PatchTrace::default();
-    for d in deltas {
+    for i in apply_order(deltas) {
+        let d = &deltas[i];
         let applied = apply_delta_linkml(&mut out, d, &mut trace, opts)?;
         if !applied {
             trace.failed.push(d.path.clone());
         }
     }
     Ok((out, trace))
+}
+
+/// Return the indices of `deltas` in the order they should be applied.
+///
+/// The only reordering we perform is: `Remove` deltas that address a list
+/// element by numeric index and share the same parent path are applied in
+/// descending index order. This prevents earlier removes from shifting the
+/// indices of later ones. All other deltas keep their original relative
+/// position.
+fn apply_order(deltas: &[Delta]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..deltas.len()).collect();
+    let mut groups: std::collections::HashMap<&[String], Vec<usize>> = Default::default();
+    for (pos, d) in deltas.iter().enumerate() {
+        if d.op != DeltaOp::Remove {
+            continue;
+        }
+        let Some(leaf) = d.path.last() else { continue };
+        if leaf.parse::<usize>().is_err() {
+            continue;
+        }
+        let parent = &d.path[..d.path.len() - 1];
+        groups.entry(parent).or_default().push(pos);
+    }
+    for positions in groups.values() {
+        if positions.len() < 2 {
+            continue;
+        }
+        let mut reordered = positions.clone();
+        reordered.sort_by_key(|&i| {
+            std::cmp::Reverse(deltas[i].path.last().unwrap().parse::<usize>().unwrap())
+        });
+        for (slot, new_idx) in positions.iter().zip(reordered) {
+            order[*slot] = new_idx;
+        }
+    }
+    order
 }
 
 fn collect_all_ids(value: &LinkMLInstance, ids: &mut Vec<NodeId>) {

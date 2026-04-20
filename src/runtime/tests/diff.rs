@@ -445,3 +445,54 @@ fn diff_mapping_ignore_missing_target() {
         "expected a Remove delta for 'mother' with treat_missing_as_null=true, got: {deltas_strict:?}"
     );
 }
+
+#[test]
+fn diff_and_patch_multiple_removes_from_scalar_list() {
+    // Regression: removing multiple items from an index-addressed list
+    // must not shift indices so that later Removes target the wrong element.
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let class = class_in_schema(&sv, &schema, "Person");
+
+    let src = load_json_instance(
+        r#"{"id":"P:001","name":"fred","aliases":["a","b","c","d"]}"#,
+        &sv,
+        &class,
+        &conv,
+    );
+    let tgt = load_json_instance(
+        r#"{"id":"P:001","name":"fred","aliases":["a"]}"#,
+        &sv,
+        &class,
+        &conv,
+    );
+
+    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let remove_count = deltas.iter().filter(|d| d.op == DeltaOp::Remove).count();
+    assert_eq!(
+        remove_count, 3,
+        "expected 3 Remove deltas for b,c,d; got: {deltas:?}"
+    );
+
+    let (patched, trace) = patch(
+        &src,
+        &deltas,
+        linkml_runtime::diff::PatchOptions {
+            ignore_no_ops: true,
+            treat_missing_as_null: false,
+        },
+    )
+    .unwrap();
+    assert!(
+        trace.failed.is_empty(),
+        "no delta should fail to apply, got failed: {:?}",
+        trace.failed
+    );
+    assert_eq!(
+        patched.to_json(),
+        tgt.to_json(),
+        "patched source should equal target after multi-remove"
+    );
+}
