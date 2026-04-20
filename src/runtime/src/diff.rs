@@ -364,28 +364,27 @@ pub fn patch(
 /// position.
 fn apply_order(deltas: &[Delta]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..deltas.len()).collect();
-    let mut groups: std::collections::HashMap<&[String], Vec<usize>> = Default::default();
+    // Entries carry the numeric leaf so we never re-parse (and never unwrap).
+    let mut groups: std::collections::HashMap<&[String], Vec<(usize, usize)>> = Default::default();
     for (pos, d) in deltas.iter().enumerate() {
         if d.op != DeltaOp::Remove {
             continue;
         }
         let Some(leaf) = d.path.last() else { continue };
-        if leaf.parse::<usize>().is_err() {
+        let Ok(idx) = leaf.parse::<usize>() else {
             continue;
-        }
+        };
         let parent = &d.path[..d.path.len() - 1];
-        groups.entry(parent).or_default().push(pos);
+        groups.entry(parent).or_default().push((pos, idx));
     }
-    for positions in groups.values() {
-        if positions.len() < 2 {
+    for entries in groups.values() {
+        if entries.len() < 2 {
             continue;
         }
-        let mut reordered = positions.clone();
-        reordered.sort_by_key(|&i| {
-            std::cmp::Reverse(deltas[i].path.last().unwrap().parse::<usize>().unwrap())
-        });
-        for (slot, new_idx) in positions.iter().zip(reordered) {
-            order[*slot] = new_idx;
+        let mut reordered: Vec<(usize, usize)> = entries.clone();
+        reordered.sort_by_key(|&(_, idx)| std::cmp::Reverse(idx));
+        for ((slot, _), (new_delta_idx, _)) in entries.iter().zip(reordered) {
+            order[*slot] = new_delta_idx;
         }
     }
     order
