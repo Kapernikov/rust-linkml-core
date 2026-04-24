@@ -5380,12 +5380,17 @@ class ValidationResult:
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
 
-def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:builtins.bool=False, treat_changed_identifier_as_new_object:builtins.bool=True) -> builtins.list[Delta]:
+def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:builtins.bool, treat_changed_identifier_as_new_object:builtins.bool=True) -> builtins.list[Delta]:
     r"""
     Compute deltas between two instances.
-    
-    When ``treat_missing_as_null`` is ``False`` (default), object slots and
-    mapping keys that are present in ``source`` but absent in ``target`` are
+
+    ``treat_missing_as_null`` is required — callers must decide explicitly
+    whether absent entries mean "unchanged" or "removed", since the two
+    interpretations produce materially different deltas and silent
+    data-loss bugs have resulted from mis-set defaults.
+
+    When ``treat_missing_as_null`` is ``False``, object slots and mapping
+    keys that are present in ``source`` but absent in ``target`` are
     silently ignored (partial-update semantics). List elements are always
     treated as complete: a shorter target list produces ``remove`` deltas for
     trailing source elements regardless of this flag.

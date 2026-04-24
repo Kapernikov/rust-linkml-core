@@ -76,7 +76,7 @@ pub fn blame_map_to_paths<M: Clone>(
         match node {
             LinkMLInstance::Object { values, .. } | LinkMLInstance::Mapping { values, .. } => {
                 let mut entries: Vec<_> = values.iter().collect();
-                entries.sort_by(|(ka, _), (kb, _)| ka.cmp(kb));
+                entries.sort_by_key(|(k, _)| *k);
                 for (key, child) in entries {
                     path.push(key.clone());
                     collect_paths(child, blame, path, out);
@@ -170,7 +170,7 @@ pub fn format_blame_map_with<M>(
                 };
                 lines.push(format!("{meta_str} | {header}"));
                 let mut entries: Vec<_> = values.iter().collect();
-                entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+                entries.sort_by_key(|(k, _)| *k);
                 for (child_key, child_value) in entries {
                     walk(
                         child_value,
@@ -192,7 +192,7 @@ pub fn format_blame_map_with<M>(
                 };
                 lines.push(format!("{meta_str} | {header}"));
                 let mut entries: Vec<_> = values.iter().collect();
-                entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+                entries.sort_by_key(|(k, _)| *k);
                 for (child_key, child_value) in entries {
                     walk(
                         child_value,
@@ -333,7 +333,7 @@ mod tests {
         .unwrap()
         .into_instance()
         .unwrap();
-        let deltas_stage1 = diff(&base, &stage1, DiffOptions::default());
+        let deltas_stage1 = diff(&base, &stage1, DiffOptions::new(false));
         let (value_after_stage1, trace1) = patch_with_blame(
             &base,
             &deltas_stage1,
@@ -360,14 +360,7 @@ mod tests {
         .into_instance()
         .unwrap();
 
-        let deltas_stage2 = diff(
-            &value_after_stage1,
-            &stage2,
-            DiffOptions {
-                treat_missing_as_null: true,
-                ..DiffOptions::default()
-            },
-        );
+        let deltas_stage2 = diff(&value_after_stage1, &stage2, DiffOptions::new(true));
         let (final_value, trace2) = patch_with_blame(
             &value_after_stage1,
             &deltas_stage2,
@@ -416,7 +409,7 @@ mod tests {
         .into_instance()
         .unwrap();
 
-        let deltas_stage1 = diff(&base, &stage1, DiffOptions::default());
+        let deltas_stage1 = diff(&base, &stage1, DiffOptions::new(false));
         let (value_after_stage1, trace1) = patch_with_blame(
             &base,
             &deltas_stage1,
@@ -447,14 +440,7 @@ mod tests {
         .into_instance()
         .unwrap();
 
-        let deltas_stage2 = diff(
-            &value_after_stage1,
-            &stage2,
-            DiffOptions {
-                treat_missing_as_null: true,
-                ..DiffOptions::default()
-            },
-        );
+        let deltas_stage2 = diff(&value_after_stage1, &stage2, DiffOptions::new(true));
         assert!(!deltas_stage2.is_empty());
         let (final_value, trace2) = patch_with_blame(
             &value_after_stage1,
@@ -534,7 +520,7 @@ mod tests {
         .into_instance()
         .expect("invalid target");
 
-        let deltas = diff(&base, &target, DiffOptions::default());
+        let deltas = diff(&base, &target, DiffOptions::new(false));
         println!("deltas = {:#?}", deltas);
 
         let mut blame = HashMap::new();
