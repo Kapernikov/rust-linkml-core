@@ -360,11 +360,7 @@ mod tests {
         .into_instance()
         .unwrap();
 
-        let deltas_stage2 = diff(
-            &value_after_stage1,
-            &stage2,
-            DiffOptions::new(true),
-        );
+        let deltas_stage2 = diff(&value_after_stage1, &stage2, DiffOptions::new(true));
         let (final_value, trace2) = patch_with_blame(
             &value_after_stage1,
             &deltas_stage2,
@@ -444,11 +440,7 @@ mod tests {
         .into_instance()
         .unwrap();
 
-        let deltas_stage2 = diff(
-            &value_after_stage1,
-            &stage2,
-            DiffOptions::new(true),
-        );
+        let deltas_stage2 = diff(&value_after_stage1, &stage2, DiffOptions::new(true));
         assert!(!deltas_stage2.is_empty());
         let (final_value, trace2) = patch_with_blame(
             &value_after_stage1,
