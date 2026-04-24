@@ -333,7 +333,7 @@ mod tests {
         .unwrap()
         .into_instance()
         .unwrap();
-        let deltas_stage1 = diff(&base, &stage1, DiffOptions::default());
+        let deltas_stage1 = diff(&base, &stage1, DiffOptions::new(false));
         let (value_after_stage1, trace1) = patch_with_blame(
             &base,
             &deltas_stage1,
@@ -363,10 +363,7 @@ mod tests {
         let deltas_stage2 = diff(
             &value_after_stage1,
             &stage2,
-            DiffOptions {
-                treat_missing_as_null: true,
-                ..DiffOptions::default()
-            },
+            DiffOptions::new(true),
         );
         let (final_value, trace2) = patch_with_blame(
             &value_after_stage1,
@@ -416,7 +413,7 @@ mod tests {
         .into_instance()
         .unwrap();
 
-        let deltas_stage1 = diff(&base, &stage1, DiffOptions::default());
+        let deltas_stage1 = diff(&base, &stage1, DiffOptions::new(false));
         let (value_after_stage1, trace1) = patch_with_blame(
             &base,
             &deltas_stage1,
@@ -450,10 +447,7 @@ mod tests {
         let deltas_stage2 = diff(
             &value_after_stage1,
             &stage2,
-            DiffOptions {
-                treat_missing_as_null: true,
-                ..DiffOptions::default()
-            },
+            DiffOptions::new(true),
         );
         assert!(!deltas_stage2.is_empty());
         let (final_value, trace2) = patch_with_blame(
@@ -534,7 +528,7 @@ mod tests {
         .into_instance()
         .expect("invalid target");
 
-        let deltas = diff(&base, &target, DiffOptions::default());
+        let deltas = diff(&base, &target, DiffOptions::new(false));
         println!("deltas = {:#?}", deltas);
 
         let mut blame = HashMap::new();

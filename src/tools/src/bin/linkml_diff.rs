@@ -26,6 +26,12 @@ struct Args {
     /// Output file for deltas; defaults to stdout
     #[arg(short, long)]
     output: Option<PathBuf>,
+    /// Whether entries present in source but absent in target are treated
+    /// as explicit removals (`true`) or silently ignored as partial
+    /// updates (`false`). Required — no default is provided because the
+    /// two interpretations produce materially different deltas.
+    #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set)]
+    treat_missing_as_null: bool,
 }
 
 fn load_value(
@@ -67,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let src = load_value(&args.source, &sv, &class_view, &conv)?;
     let tgt = load_value(&args.target, &sv, &class_view, &conv)?;
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(args.treat_missing_as_null));
 
     let mut writer: Box<dyn Write> = if let Some(out) = &args.output {
         Box::new(File::create(out)?)

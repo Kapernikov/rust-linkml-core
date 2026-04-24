@@ -80,7 +80,7 @@ assert older.schema_view is sv
 assert current.schema_view is sv
 assert_no_errors(older_issues)
 assert_no_errors(current_issues)
-deltas = lr.diff(older, current)
+deltas = lr.diff(older, current, treat_missing_as_null=False)
 assert isinstance(deltas, list)
 for d in deltas:
     assert isinstance(d, lr.Delta)
@@ -128,13 +128,13 @@ assert invalid_container is not None
 assert_no_errors(valid_issues)
 assert any(issue.severity == 'error' for issue in invalid_issues), invalid_issues
 
-deltas_invalid = lr.diff(valid_container, invalid_container)
+deltas_invalid = lr.diff(valid_container, invalid_container, treat_missing_as_null=False)
 assert deltas_invalid
 patched_invalid = lr.patch(valid_container, deltas_invalid)
 assert patched_invalid.trace.failed == []
 assert patched_invalid.value.as_python() == invalid_container.as_python()
 
-deltas_valid = lr.diff(invalid_container, valid_container)
+deltas_valid = lr.diff(invalid_container, valid_container, treat_missing_as_null=False)
 assert deltas_valid
 patched_valid = lr.patch(invalid_container, deltas_valid)
 assert patched_valid.trace.failed == []

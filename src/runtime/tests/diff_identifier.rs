@@ -82,7 +82,7 @@ fn single_inlined_object_identifier_change_is_replacement() {
         &conv,
     );
 
-    let deltas_default = diff(&src, &tgt, DiffOptions::default());
+    let deltas_default = diff(&src, &tgt, DiffOptions::new(false));
     // Expect a single replacement at the diagnosis object path with default behaviour
     assert_eq!(deltas_default.len(), 1);
     let d = &deltas_default[0];
@@ -116,7 +116,7 @@ fn single_inlined_object_identifier_change_is_replacement() {
         &tgt,
         DiffOptions {
             treat_changed_identifier_as_new_object: false,
-            ..DiffOptions::default()
+            ..DiffOptions::new(false)
         },
     );
     assert_eq!(deltas_plain.len(), 1);
@@ -189,7 +189,7 @@ fn single_inlined_object_non_identifier_change_is_field_delta() {
         &conv,
     );
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     assert!(deltas.iter().any(|d| d.path
         == vec![
             "objects".to_string(),
@@ -255,7 +255,7 @@ fn list_inlined_object_identifier_change_is_replacement() {
         &conv,
     );
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     // Expect a single replacement at the list item path
     assert!(deltas.iter().any(|d| {
         d.path == vec!["objects".to_string(), "P:002".to_string()]
@@ -314,10 +314,7 @@ fn mapping_inlined_identifier_change_is_add_delete() {
     let deltas = diff(
         &src,
         &tgt,
-        DiffOptions {
-            treat_missing_as_null: true,
-            ..DiffOptions::default()
-        },
+        DiffOptions::new(true),
     );
     // Expect one delete and one add at mapping keys; no inner key-slot deltas
     assert!(deltas

@@ -79,7 +79,7 @@ fn diff_and_patch_person() {
         &conv,
     );
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     assert_eq!(deltas.len(), 1);
     // Ensure delta paths are navigable on respective values
     for d in &deltas {
@@ -128,7 +128,7 @@ fn diff_ignore_missing_target() {
         &conv,
     );
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     assert!(deltas.is_empty());
     let (patched, _trace) = patch(
         &src,
@@ -164,7 +164,7 @@ fn diff_and_patch_personinfo() {
         &conv,
     );
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     assert!(!deltas.is_empty());
     // Ensure delta paths are navigable on respective values, including mapping-list keys
     for d in &deltas {
@@ -215,7 +215,7 @@ fn diff_null_and_missing_semantics() {
             &class,
             &conv,
         );
-        let deltas = diff(&src, &tgt, DiffOptions::default());
+        let deltas = diff(&src, &tgt, DiffOptions::new(false));
         assert!(deltas
             .iter()
             .any(|d| d.path == vec!["age".to_string()] && d.new == Some(serde_json::Value::Null)));
@@ -233,7 +233,7 @@ fn diff_null_and_missing_semantics() {
             &class,
             &conv,
         );
-        let deltas = diff(&src_with_null, &src, DiffOptions::default());
+        let deltas = diff(&src_with_null, &src, DiffOptions::new(false));
         assert!(deltas.iter().any(|d| d.path == vec!["age".to_string()]
             && d.old == Some(serde_json::Value::Null)
             && d.new.is_some()));
@@ -251,7 +251,7 @@ fn diff_null_and_missing_semantics() {
             &class,
             &conv,
         );
-        let deltas = diff(&src_missing, &src, DiffOptions::default());
+        let deltas = diff(&src_missing, &src, DiffOptions::new(false));
         assert!(deltas
             .iter()
             .any(|d| d.path == vec!["age".to_string()] && d.old.is_none() && d.new.is_some()));
@@ -269,16 +269,9 @@ fn diff_null_and_missing_semantics() {
             &class,
             &conv,
         );
-        let deltas = diff(&src, &tgt_missing, DiffOptions::default());
+        let deltas = diff(&src, &tgt_missing, DiffOptions::new(false));
         assert!(deltas.iter().all(|d| d.path != vec!["age".to_string()]));
-        let deltas2 = diff(
-            &src,
-            &tgt_missing,
-            DiffOptions {
-                treat_missing_as_null: true,
-                ..DiffOptions::default()
-            },
-        );
+        let deltas2 = diff(&src, &tgt_missing, DiffOptions::new(true));
         assert!(deltas2
             .iter()
             .any(|d| d.path == vec!["age".to_string()] && d.new == Some(serde_json::Value::Null)))
@@ -330,7 +323,7 @@ fn diff_and_patch_tolerate_validation_errors() {
         &container,
         &conv,
     );
-    let deltas = diff(&invalid_instance, &valid_instance, DiffOptions::default());
+    let deltas = diff(&invalid_instance, &valid_instance, DiffOptions::new(false));
     assert!(!deltas.is_empty());
     let (patched, _trace) = patch(
         &invalid_instance,
@@ -368,7 +361,7 @@ fn diff_and_patch_invalid_target() {
     let invalid_instance = invalid_result
         .into_instance_tolerate_errors()
         .expect("instance should still be returned");
-    let deltas = diff(&valid_instance, &invalid_instance, DiffOptions::default());
+    let deltas = diff(&valid_instance, &invalid_instance, DiffOptions::new(false));
     assert!(!deltas.is_empty());
     let (patched, _trace) = patch(
         &valid_instance,
@@ -422,21 +415,14 @@ fn diff_mapping_ignore_missing_target() {
     );
 
     // Default: treat_missing_as_null=false → no Remove for "mother"
-    let deltas = diff(&source, &target, DiffOptions::default());
+    let deltas = diff(&source, &target, DiffOptions::new(false));
     assert!(
         !deltas.iter().any(|d| d.op == DeltaOp::Remove),
         "expected no Remove deltas with treat_missing_as_null=false, got: {deltas:?}"
     );
 
     // With treat_missing_as_null=true → should produce a Remove for "mother"
-    let deltas_strict = diff(
-        &source,
-        &target,
-        DiffOptions {
-            treat_missing_as_null: true,
-            ..DiffOptions::default()
-        },
-    );
+    let deltas_strict = diff(&source, &target, DiffOptions::new(true));
     assert!(
         deltas_strict.iter().any(|d| d.op == DeltaOp::Remove
             && d.path
@@ -469,7 +455,7 @@ fn diff_and_patch_multiple_removes_from_scalar_list() {
         &conv,
     );
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     let remove_count = deltas.iter().filter(|d| d.op == DeltaOp::Remove).count();
     assert_eq!(
         remove_count, 3,

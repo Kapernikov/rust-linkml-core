@@ -1462,15 +1462,20 @@ fn load_json(
     signature = (
         source,
         target,
-        treat_missing_as_null = false,
+        treat_missing_as_null,
         treat_changed_identifier_as_new_object = true
     ),
-    text_signature = "(source, target, treat_missing_as_null=False, treat_changed_identifier_as_new_object=True)"
+    text_signature = "(source, target, treat_missing_as_null, treat_changed_identifier_as_new_object=True)"
 )]
 /// Compute deltas between two instances.
 ///
-/// When ``treat_missing_as_null`` is ``False`` (default), object slots and
-/// mapping keys that are present in ``source`` but absent in ``target`` are
+/// ``treat_missing_as_null`` is required — callers must decide explicitly
+/// whether absent entries mean "unchanged" or "removed", since the two
+/// interpretations produce materially different deltas and silent
+/// data-loss bugs have resulted from mis-set defaults.
+///
+/// When ``treat_missing_as_null`` is ``False``, object slots and mapping
+/// keys that are present in ``source`` but absent in ``target`` are
 /// silently ignored (partial-update semantics). List elements are always
 /// treated as complete: a shorter target list produces ``remove`` deltas for
 /// trailing source elements regardless of this flag.

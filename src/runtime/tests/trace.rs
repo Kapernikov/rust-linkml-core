@@ -83,7 +83,7 @@ fn node_ids_preserved_scalar_update() {
     .into_instance()
     .unwrap();
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     let (patched, trace) = linkml_runtime::patch(
         &src,
         &deltas,
@@ -143,7 +143,7 @@ fn patch_trace_add_in_list() {
     .into_instance()
     .unwrap();
 
-    let deltas = diff(&base, &target, DiffOptions::default());
+    let deltas = diff(&base, &target, DiffOptions::new(false));
     let mut pre = Vec::new();
     collect_ids(&base, &mut pre);
     let (patched, trace) = linkml_runtime::patch(

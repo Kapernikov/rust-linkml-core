@@ -78,10 +78,23 @@ pub struct DiffOptions {
     pub treat_changed_identifier_as_new_object: bool,
 }
 
-impl Default for DiffOptions {
-    fn default() -> Self {
+impl DiffOptions {
+    /// Construct with an explicit value for [`DiffOptions::treat_missing_as_null`].
+    ///
+    /// This flag is intentionally required: its effect (partial-update vs
+    /// target-is-authoritative) is easy to misread and was too important to
+    /// hide behind a `Default`. [`DiffOptions::treat_changed_identifier_as_new_object`]
+    /// is set to `true` — override via struct update syntax when needed:
+    ///
+    /// ```ignore
+    /// DiffOptions {
+    ///     treat_changed_identifier_as_new_object: false,
+    ///     ..DiffOptions::new(true)
+    /// }
+    /// ```
+    pub fn new(treat_missing_as_null: bool) -> Self {
         Self {
-            treat_missing_as_null: false,
+            treat_missing_as_null,
             treat_changed_identifier_as_new_object: true,
         }
     }

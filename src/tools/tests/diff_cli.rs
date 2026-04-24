@@ -24,7 +24,9 @@ fn cli_diff_and_patch_personinfo() {
         .arg(&src)
         .arg(&tgt)
         .arg("-o")
-        .arg(&delta);
+        .arg(&delta)
+        .arg("--treat-missing-as-null")
+        .arg("false");
     cmd.assert().success();
 
     let mut cmd = Command::cargo_bin("linkml-patch").unwrap();
