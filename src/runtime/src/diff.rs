@@ -196,49 +196,90 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                 }
             }
             (LinkMLInstance::List { values: sl, .. }, LinkMLInstance::List { values: tl, .. }) => {
-                // Prefer identifier-based addressing when possible, fall back to index
-                let max_len = std::cmp::max(sl.len(), tl.len());
-                for i in 0..max_len {
-                    let label = |v: &LinkMLInstance| -> Option<String> {
-                        if let LinkMLInstance::Object { values, class, .. } = v {
-                            if let Some(id_slot) = class.key_or_identifier_slot() {
-                                if let Some(LinkMLInstance::Scalar { value, .. }) =
-                                    values.get(&id_slot.name)
-                                {
-                                    return match value {
-                                        JsonValue::String(s) => Some(s.clone()),
-                                        other => Some(other.to_string()),
-                                    };
-                                }
+                let label = |v: &LinkMLInstance| -> Option<String> {
+                    if let LinkMLInstance::Object { values, class, .. } = v {
+                        if let Some(id_slot) = class.key_or_identifier_slot() {
+                            if let Some(LinkMLInstance::Scalar { value, .. }) =
+                                values.get(&id_slot.name)
+                            {
+                                return match value {
+                                    JsonValue::String(s) => Some(s.clone()),
+                                    other => Some(other.to_string()),
+                                };
                             }
                         }
-                        None
-                    };
-                    let step = if let Some(sv) = sl.get(i) {
-                        label(sv)
-                            .or_else(|| tl.get(i).and_then(label))
-                            .unwrap_or_else(|| i.to_string())
-                    } else {
-                        tl.get(i).and_then(label).unwrap_or_else(|| i.to_string())
-                    };
-                    path.push(step);
-                    match (sl.get(i), tl.get(i)) {
-                        (Some(sv), Some(tv)) => inner(path, None, sv, tv, opts, out),
-                        (Some(sv), None) => out.push(Delta {
-                            path: path.clone(),
-                            op: DeltaOp::Remove,
-                            old: Some(sv.to_json()),
-                            new: None,
-                        }),
-                        (None, Some(tv)) => out.push(Delta {
-                            path: path.clone(),
-                            op: DeltaOp::Add,
-                            old: None,
-                            new: Some(tv.to_json()),
-                        }),
-                        (None, None) => {}
                     }
-                    path.pop();
+                    None
+                };
+                // If every item in both lists carries an identifier, match by id
+                // rather than by position. Positional diff corrupts mid-list
+                // removes/inserts into shifted Updates, and on patch the label
+                // resolver can remove the wrong duplicate.
+                let keyed =
+                    sl.iter().all(|v| label(v).is_some()) && tl.iter().all(|v| label(v).is_some());
+                if keyed {
+                    use std::collections::HashSet;
+                    let src_ids: HashSet<String> = sl.iter().filter_map(&label).collect();
+                    let tgt_by_id: std::collections::HashMap<String, &LinkMLInstance> = tl
+                        .iter()
+                        .filter_map(|v| label(v).map(|id| (id, v)))
+                        .collect();
+                    for sv in sl {
+                        let Some(id) = label(sv) else { continue };
+                        path.push(id.clone());
+                        match tgt_by_id.get(&id) {
+                            Some(tv) => inner(path, None, sv, tv, opts, out),
+                            None => out.push(Delta {
+                                path: path.clone(),
+                                op: DeltaOp::Remove,
+                                old: Some(sv.to_json()),
+                                new: None,
+                            }),
+                        }
+                        path.pop();
+                    }
+                    for tv in tl {
+                        let Some(id) = label(tv) else { continue };
+                        if !src_ids.contains(&id) {
+                            path.push(id);
+                            out.push(Delta {
+                                path: path.clone(),
+                                op: DeltaOp::Add,
+                                old: None,
+                                new: Some(tv.to_json()),
+                            });
+                            path.pop();
+                        }
+                    }
+                } else {
+                    let max_len = std::cmp::max(sl.len(), tl.len());
+                    for i in 0..max_len {
+                        let step = if let Some(sv) = sl.get(i) {
+                            label(sv)
+                                .or_else(|| tl.get(i).and_then(&label))
+                                .unwrap_or_else(|| i.to_string())
+                        } else {
+                            tl.get(i).and_then(&label).unwrap_or_else(|| i.to_string())
+                        };
+                        path.push(step);
+                        match (sl.get(i), tl.get(i)) {
+                            (Some(sv), Some(tv)) => inner(path, None, sv, tv, opts, out),
+                            (Some(sv), None) => out.push(Delta {
+                                path: path.clone(),
+                                op: DeltaOp::Remove,
+                                old: Some(sv.to_json()),
+                                new: None,
+                            }),
+                            (None, Some(tv)) => out.push(Delta {
+                                path: path.clone(),
+                                op: DeltaOp::Add,
+                                old: None,
+                                new: Some(tv.to_json()),
+                            }),
+                            (None, None) => {}
+                        }
+                        path.pop();
+                    }
                 }
             }
             (

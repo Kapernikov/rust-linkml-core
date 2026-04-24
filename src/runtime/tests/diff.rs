@@ -446,6 +446,73 @@ fn diff_mapping_ignore_missing_target() {
     );
 }
 
+/// Regression: removing an item from a list of inlined objects keyed by
+/// identifier must produce a clean `Remove` delta addressed by id, not a
+/// chain of shifted `Update` deltas. The bug is exposed when the removal is
+/// from the middle of the list AND a trailing item also changes: positional
+/// diff emits `Update(P:002→P:003')` + `Remove(P:003)`, and on patch the
+/// label-resolver picks the just-updated P:003 for removal, silently
+/// clobbering the trailing update.
+#[test]
+fn diff_and_patch_remove_from_keyed_list() {
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let container = class_in_schema(&sv, &schema, "Container");
+
+    let src = load_json_instance(
+        r#"{
+            "objects": [
+                {"id":"P:001","name":"a","objecttype":"https://w3id.org/linkml/examples/personinfo/Person"},
+                {"id":"P:002","name":"b","objecttype":"https://w3id.org/linkml/examples/personinfo/Person"},
+                {"id":"P:003","name":"c","objecttype":"https://w3id.org/linkml/examples/personinfo/Person"}
+            ]
+        }"#,
+        &sv,
+        &container,
+        &conv,
+    );
+    let tgt = load_json_instance(
+        r#"{
+            "objects": [
+                {"id":"P:001","name":"a","objecttype":"https://w3id.org/linkml/examples/personinfo/Person"},
+                {"id":"P:003","name":"c-updated","objecttype":"https://w3id.org/linkml/examples/personinfo/Person"}
+            ]
+        }"#,
+        &sv,
+        &container,
+        &conv,
+    );
+
+    let deltas = diff(&src, &tgt, DiffOptions::default());
+    assert!(
+        deltas.iter().any(|d| d.op == DeltaOp::Remove
+            && d.path == vec!["objects".to_string(), "P:002".to_string()]),
+        "expected Remove at objects/P:002 for the removed keyed item, got: {deltas:?}"
+    );
+
+    let (patched, trace) = patch(
+        &src,
+        &deltas,
+        linkml_runtime::diff::PatchOptions {
+            ignore_no_ops: true,
+            treat_missing_as_null: false,
+        },
+    )
+    .unwrap();
+    assert!(
+        trace.failed.is_empty(),
+        "no delta should fail to apply, got failed: {:?}",
+        trace.failed
+    );
+    assert_eq!(
+        patched.to_json(),
+        tgt.to_json(),
+        "patched source should equal target after keyed-list remove"
+    );
+}
+
 #[test]
 fn diff_and_patch_multiple_removes_from_scalar_list() {
     // Regression: removing multiple items from an index-addressed list
