@@ -76,7 +76,7 @@ pub fn blame_map_to_paths<M: Clone>(
         match node {
             LinkMLInstance::Object { values, .. } | LinkMLInstance::Mapping { values, .. } => {
                 let mut entries: Vec<_> = values.iter().collect();
-                entries.sort_by(|(ka, _), (kb, _)| ka.cmp(kb));
+                entries.sort_by_key(|(k, _)| *k);
                 for (key, child) in entries {
                     path.push(key.clone());
                     collect_paths(child, blame, path, out);
@@ -170,7 +170,7 @@ pub fn format_blame_map_with<M>(
                 };
                 lines.push(format!("{meta_str} | {header}"));
                 let mut entries: Vec<_> = values.iter().collect();
-                entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+                entries.sort_by_key(|(k, _)| *k);
                 for (child_key, child_value) in entries {
                     walk(
                         child_value,
@@ -192,7 +192,7 @@ pub fn format_blame_map_with<M>(
                 };
                 lines.push(format!("{meta_str} | {header}"));
                 let mut entries: Vec<_> = values.iter().collect();
-                entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+                entries.sort_by_key(|(k, _)| *k);
                 for (child_key, child_value) in entries {
                     walk(
                         child_value,
