@@ -471,7 +471,7 @@ fn diff_and_patch_remove_from_keyed_list() {
         &conv,
     );
 
-    let deltas = diff(&src, &tgt, DiffOptions::default());
+    let deltas = diff(&src, &tgt, DiffOptions::new(false));
     assert!(
         deltas.iter().any(|d| d.op == DeltaOp::Remove
             && d.path == vec!["objects".to_string(), "P:002".to_string()]),
