@@ -52,6 +52,12 @@ struct Args {
     /// Use skolem IRIs instead of blank nodes (Turtle output only)
     #[arg(long)]
     skolem: bool,
+    /// Path to a disk-backed RDF graph store (fjall). Only used for RDF
+    /// inputs; without this flag, the in-memory store is used. Requires
+    /// the `disk_graph` build feature.
+    #[cfg(feature = "disk_graph")]
+    #[arg(long = "disk-graph")]
+    disk_graph: Option<PathBuf>,
 }
 
 #[cfg(not(feature = "ttl"))]
@@ -166,28 +172,77 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             use linkml_runtime::rdf_streaming::import_owned_store_streaming;
 
             let class_refs: Vec<String> = args.class.clone();
-            let file = File::open(&args.data)?;
-            let reader = BufReader::new(file);
-            let store = match in_fmt {
-                Format::Ntriples => {
-                    RdfImportStore::from_ntriples(reader).map_err(|e| e.to_string())?
+            let class_refs_borrow: Vec<&str> = class_refs.iter().map(|s| s.as_str()).collect();
+
+            // Branch on --disk-graph (feature-gated) vs the default
+            // in-memory backend.
+            #[cfg(feature = "disk_graph")]
+            {
+                if let Some(disk_path) = args.disk_graph.as_ref() {
+                    use linkml_runtime::rdf_import_store_disk::DiskRdfImportStore;
+                    let file = File::open(&args.data)?;
+                    let reader = BufReader::new(file);
+                    let store = match in_fmt {
+                        Format::Ntriples => DiskRdfImportStore::from_ntriples(reader, disk_path)
+                            .map_err(|e| e.to_string())?,
+                        _ => DiskRdfImportStore::from_turtle(reader, disk_path)
+                            .map_err(|e| e.to_string())?,
+                    };
+                    let owned_stream = import_owned_store_streaming(
+                        store,
+                        sv.clone(),
+                        conv.clone(),
+                        &class_refs_borrow,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Box::new(owned_stream.map(|res| {
+                        res.map(|(_class, inst)| inst)
+                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+                    }))
+                } else {
+                    let file = File::open(&args.data)?;
+                    let reader = BufReader::new(file);
+                    let store = match in_fmt {
+                        Format::Ntriples => {
+                            RdfImportStore::from_ntriples(reader).map_err(|e| e.to_string())?
+                        }
+                        _ => RdfImportStore::from_turtle(reader).map_err(|e| e.to_string())?,
+                    };
+                    let owned_stream = import_owned_store_streaming(
+                        store,
+                        sv.clone(),
+                        conv.clone(),
+                        &class_refs_borrow,
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Box::new(owned_stream.map(|res| {
+                        res.map(|(_class, inst)| inst)
+                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+                    }))
                 }
-                _ => RdfImportStore::from_turtle(reader).map_err(|e| e.to_string())?,
-            };
-            // Hand the store, schema-view, and converter to an owned-store
-            // streaming iterator. We then yield just the LinkMLInstance from
-            // each (class_name, instance) tuple.
-            let owned_stream = import_owned_store_streaming(
-                store,
-                sv.clone(),
-                conv.clone(),
-                &class_refs.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-            )
-            .map_err(|e| e.to_string())?;
-            Box::new(owned_stream.map(|res| {
-                res.map(|(_class, inst)| inst)
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-            }))
+            }
+            #[cfg(not(feature = "disk_graph"))]
+            {
+                let file = File::open(&args.data)?;
+                let reader = BufReader::new(file);
+                let store = match in_fmt {
+                    Format::Ntriples => {
+                        RdfImportStore::from_ntriples(reader).map_err(|e| e.to_string())?
+                    }
+                    _ => RdfImportStore::from_turtle(reader).map_err(|e| e.to_string())?,
+                };
+                let owned_stream = import_owned_store_streaming(
+                    store,
+                    sv.clone(),
+                    conv.clone(),
+                    &class_refs_borrow,
+                )
+                .map_err(|e| e.to_string())?;
+                Box::new(owned_stream.map(|res| {
+                    res.map(|(_class, inst)| inst)
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+                }))
+            }
         }
     };
 
