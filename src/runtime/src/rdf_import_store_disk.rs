@@ -190,11 +190,12 @@ impl DiskRdfImportStore {
 
 // ── Public constructors ─────────────────────────────────────────────────────
 
-use oxttl::NTriplesParser;
+use oxttl::{NTriplesParser, TurtleParser};
+
+use crate::turtle_import::RdfFormat;
 
 impl DiskRdfImportStore {
-    /// Build a disk store by streaming an N-Triples document into fjall.
-    /// `path` is the directory where the fjall database lives.
+    /// Build a disk store by streaming N-Triples into fjall.
     pub fn from_ntriples(reader: impl Read, path: &Path) -> Result<Self, DiskStoreError> {
         let mut store = Self::open_empty(path)?;
         let parser = NTriplesParser::new().for_reader(reader);
@@ -204,6 +205,30 @@ impl DiskRdfImportStore {
         }
         store.finalize_load()?;
         Ok(store)
+    }
+
+    /// Build a disk store by streaming Turtle into fjall.
+    pub fn from_turtle(reader: impl Read, path: &Path) -> Result<Self, DiskStoreError> {
+        let mut store = Self::open_empty(path)?;
+        let parser = TurtleParser::new().for_reader(reader);
+        for result in parser {
+            let triple = result.map_err(|e| DiskStoreError::Parse(e.to_string()))?;
+            store.insert_triple(triple.subject, triple.predicate, triple.object)?;
+        }
+        store.finalize_load()?;
+        Ok(store)
+    }
+
+    /// Format-dispatch constructor.
+    pub fn from_rdf(
+        reader: impl Read,
+        format: RdfFormat,
+        path: &Path,
+    ) -> Result<Self, DiskStoreError> {
+        match format {
+            RdfFormat::Turtle => Self::from_turtle(reader, path),
+            RdfFormat::NTriples => Self::from_ntriples(reader, path),
+        }
     }
 
     /// Read-only accessor for the cached triple count. Stable after load.

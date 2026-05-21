@@ -88,3 +88,18 @@ fn lookup_of_unknown_term_returns_empty() {
     let n: usize = store.triples_for_subject(&s).count();
     assert_eq!(n, 0);
 }
+
+const TINY_TTL: &str = "\
+@prefix : <http://example.org/> .
+:a :p :b ;
+   a :T .
+:b :q \"hello\" .
+";
+
+#[test]
+fn loads_tiny_turtle() {
+    let dir = tempdir().unwrap();
+    let store =
+        DiskRdfImportStore::from_turtle(std::io::Cursor::new(TINY_TTL), dir.path()).unwrap();
+    assert_eq!(store.triple_count(), 3);
+}
