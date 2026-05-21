@@ -195,7 +195,7 @@ fn resolve_enum_value(
 
 /// Resolve the ClassView for a subject by looking at its rdf:type triple(s).
 /// Picks the most specific type defined in the schema.
-fn resolve_class<T: TripleSource>(
+pub(crate) fn resolve_class<T: TripleSource>(
     store: &T,
     sv: &SchemaView,
     _conv: &Converter,
