@@ -36,6 +36,8 @@ pub mod turtle;
 pub mod turtle_import;
 #[cfg(feature = "ttl")]
 pub mod rdf_streaming;
+#[cfg(feature = "disk_graph")]
+pub mod rdf_import_store_disk;
 pub use blame::{
     blame_map_to_paths, format_blame_map, format_blame_map_with, get_blame_info, patch_with_blame,
     record_blame_from_trace,
