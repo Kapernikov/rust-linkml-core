@@ -314,18 +314,22 @@ impl Materializer {
         *r -= 1;
         if *r == 0 {
             // Last consumer: move out, no clone.
-            return Ok(self
-                .cache
-                .remove(&key)
-                .expect("cache must contain key after insert"));
+            return self.cache.remove(&key).ok_or_else(|| {
+                ImportError::Parse(format!(
+                    "rdf_streaming: cache lost subject {key} between insert and last-consumer take"
+                ))
+            });
         }
         // Earlier consumer: clone with fresh node_ids so denormalised copies
         // have independent identities.
-        Ok(self
-            .cache
+        self.cache
             .get(&key)
-            .expect("cache must contain key after insert")
-            .clone_with_fresh_node_ids())
+            .map(|t| t.clone_with_fresh_node_ids())
+            .ok_or_else(|| {
+                ImportError::Parse(format!(
+                    "rdf_streaming: cache lost subject {key} between insert and clone read"
+                ))
+            })
     }
 }
 
