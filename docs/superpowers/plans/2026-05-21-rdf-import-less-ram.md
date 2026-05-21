@@ -40,6 +40,171 @@
 
 ---
 
+## Task 0: Baseline measurement via the existing `linkml-convert` CLI
+
+The project already ships a `linkml-convert` binary (`src/tools/src/bin/linkml_convert.rs`) that does exactly what we need: take a LinkML schema YAML, an N-Triples data file, one or more `--class` flags for root classes, and write JSON. With the `resolve` feature (default for the tools crate), schema imports are pulled in automatically.
+
+We run that binary **twice over this MR**:
+1. **Now** (pre-refactor) — captures today's behaviour as a reference JSON file.
+2. **At the end** (Task 10) — same binary, recompiled against the post-refactor code; compare JSONs and procmon logs.
+
+Same binary surface, same arguments, same input → apples to apples.
+
+**Files:**
+- Create: `scripts/measure_rinf_de.sh`
+- Create/modify: `.gitignore` to exclude `target/rinf-measure/`
+
+### Step 0.1: Add the measurement script
+
+- [ ] **Create** `scripts/measure_rinf_de.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Measure RINF Germany .nt import via the existing `linkml-convert` CLI.
+# Run TWICE during this MR:
+#   1) before any algorithm change (captures pre-refactor baseline)
+#   2) after Task 10 (captures post-refactor streaming behaviour)
+# Same CLI, same args, same input → apples to apples.
+#
+# Override defaults with env vars:
+#   PROCMON       path to procmon binary
+#   NT_FILE       path to de_1080.nt
+#   SCHEMA        path to the entry schema (rinf_subset.yaml)
+#   LABEL         tag for the run (default: timestamped)
+#   OUT_DIR       where to write outputs (default: target/rinf-measure/$LABEL)
+set -euo pipefail
+
+PROCMON="${PROCMON:-/tmp/procmon/result/bin/procmon}"
+NT_FILE="${NT_FILE:-/home/kervel/projects/asset360/lml/de_1080.nt}"
+SCHEMA="${SCHEMA:-/home/kervel/projects/asset360/consolidator-server/components/py/asset360-model/asset360_model/schemas/rinf/repository/v1.0.0/rinf_subset.yaml}"
+LABEL="${LABEL:-$(date +%Y%m%d-%H%M%S)}"
+OUT_DIR="${OUT_DIR:-target/rinf-measure/$LABEL}"
+
+mkdir -p "$OUT_DIR"
+
+# Rebuild linkml-convert against the current source.
+cargo build -p linkml_tools --release 2>&1 | tail -3
+
+BIN="target/release/linkml-convert"
+if [ ! -x "$BIN" ]; then
+    echo "linkml-convert not found at $BIN" >&2
+    exit 1
+fi
+
+# Root classes used for the RINF dataset. Match `src/runtime/tests/rinf_import_test.rs`.
+ROOT_CLASSES=(
+    OperationalPoint
+    SectionOfLine
+    RunningTrack
+    Siding
+    Tunnel
+    ContactLineSystem
+    TrainDetectionSystem
+    PlatformEdge
+    OrganisationRole
+    LinearPositioningSystem
+    ETCS
+)
+CLASS_ARGS=()
+for c in "${ROOT_CLASSES[@]}"; do
+    CLASS_ARGS+=(--class "$c")
+done
+
+echo "=== run: $LABEL ==="
+echo "binary:    $BIN"
+echo "nt:        $NT_FILE"
+echo "schema:    $SCHEMA"
+echo "output:    $OUT_DIR/output.json"
+echo "procmon:   $PROCMON"
+
+CMD=("$BIN" "$SCHEMA" "$NT_FILE" --from ntriples --to json --output "$OUT_DIR/output.json" "${CLASS_ARGS[@]}")
+
+if [ -x "$PROCMON" ]; then
+    "$PROCMON" --output "$OUT_DIR/procmon.log" -- "${CMD[@]}" 2>&1 | tee "$OUT_DIR/stdout.log"
+else
+    echo "procmon not available; falling back to /usr/bin/time -v" >&2
+    /usr/bin/time -v "${CMD[@]}" 2>&1 | tee "$OUT_DIR/stdout.log"
+fi
+
+ls -la "$OUT_DIR/"
+echo "Done. Results in $OUT_DIR"
+```
+
+- [ ] **Make executable**:
+
+```bash
+chmod +x scripts/measure_rinf_de.sh
+```
+
+### Step 0.2: Gitignore the measurement output dir
+
+- [ ] **Append** to `.gitignore` (or create if missing):
+
+```
+target/rinf-measure/
+```
+
+- [ ] **Verify**:
+
+```bash
+grep rinf-measure .gitignore
+```
+
+### Step 0.3: Clone procmon
+
+- [ ] **Run**:
+
+```bash
+[ -d /tmp/procmon ] || git clone https://gitlab.pp.kapernikov.com/frank/procmon /tmp/procmon
+cd /tmp/procmon && nix build && cd -
+test -x /tmp/procmon/result/bin/procmon && echo "procmon ready"
+```
+
+If `nix build` is unavailable on this host, the script will fall back to `/usr/bin/time -v`. Peak RSS is still captured (no time-series).
+
+### Step 0.4: Sanity-check the CLI works on a tiny input first
+
+- [ ] **Pick** an existing small turtle fixture (e.g. one used in `turtle_import_roundtrip`) and run linkml-convert against it:
+
+```bash
+cargo build -p linkml_tools --release 2>&1 | tail -3
+ls src/runtime/tests/data/*.ttl | head -3
+# Pick a fixture and run a quick import to JSON. Adjust SCHEMA and CLASS to what's in tests/data.
+```
+
+If `linkml-convert` succeeds on a tiny fixture and produces non-empty JSON, the script is ready for the big run. If it fails (e.g. schema resolution issue), debug *before* committing to the multi-minute RINF run.
+
+### Step 0.5: Capture the pre-refactor baseline
+
+- [ ] **Run**:
+
+```bash
+LABEL=baseline-prerefactor bash scripts/measure_rinf_de.sh
+```
+
+This will take many minutes on the 890 MB input. Expected: a directory `target/rinf-measure/baseline-prerefactor/` with `output.json`, `procmon.log` (or `time -v` capture in `stdout.log`), and `stdout.log`.
+
+- [ ] **Note** the size and a couple of numbers for later reference:
+
+```bash
+ls -la target/rinf-measure/baseline-prerefactor/
+wc -l target/rinf-measure/baseline-prerefactor/output.json
+grep -E '(Maximum resident|elapsed)' target/rinf-measure/baseline-prerefactor/stdout.log || true
+```
+
+### Step 0.6: Commit the script (not the output)
+
+- [ ] **Run**:
+
+```bash
+git add scripts/measure_rinf_de.sh .gitignore
+git commit -m "test(rinf): add measure_rinf_de.sh wrapping linkml-convert with procmon"
+```
+
+The baseline output stays in `target/rinf-measure/baseline-prerefactor/` (gitignored). Task 10 references it for the diff.
+
+---
+
 ## Task 1: `clone_with_fresh_node_ids` on `LinkMLInstance`
 
 The streaming algorithm caches one tree per shared inlined subject and hands clones with fresh `node_id`s to all consumers except the last. Today, `LinkMLInstance` has `#[derive(Clone)]` (`src/runtime/src/lib.rs:301`) which preserves `node_id`s — that's wrong for our purpose because two emitted instances must have disjoint IDs. We add a separate method.
@@ -1943,228 +2108,81 @@ git commit -m "feat(python): add from_turtle_streaming yielding one root at a ti
 
 ---
 
-## Task 10: RINF baseline measurement and equivalence test
+## Task 10: Re-run the measurement script post-refactor and diff against baseline
 
-Big-data validation: import the German RINF network three times (current code, streaming-on-RAM-graph) and assert byte-equality of the JSON output. (The disk-backed run is the second session of this MR.) Wire up `procmon` to capture RSS-over-time and wall-clock.
+The Task 0 script (`scripts/measure_rinf_de.sh`) is reused as-is — same binary surface, same CLI args, same input — to capture the post-refactor run. Then we diff the two `output.json` files for byte-equivalence and compare procmon logs.
 
 **Files:**
-- Clone (locally): https://gitlab.pp.kapernikov.com/frank/procmon → `/tmp/procmon` (or wherever)
-- Create: `src/runtime/tests/rinf_de_streaming.rs`
-- Create: `scripts/measure_rinf_de.sh`
+- (no new files; just re-runs the existing script and runs `diff`)
 
-### Step 10.1: Clone procmon and verify it builds
+### Step 10.1: Confirm the baseline run from Task 0 is still on disk
 
 - [ ] **Run**:
 
 ```bash
-git clone https://gitlab.pp.kapernikov.com/frank/procmon /tmp/procmon
-cd /tmp/procmon && nix build && cd -
-ls /tmp/procmon/result/bin/procmon
+ls -la target/rinf-measure/baseline-prerefactor/output.json
 ```
 
-If the nix build isn't available, fall back to the procmon README's preferred build instructions.
+Expected: file present. If it's missing (e.g. the worktree's `target/` was cleaned), **stop and report** — you cannot proceed without the pre-refactor baseline. The user has to re-run Task 0 against the *pre-refactor* git state (e.g. `git stash` the WIP, capture, `git stash pop`). Don't make up a baseline.
 
-### Step 10.2: Write the equivalence test
-
-- [ ] **Create** `src/runtime/tests/rinf_de_streaming.rs`:
-
-```rust
-#![cfg(feature = "ttl")]
-
-use linkml_runtime::rdf_import_store::RdfImportStore;
-use linkml_runtime::rdf_streaming::import_from_store_streaming;
-use linkml_runtime::turtle_import::import_ntriples;
-use linkml_schemaview::identifier::converter_from_schemas;
-use linkml_schemaview::io::from_yaml;
-use linkml_schemaview::schemaview::SchemaView;
-use std::collections::BTreeMap;
-use std::fs;
-use std::io::BufReader;
-use std::path::Path;
-
-const SCHEMA_DIR: &str = "/home/kervel/projects/asset360/consolidator-server/components/py/asset360-model/asset360_model/schemas/rinf/repository/v1.0.0";
-const NT_FILE: &str = "/home/kervel/projects/asset360/lml/de_1080.nt";
-
-const ROOT_CLASSES: &[&str] = &[
-    "OperationalPoint",
-    "SectionOfLine",
-    "RunningTrack",
-    "Siding",
-    "Tunnel",
-    "ContactLineSystem",
-    "TrainDetectionSystem",
-    "PlatformEdge",
-    "OrganisationRole",
-    "LinearPositioningSystem",
-    "ETCS",
-];
-
-fn load_sv() -> (SchemaView, linkml_schemaview::Converter) {
-    let schema = from_yaml(Path::new(&format!("{SCHEMA_DIR}/rinf_subset.yaml"))).unwrap();
-    let types_schema = from_yaml(Path::new(&format!("{SCHEMA_DIR}/types.yaml"))).unwrap();
-    let geosparql_schema = from_yaml(Path::new(&format!("{SCHEMA_DIR}/geosparql.yaml"))).unwrap();
-    let enums_schema = from_yaml(Path::new(&format!("{SCHEMA_DIR}/rinf_subset_enums.yaml"))).unwrap();
-    let mut sv = SchemaView::new();
-    sv.add_schema(schema.clone()).unwrap();
-    sv.add_schema_with_import_ref(types_schema.clone(), Some((schema.id.clone(), "linkml:types".to_string()))).unwrap();
-    sv.add_schema_with_import_ref(geosparql_schema.clone(), Some((schema.id.clone(), "geosparql".to_string()))).unwrap();
-    sv.add_schema_with_import_ref(enums_schema.clone(), Some((schema.id.clone(), "rinf_subset_enums".to_string()))).unwrap();
-    let conv = converter_from_schemas([&schema, &types_schema, &geosparql_schema, &enums_schema]);
-    (sv, conv)
-}
-
-/// Canonicalize each instance: serialize to JSON with sorted keys, sort by
-/// the resulting string within each class bucket. This removes ordering
-/// non-determinism from HashMap iteration.
-fn canonicalize(
-    instances: std::collections::HashMap<String, Vec<linkml_runtime::LinkMLInstance>>,
-) -> BTreeMap<String, Vec<String>> {
-    let mut out = BTreeMap::new();
-    for (class, list) in instances {
-        let mut jsons: Vec<String> = list.iter()
-            .map(|i| {
-                let v = i.to_json();
-                // serde_json::to_string serializes object keys in insertion order.
-                // Run through a BTreeMap-aware serializer for stable output.
-                serde_json::to_string(&sort_json(v)).unwrap()
-            })
-            .collect();
-        jsons.sort();
-        out.insert(class, jsons);
-    }
-    out
-}
-
-fn sort_json(v: serde_json::Value) -> serde_json::Value {
-    match v {
-        serde_json::Value::Object(m) => {
-            let mut bt: BTreeMap<String, serde_json::Value> = BTreeMap::new();
-            for (k, vv) in m { bt.insert(k, sort_json(vv)); }
-            serde_json::Value::Object(bt.into_iter().collect())
-        }
-        serde_json::Value::Array(a) => {
-            serde_json::Value::Array(a.into_iter().map(sort_json).collect())
-        }
-        other => other,
-    }
-}
-
-#[test]
-fn rinf_de_streaming_matches_baseline() {
-    if !Path::new(SCHEMA_DIR).exists() || !Path::new(NT_FILE).exists() {
-        eprintln!("Skipping rinf_de_streaming: data files not found");
-        return;
-    }
-    let (sv, conv) = load_sv();
-
-    // ---- Baseline: current import_ntriples ----
-    let t0 = std::time::Instant::now();
-    let file = fs::File::open(NT_FILE).unwrap();
-    let reader = BufReader::new(file);
-    let baseline = import_ntriples(reader, &sv, &conv, ROOT_CLASSES).unwrap();
-    let baseline_time = t0.elapsed();
-    let baseline_canon = canonicalize(baseline.instances);
-
-    // ---- Streaming on RAM graph ----
-    let t0 = std::time::Instant::now();
-    let file = fs::File::open(NT_FILE).unwrap();
-    let reader = BufReader::new(file);
-    let store = RdfImportStore::from_ntriples(reader).unwrap();
-    let stream = import_from_store_streaming(&store, &sv, &conv, ROOT_CLASSES).unwrap();
-    let mut streamed: std::collections::HashMap<String, Vec<linkml_runtime::LinkMLInstance>> =
-        std::collections::HashMap::new();
-    for item in stream {
-        let (cls, inst) = item.unwrap();
-        streamed.entry(cls).or_default().push(inst);
-    }
-    let streamed_time = t0.elapsed();
-    let streamed_canon = canonicalize(streamed);
-
-    eprintln!("baseline: {baseline_time:?}, streaming: {streamed_time:?}");
-    for class in baseline_canon.keys() {
-        let b = baseline_canon.get(class).unwrap();
-        let s = streamed_canon.get(class).unwrap_or_else(|| panic!("missing class {class} in streaming output"));
-        assert_eq!(b.len(), s.len(), "class {class} count differs");
-        assert_eq!(b, s, "class {class} content differs");
-    }
-    assert_eq!(baseline_canon.keys().collect::<Vec<_>>(), streamed_canon.keys().collect::<Vec<_>>(),
-        "class set differs");
-}
-```
-
-This test runs only when both data files exist on disk; CI without those files skips silently.
-
-### Step 10.3: Run the equivalence test
+### Step 10.2: Capture the post-refactor run
 
 - [ ] **Run**:
 
 ```bash
-cargo test -p linkml_runtime --features ttl --release --test rinf_de_streaming -- --nocapture 2>&1 | tail -10
+LABEL=streaming-postrefactor bash scripts/measure_rinf_de.sh
 ```
 
-Use `--release` because debug builds will be unacceptably slow on 890 MB. Expected: passes.
+Expected: `target/rinf-measure/streaming-postrefactor/output.json` plus procmon/stdout logs. The "Imported N instances" line in `stdout.log` should match the baseline's.
 
-### Step 10.4: Add the procmon measurement script
-
-- [ ] **Create** `scripts/measure_rinf_de.sh`:
-
-```bash
-#!/usr/bin/env bash
-# Run the baseline-vs-streaming RINF test under procmon for RSS profiling.
-# Procmon expected at /tmp/procmon/result/bin/procmon (override with $PROCMON).
-set -euo pipefail
-
-PROCMON="${PROCMON:-/tmp/procmon/result/bin/procmon}"
-OUT_DIR="${OUT_DIR:-target/measurements/rinf-de-$(date +%Y%m%d-%H%M%S)}"
-mkdir -p "$OUT_DIR"
-
-# Build the test binary once.
-cargo test -p linkml_runtime --features ttl --release --no-run --test rinf_de_streaming 2>&1
-TEST_BIN=$(cargo test -p linkml_runtime --features ttl --release --no-run --test rinf_de_streaming --message-format=json 2>/dev/null \
-    | python3 -c "import json,sys
-for line in sys.stdin:
-    j = json.loads(line)
-    if j.get('reason') == 'compiler-artifact' and 'rinf_de_streaming' in (j.get('target',{}).get('name',''),):
-        if j.get('executable'): print(j['executable']); break")
-
-if [ -z "$TEST_BIN" ]; then
-  echo "Could not locate test binary" >&2
-  exit 1
-fi
-
-echo "Test binary: $TEST_BIN"
-echo "Output dir:  $OUT_DIR"
-
-"$PROCMON" --output "$OUT_DIR/procmon.log" -- "$TEST_BIN" --nocapture 2>&1 | tee "$OUT_DIR/stdout.log"
-
-echo "Results in $OUT_DIR"
-```
-
-- [ ] **Make it executable**:
-
-```bash
-chmod +x scripts/measure_rinf_de.sh
-```
-
-### Step 10.5: Run procmon measurement (optional sanity check)
-
-- [ ] **Run** (skip if procmon isn't built):
-
-```bash
-bash scripts/measure_rinf_de.sh
-ls target/measurements/
-```
-
-Expected: a dated directory with `procmon.log` and `stdout.log`. Inspect `procmon.log` to confirm both the baseline and streaming peaks are recorded.
-
-### Step 10.6: Commit
+### Step 10.3: Diff the two JSON outputs
 
 - [ ] **Run**:
 
 ```bash
-git add src/runtime/tests/rinf_de_streaming.rs scripts/measure_rinf_de.sh
-git commit -m "test(rinf): byte-equality and procmon measurement for de_1080.nt"
+diff -q target/rinf-measure/baseline-prerefactor/output.json target/rinf-measure/streaming-postrefactor/output.json
 ```
+
+Expected: no output (files identical).
+
+If `diff -q` reports a difference, run a sized check first to see how big the divergence is:
+
+```bash
+diff target/rinf-measure/baseline-prerefactor/output.json target/rinf-measure/streaming-postrefactor/output.json | head -60
+wc -l target/rinf-measure/baseline-prerefactor/output.json target/rinf-measure/streaming-postrefactor/output.json
+```
+
+Investigate:
+- If it's instance ordering inside a class array, the canonicalization in `linkml-convert`'s JSON output should already sort. Confirm both runs went through the same sort path. If not, fix the canonicalization (likely a `BTreeMap` swap).
+- If it's a `node_id` showing up in the JSON, then `to_json()` is leaking node identity — that's a real bug, fix in code.
+- If individual instance contents differ, isolate one differing instance (by IRI) and trace it through the new code path.
+
+Do not continue until `diff -q` reports identical files. Genuine algorithmic differences here mean the streaming path is producing wrong output and must be fixed.
+
+### Step 10.4: Compare RAM and time
+
+- [ ] **Run**:
+
+```bash
+echo "--- baseline ---"
+grep -E '(Maximum resident|Elapsed|peak)' target/rinf-measure/baseline-prerefactor/stdout.log || true
+echo "--- streaming ---"
+grep -E '(Maximum resident|Elapsed|peak)' target/rinf-measure/streaming-postrefactor/stdout.log || true
+```
+
+Record both runs' peak RSS and elapsed time in the PR description. Streaming peak should be lower than baseline; how much depends on the dataset. Wall-clock should be within roughly the same order.
+
+### Step 10.5: Commit the verification artifacts
+
+The output JSON files are gitignored. There's nothing to commit at this step unless the diff investigation forced code changes (in which case those changes already got their own commit earlier).
+
+- [ ] **Run** a sanity `git status`:
+
+```bash
+git status --short
+```
+
+Expected: clean working tree (modulo any earlier work-in-progress).
 
 ---
 
