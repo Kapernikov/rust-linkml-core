@@ -10,7 +10,7 @@ use std::io::Read;
 
 use oxrdf::{
     vocab::{rdf, xsd},
-    Literal, NamedNode, NamedOrBlankNode, TermRef,
+    Literal, NamedNode, NamedOrBlankNode, Term, TermRef,
 };
 use serde_json::Value as JsonValue;
 
@@ -320,6 +320,22 @@ fn harvest_subject<T: TripleSource>(
     // Always mark rdf:type as consumed
     consumed_predicates.insert(rdf::TYPE.as_str().to_string());
 
+    // One scan over the subject's triples; bucket objects by predicate IRI.
+    // Owned `Term`s outlive the slot loop and the unknown-fields pass so we
+    // never need a second `triples_for_subject` call.
+    let mut by_predicate: HashMap<String, Vec<Term>> = HashMap::new();
+    for triple in ctx.store.triples_for_subject(subject) {
+        let pred = triple.predicate.as_str().to_string();
+        let obj_owned: Term = match triple.object {
+            TermRef::Literal(l) => Term::Literal(l.into_owned()),
+            TermRef::NamedNode(n) => Term::NamedNode(n.into_owned()),
+            TermRef::BlankNode(b) => Term::BlankNode(b.into_owned()),
+            #[allow(unreachable_patterns)]
+            _ => continue,
+        };
+        by_predicate.entry(pred).or_default().push(obj_owned);
+    }
+
     // Populate identifier slot from subject IRI (if class has one and subject is a named node)
     let id_slot_name = match (class.identifier_slot(), subject) {
         (Some(id_slot), NamedOrBlankNode::NamedNode(nn)) => {
@@ -360,27 +376,24 @@ fn harvest_subject<T: TripleSource>(
 
         consumed_predicates.insert(pred_iri.clone());
 
-        let predicate = NamedNode::new_unchecked(&pred_iri);
-        let objects: Vec<_> = ctx
-            .store
-            .objects_for_subject_predicate(subject, &predicate)
-            .collect();
-
-        if objects.is_empty() {
+        // Take the objects for this predicate out of the bucket so the
+        // unknown-fields pass below doesn't see them.
+        let owned_objects: Vec<Term> = by_predicate.remove(&pred_iri).unwrap_or_default();
+        if owned_objects.is_empty() {
             continue;
         }
 
-        for obj_term in &objects {
-            let obj_str = match *obj_term {
-                TermRef::Literal(l) => l.to_string(),
-                TermRef::NamedNode(n) => n.as_str().to_string(),
-                TermRef::BlankNode(b) => b.to_string(),
+        for obj_term in &owned_objects {
+            let obj_str = match obj_term {
+                Term::Literal(l) => l.to_string(),
+                Term::NamedNode(n) => n.as_str().to_string(),
+                Term::BlankNode(b) => b.to_string(),
                 #[allow(unreachable_patterns)]
                 _ => String::new(),
             };
             ctx.store.on_consumed(&subject_key, &pred_iri, &obj_str);
         }
-        ctx.consumed_count += objects.len();
+        ctx.consumed_count += owned_objects.len();
 
         let range_infos = slot.get_range_info();
         let range_info = range_infos.first();
@@ -394,10 +407,9 @@ fn harvest_subject<T: TripleSource>(
 
         // Convert each object term to a LinkMLInstance
         let mut items: Vec<LinkMLInstance> = Vec::new();
-        for obj_term in &objects {
-            match *obj_term {
-                TermRef::Literal(lit) => {
-                    let lit = lit.into_owned();
+        for obj_term in owned_objects {
+            match obj_term {
+                Term::Literal(lit) => {
                     // Check for language-tagged literal on an inlined slot
                     // whose range class has lang_tag_slots
                     if lit.language().is_some() && inline_mode == SlotInlineMode::Inline {
@@ -449,12 +461,12 @@ fn harvest_subject<T: TripleSource>(
                         sv: ctx.sv.clone(),
                     });
                 }
-                TermRef::NamedNode(nn) => {
-                    let iri_str = nn.as_str();
+                Term::NamedNode(nn) => {
+                    let iri_str = nn.as_str().to_string();
 
                     // Enum resolution
                     if has_enum {
-                        if let Some(pv_name) = resolve_enum_value(iri_str, slot, ctx.conv) {
+                        if let Some(pv_name) = resolve_enum_value(&iri_str, slot, ctx.conv) {
                             items.push(LinkMLInstance::Scalar {
                                 node_id: new_node_id(),
                                 value: JsonValue::String(pv_name),
@@ -470,14 +482,14 @@ fn harvest_subject<T: TripleSource>(
                     if inline_mode == SlotInlineMode::Reference || is_range_iri {
                         items.push(LinkMLInstance::Scalar {
                             node_id: new_node_id(),
-                            value: JsonValue::String(iri_str.to_string()),
+                            value: JsonValue::String(iri_str),
                             slot: slot.clone(),
                             class: Some(class.clone()),
                             sv: ctx.sv.clone(),
                         });
                     } else if inline_mode == SlotInlineMode::Inline {
                         // Inline: recursively harvest
-                        let obj_subject = NamedOrBlankNode::NamedNode(nn.into_owned());
+                        let obj_subject = NamedOrBlankNode::NamedNode(nn);
                         let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
                         let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
                         ctx.claimed.insert(obj_subject.to_string());
@@ -486,16 +498,16 @@ fn harvest_subject<T: TripleSource>(
                         // Primitive NamedNode — store as string
                         items.push(LinkMLInstance::Scalar {
                             node_id: new_node_id(),
-                            value: JsonValue::String(iri_str.to_string()),
+                            value: JsonValue::String(iri_str),
                             slot: slot.clone(),
                             class: Some(class.clone()),
                             sv: ctx.sv.clone(),
                         });
                     }
                 }
-                TermRef::BlankNode(bn) => {
+                Term::BlankNode(bn) => {
                     // Blank nodes are always inlined
-                    let obj_subject = NamedOrBlankNode::BlankNode(bn.into_owned());
+                    let obj_subject = NamedOrBlankNode::BlankNode(bn);
                     let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
                     let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
                     ctx.claimed.insert(obj_subject.to_string());
@@ -552,19 +564,23 @@ fn harvest_subject<T: TripleSource>(
         values.insert(slot.name.clone(), instance);
     }
 
-    // Collect unknown fields (predicates on subject not matching any slot)
+    // Unknown fields = predicates left in the by_predicate bucket after the
+    // slot loop. consumed_predicates is redundant with the bucket-removal
+    // strategy but kept for clarity.
     let mut unknown_fields: HashMap<String, JsonValue> = HashMap::new();
-    for triple in ctx.store.triples_for_subject(subject) {
-        let pred = triple.predicate;
-        let obj = triple.object;
-        if !consumed_predicates.contains(pred.as_str()) {
-            let key = pred.as_str().to_string();
+    for (pred_iri, objs) in by_predicate.into_iter() {
+        if consumed_predicates.contains(&pred_iri) {
+            continue;
+        }
+        if let Some(obj) = objs.into_iter().last() {
             let val = match obj {
-                TermRef::Literal(lit) => JsonValue::String(lit.value().to_string()),
-                TermRef::NamedNode(nn) => JsonValue::String(nn.as_str().to_string()),
-                _ => JsonValue::String(obj.to_string()),
+                Term::Literal(lit) => JsonValue::String(lit.value().to_string()),
+                Term::NamedNode(nn) => JsonValue::String(nn.as_str().to_string()),
+                Term::BlankNode(bn) => JsonValue::String(bn.to_string()),
+                #[allow(unreachable_patterns)]
+                other => JsonValue::String(other.to_string()),
             };
-            unknown_fields.insert(key, val);
+            unknown_fields.insert(pred_iri, val);
         }
     }
 
