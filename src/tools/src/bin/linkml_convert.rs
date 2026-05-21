@@ -4,7 +4,6 @@ use clap::{Parser, ValueEnum};
 use linkml_runtime::{
     load_json_file, load_yaml_file,
     turtle::{write_ntriples, write_turtle, TurtleOptions},
-    turtle_import::{import_ntriples, import_turtle},
     validate, LinkMLInstance,
 };
 #[cfg(feature = "ttl")]
@@ -122,9 +121,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // ── Load input ──
+    // ── Writer ──
 
-    let instances: Vec<LinkMLInstance> = match in_fmt {
+    let mut writer: Box<dyn std::io::Write> = if let Some(out) = &args.output {
+        Box::new(File::create(out)?)
+    } else {
+        Box::new(std::io::stdout())
+    };
+
+    // ── Input: build a streaming iterator of instances ──
+    //
+    // The iterator yields one `LinkMLInstance` at a time so the output side
+    // never has to materialise a `Vec<LinkMLInstance>`. For YAML/JSON input
+    // it yields exactly one element (the tree root). For RDF input it
+    // yields each unclaimed root from the streaming harvest.
+    //
+    // For RDF inputs, `import_owned_store_streaming` keeps the parsed store
+    // alive inside the iterator itself, so we don't need separate scaffolding
+    // here.
+    type InstanceItem = Result<LinkMLInstance, Box<dyn std::error::Error>>;
+    let instances: Box<dyn Iterator<Item = InstanceItem>> = match in_fmt {
         Format::Yaml | Format::Json => {
             let class_view = sv.get_tree_root_or(None).ok_or_else(|| {
                 format!(
@@ -143,44 +159,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("invalid: {e}");
                 std::process::exit(1);
             }
-            vec![value]
+            Box::new(std::iter::once(Ok(value)))
         }
         Format::Turtle | Format::Ntriples => {
-            // --class is validated above as mandatory for RDF input
-            let class_refs: Vec<&str> = args.class.iter().map(|s| s.as_str()).collect();
+            use linkml_runtime::rdf_import_store::RdfImportStore;
+            use linkml_runtime::rdf_streaming::import_owned_store_streaming;
+
+            let class_refs: Vec<String> = args.class.clone();
             let file = File::open(&args.data)?;
             let reader = BufReader::new(file);
-            let result = match in_fmt {
+            let store = match in_fmt {
                 Format::Ntriples => {
-                    import_ntriples(reader, &sv, &conv, &class_refs).map_err(|e| e.to_string())?
+                    RdfImportStore::from_ntriples(reader).map_err(|e| e.to_string())?
                 }
-                _ => import_turtle(reader, &sv, &conv, &class_refs).map_err(|e| e.to_string())?,
+                _ => RdfImportStore::from_turtle(reader).map_err(|e| e.to_string())?,
             };
-            let unconsumed_str = result
-                .unconsumed_count
-                .map(|n| format!("{n}"))
-                .unwrap_or_else(|| "unknown".to_string());
-            eprintln!(
-                "Imported {} instances ({unconsumed_str} unconsumed triples)",
-                result.instances.values().map(|v| v.len()).sum::<usize>(),
-            );
-            result.instances.into_values().flatten().collect()
+            // Hand the store, schema-view, and converter to an owned-store
+            // streaming iterator. We then yield just the LinkMLInstance from
+            // each (class_name, instance) tuple.
+            let owned_stream = import_owned_store_streaming(
+                store,
+                sv.clone(),
+                conv.clone(),
+                &class_refs.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            )
+            .map_err(|e| e.to_string())?;
+            Box::new(owned_stream.map(|res| {
+                res.map(|(_class, inst)| inst)
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            }))
         }
     };
 
-    // ── Write output ──
+    // ── Output: drive from the iterator, write one instance at a time ──
 
-    let mut writer: Box<dyn std::io::Write> = if let Some(out) = &args.output {
-        Box::new(File::create(out)?)
-    } else {
-        Box::new(std::io::stdout())
-    };
-
+    let mut count: usize = 0;
     match out_fmt {
+        Format::Json => {
+            // Always emit a JSON array, regardless of how many instances we
+            // end up with. Streaming-friendly: we don't know the count up
+            // front. Single-element input still yields `[ {...} ]`.
+            writeln!(writer, "[")?;
+            let mut first = true;
+            for item in instances {
+                let value = item?;
+                if !first {
+                    writeln!(writer, ",")?;
+                }
+                first = false;
+                serde_json::to_writer_pretty(&mut writer, &value.to_json())?;
+                count += 1;
+            }
+            writeln!(writer)?;
+            writeln!(writer, "]")?;
+        }
+        Format::Yaml => {
+            // YAML stream-of-documents: each instance separated by `---`.
+            for item in instances {
+                let value = item?;
+                writeln!(writer, "---")?;
+                serde_yaml::to_writer(&mut writer, &value.to_json())?;
+                count += 1;
+            }
+        }
         Format::Turtle => {
-            for value in &instances {
+            for item in instances {
+                let value = item?;
                 write_turtle(
-                    value,
+                    &value,
                     &sv,
                     &schema,
                     &conv,
@@ -189,29 +235,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         skolem: args.skolem,
                     },
                 )?;
-            }
-        }
-        Format::Json => {
-            if instances.len() == 1 {
-                serde_json::to_writer_pretty(&mut writer, &instances[0].to_json())?;
-            } else {
-                let arr: Vec<_> = instances.iter().map(|i| i.to_json()).collect();
-                serde_json::to_writer_pretty(&mut writer, &arr)?;
-            }
-            writeln!(writer)?;
-        }
-        Format::Yaml => {
-            if instances.len() == 1 {
-                serde_yaml::to_writer(&mut writer, &instances[0].to_json())?;
-            } else {
-                let arr: Vec<_> = instances.iter().map(|i| i.to_json()).collect();
-                serde_yaml::to_writer(&mut writer, &arr)?;
+                count += 1;
             }
         }
         Format::Ntriples => {
-            for value in &instances {
+            for item in instances {
+                let value = item?;
                 write_ntriples(
-                    value,
+                    &value,
                     &sv,
                     &schema,
                     &conv,
@@ -220,9 +251,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         skolem: args.skolem,
                     },
                 )?;
+                count += 1;
             }
         }
     }
 
+    eprintln!("Wrote {count} instances (streaming, no Vec accumulation)");
     Ok(())
 }
