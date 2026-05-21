@@ -2967,6 +2967,9 @@ classes:
   slot_definition:
     rank: 3
     description: an element that describes how instances are related to other instances
+    annotations:
+      "rust.linkml.io/generate/merge":
+        value: true
     aliases:
       - slot
       - field
