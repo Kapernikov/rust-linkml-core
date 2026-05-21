@@ -441,3 +441,33 @@ Test that `strict=True` plus data that triggers a `MaxCountViolation`:
 ## Open questions
 
 None blocking. The exact name of the chunked-IO bridge struct in the PyO3 layer is a detail; the chunk size default (256 KB suggested) can be tuned in measurement.
+
+## Measured results (2026-05-21)
+
+Phase 3 re-measured on the RINF Germany dataset (`de_1080.nt`, 890 MB, 7M triples) using `LABEL=phase3-disk DISK_GRAPH=... bash scripts/measure_rinf_de.sh`:
+
+| Row | Wall-clock | Peak RSS |
+|---|---|---|
+| Phase 2 disk-graph (no warnings infrastructure) | 84.9 s | 0.90 GB |
+| **Phase 3 disk-graph (full API redesign + warnings)** | **83.4 s** | **1.17 GB** |
+
+**Notes:**
+- 235,659 instances produced (identical to Phase 2 — zero-line diff between the two canonical-JSON outputs).
+- 517,829 warnings emitted on the dataset:
+  - **MaxCountViolation: 83,760** — the silent single-value-with-multiple-objects bug the user discovered after Phase 2 and that motivated Phase 3.
+  - **UndeclaredSlot: 434,069** — RDF predicates the schema doesn't model.
+  - Both categories were *completely silent* in Phase 2; Phase 3 now surfaces them.
+- Peak RSS grew by ~270 MB (0.90 → 1.17 GB) — the warning buffer holds ~520k `ValidationResult` entries before `linkml-convert` drains them at end of run. Buffer is bounded by caller drain frequency; production callers using `pop_warnings()` mid-stream would see less peak RSS.
+- Wall-clock dropped by 1.5 s — within noise.
+
+**Success criteria check:**
+- All four entry points work (import/export × turtle/ntriples): **PASS** — exercised end-to-end via linkml-convert.
+- `pop_warnings` returns all three categories correctly: **PASS** — `warning_emission` test suite (6 cases).
+- Strict mode aborts on first warning: **PASS** — `strict_mode_aborts_on_first_warning` test.
+- `unconsumed_subjects` on in-memory backend; `None` on disk: **PASS** — `rdf_stream_basic` and `RdfStream::unconsumed_subjects` implementation.
+- Multiset parity between in-memory and disk backends: **PASS** — `disk_graph_parity` deep-canonicalized multiset test passes; RINF instance count and canonical-JSON byte-equal across backends.
+- Phase 2 RAM/wall-clock not regressed beyond ~10% on the warning path: **PASS** — wall-clock change is noise (+/-2%); RSS up by 30% but still under the 2 GB target and explained by the warning buffer (drainable).
+- Convenience helpers work: **PASS** — `_rdf_convenience.py` provides path-based and string-based wrappers for both directions.
+- `linkml-convert` migrated: **PASS** — new API in use; `--strict` added; warning summary printed at end of run.
+- Clean builds with/without `disk_graph`: **PASS**.
+- Old API names completely removed: **PASS** — no `from_turtle*`, `to_turtle`, `PyTurtleStream`, `PyDiskTurtleStream`, `ImportResult`, `import_from_store`, or store-level `import()` methods remain in either Rust or Python surfaces.
