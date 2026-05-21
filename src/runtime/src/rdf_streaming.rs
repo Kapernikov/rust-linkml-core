@@ -371,8 +371,8 @@ impl<T: TripleSource> Iterator for ImportStream<'_, T> {
     }
 }
 
-/// An owned-store streaming iterator: the parsed `RdfImportStore` is
-/// kept alive inside the iterator itself.
+/// An owned-store streaming iterator: the parsed `TripleSource`
+/// implementation is kept alive inside the iterator itself.
 ///
 /// Used by FFI callers (Python) that can't easily keep a separate store
 /// alive alongside the iterator. The store is boxed (so its address is
@@ -380,12 +380,12 @@ impl<T: TripleSource> Iterator for ImportStream<'_, T> {
 /// one carefully-scoped `unsafe` block. Sound because the only reference
 /// into the store is held by `iter`, which is dropped before `_store`
 /// thanks to drop order (fields are dropped top-to-bottom).
-pub struct OwnedImportStream {
-    iter: ImportStream<'static, crate::rdf_import_store::RdfImportStore>,
+pub struct OwnedImportStream<S: TripleSource + 'static> {
+    iter: ImportStream<'static, S>,
     // Kept alive for `iter`'s reference. Must be declared AFTER `iter` so it
     // is dropped after; otherwise the &'static reference would dangle.
     #[allow(dead_code)]
-    store: Box<crate::rdf_import_store::RdfImportStore>,
+    store: Box<S>,
     // Same for the SchemaView and Converter.
     #[allow(dead_code)]
     sv: Box<SchemaView>,
@@ -393,13 +393,20 @@ pub struct OwnedImportStream {
     conv: Box<Converter>,
 }
 
-impl OwnedImportStream {
+impl<S: TripleSource + 'static> OwnedImportStream<S> {
     pub fn consumed_count(&self) -> usize {
         self.iter.consumed_count()
     }
+
+    /// Borrow the underlying store. Useful for backend-specific
+    /// post-import diagnostics (e.g. unconsumed-subject reporting on a
+    /// tracking store).
+    pub fn store(&self) -> &S {
+        &self.store
+    }
 }
 
-impl Iterator for OwnedImportStream {
+impl<S: TripleSource + 'static> Iterator for OwnedImportStream<S> {
     type Item = Result<(String, LinkMLInstance), ImportError>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -407,15 +414,15 @@ impl Iterator for OwnedImportStream {
     }
 }
 
-/// Build an owned streaming iterator from a parsed `RdfImportStore` and the
+/// Build an owned streaming iterator from a parsed `TripleSource` and the
 /// caller's schema/converter (which we take by value and box).
-pub fn import_owned_store_streaming(
-    store: crate::rdf_import_store::RdfImportStore,
+pub fn import_owned_store_streaming<S: TripleSource + 'static>(
+    store: S,
     sv: SchemaView,
     conv: Converter,
     root_classes: &[&str],
-) -> Result<OwnedImportStream, ImportError> {
-    let store_box: Box<crate::rdf_import_store::RdfImportStore> = Box::new(store);
+) -> Result<OwnedImportStream<S>, ImportError> {
+    let store_box: Box<S> = Box::new(store);
     let sv_box: Box<SchemaView> = Box::new(sv);
     let conv_box: Box<Converter> = Box::new(conv);
 
@@ -424,8 +431,7 @@ pub fn import_owned_store_streaming(
     // of `OwnedImportStream`; Rust drops struct fields in declaration order,
     // so `iter` (which holds the references) is dropped BEFORE `store`,
     // `sv`, `conv`. Until then the references remain valid.
-    let store_ref: &'static crate::rdf_import_store::RdfImportStore =
-        unsafe { &*(store_box.as_ref() as *const _) };
+    let store_ref: &'static S = unsafe { &*(store_box.as_ref() as *const _) };
     let sv_ref: &'static SchemaView = unsafe { &*(sv_box.as_ref() as *const _) };
     let conv_ref: &'static Converter = unsafe { &*(conv_box.as_ref() as *const _) };
 

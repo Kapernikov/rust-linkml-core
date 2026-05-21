@@ -1718,7 +1718,11 @@ fn py_from_turtle_streaming(
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "TurtleStream", unsendable)]
 pub struct PyTurtleStream {
-    iter: Option<linkml_runtime::rdf_streaming::OwnedImportStream>,
+    iter: Option<
+        linkml_runtime::rdf_streaming::OwnedImportStream<
+            linkml_runtime::rdf_import_store::RdfImportStore,
+        >,
+    >,
     sv_py: Py<PySchemaView>,
 }
 
