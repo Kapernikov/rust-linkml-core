@@ -1703,8 +1703,15 @@ fn py_from_turtle_streaming(
     let store = RdfImportStore::from_turtle(std::io::Cursor::new(turtle_str.as_bytes()))
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
-    let iter = import_owned_store_streaming(store, sv, conv, &class_refs)
-        .map_err(|e| PyException::new_err(e.to_string()))?;
+    let iter = import_owned_store_streaming(
+        store,
+        sv,
+        conv,
+        &class_refs,
+        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+        false,
+    )
+    .map_err(|e| PyException::new_err(e.to_string()))?;
 
     let sv_py: Py<PySchemaView> = Py::new(
         py,
@@ -1789,8 +1796,15 @@ fn py_from_turtle_streaming_disk(
     )
     .map_err(|e| PyException::new_err(e.to_string()))?;
 
-    let iter = import_owned_store_streaming(store, sv, conv, &class_refs)
-        .map_err(|e| PyException::new_err(e.to_string()))?;
+    let iter = import_owned_store_streaming(
+        store,
+        sv,
+        conv,
+        &class_refs,
+        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+        false,
+    )
+    .map_err(|e| PyException::new_err(e.to_string()))?;
 
     let sv_py: Py<PySchemaView> = Py::new(
         py,
@@ -1831,8 +1845,15 @@ fn py_from_ntriples_streaming_disk(
         DiskRdfImportStore::from_ntriples(reader, std::path::Path::new(disk_path))
             .map_err(|e| PyException::new_err(e.to_string()))?;
 
-    let iter = import_owned_store_streaming(store, sv, conv, &class_refs)
-        .map_err(|e| PyException::new_err(e.to_string()))?;
+    let iter = import_owned_store_streaming(
+        store,
+        sv,
+        conv,
+        &class_refs,
+        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+        false,
+    )
+    .map_err(|e| PyException::new_err(e.to_string()))?;
 
     let sv_py: Py<PySchemaView> = Py::new(
         py,

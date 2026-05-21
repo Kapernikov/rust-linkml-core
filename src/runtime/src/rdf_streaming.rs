@@ -14,7 +14,9 @@
 
 #![cfg(feature = "ttl")]
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use oxrdf::{vocab::rdf, NamedNode, NamedOrBlankNode, TermRef};
 
@@ -24,7 +26,7 @@ use linkml_schemaview::Converter;
 
 use crate::triple_source::TripleSource;
 use crate::turtle_import::{harvest_subject, resolve_class, HarvestContext, ImportError};
-use crate::LinkMLInstance;
+use crate::{LinkMLInstance, ValidationResult};
 use linkml_schemaview::schemaview::ClassView;
 
 /// Output of Pass 1. Drives Pass 2's caching and top-level suppression.
@@ -416,11 +418,17 @@ impl<S: TripleSource + 'static> Iterator for OwnedImportStream<S> {
 
 /// Build an owned streaming iterator from a parsed `TripleSource` and the
 /// caller's schema/converter (which we take by value and box).
+///
+/// `warnings` is the shared warning sink — the caller (typically
+/// `RdfStream`) holds a clone for `pop_warnings`. `strict` promotes the
+/// first emitted warning into an error from the iterator's `next()`.
 pub fn import_owned_store_streaming<S: TripleSource + 'static>(
     store: S,
     sv: SchemaView,
     conv: Converter,
     root_classes: &[&str],
+    warnings: Rc<RefCell<Vec<ValidationResult>>>,
+    strict: bool,
 ) -> Result<OwnedImportStream<S>, ImportError> {
     let store_box: Box<S> = Box::new(store);
     let sv_box: Box<SchemaView> = Box::new(sv);
@@ -435,7 +443,8 @@ pub fn import_owned_store_streaming<S: TripleSource + 'static>(
     let sv_ref: &'static SchemaView = unsafe { &*(sv_box.as_ref() as *const _) };
     let conv_ref: &'static Converter = unsafe { &*(conv_box.as_ref() as *const _) };
 
-    let iter = import_from_store_streaming(store_ref, sv_ref, conv_ref, root_classes)?;
+    let iter =
+        import_from_store_streaming(store_ref, sv_ref, conv_ref, root_classes, warnings, strict)?;
 
     Ok(OwnedImportStream {
         iter,
@@ -447,11 +456,16 @@ pub fn import_owned_store_streaming<S: TripleSource + 'static>(
 
 /// Streaming entry point. Pass 1 runs eagerly here, so structural errors
 /// (cycles, unknown classes) surface before any item is yielded.
+///
+/// `warnings` is the harvest's shared warning sink; `strict` makes the
+/// first emitted warning fail the import.
 pub fn import_from_store_streaming<'a, T: TripleSource>(
     store: &'a T,
     sv: &'a SchemaView,
     conv: &'a Converter,
     root_classes: &[&str],
+    warnings: Rc<RefCell<Vec<ValidationResult>>>,
+    strict: bool,
 ) -> Result<ImportStream<'a, T>, ImportError> {
     let structure = compute_inline_structure(store, sv, conv, root_classes)?;
 
@@ -475,7 +489,7 @@ pub fn import_from_store_streaming<'a, T: TripleSource>(
 
     let claimed = structure.claimed.clone();
     let materializer = Materializer::new(&structure);
-    let ctx = HarvestContext::new(store, sv, conv);
+    let ctx = HarvestContext::new_with_warnings(store, sv, conv, warnings, strict);
     Ok(ImportStream {
         ctx,
         materializer,

@@ -193,6 +193,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         sv.clone(),
                         conv.clone(),
                         &class_refs_borrow,
+                        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+                        false,
                     )
                     .map_err(|e| e.to_string())?;
                     Box::new(owned_stream.map(|res| {
@@ -213,6 +215,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         sv.clone(),
                         conv.clone(),
                         &class_refs_borrow,
+                        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+                        false,
                     )
                     .map_err(|e| e.to_string())?;
                     Box::new(owned_stream.map(|res| {
@@ -236,6 +240,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     sv.clone(),
                     conv.clone(),
                     &class_refs_borrow,
+                    std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
+                    false,
                 )
                 .map_err(|e| e.to_string())?;
                 Box::new(owned_stream.map(|res| {

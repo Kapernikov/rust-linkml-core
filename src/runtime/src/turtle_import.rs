@@ -410,6 +410,19 @@ pub fn harvest_subject<T: TripleSource>(
                     sv: ctx.sv.clone(),
                 },
             );
+            // Suppress UndeclaredSlot warning for the id slot's predicate:
+            // we don't iterate it through the normal slot loop (because
+            // the value comes from the subject IRI, not a separate triple),
+            // but it IS a declared slot. Remove it from the by_predicate
+            // bucket so the unknown-fields pass doesn't see it, and from
+            // consumed_predicates for symmetry.
+            let id_canonical = id_slot.canonical_uri();
+            let id_pred_iri = id_canonical
+                .to_uri(ctx.conv)
+                .map(|u| u.0)
+                .unwrap_or_else(|_| id_canonical.to_string());
+            consumed_predicates.insert(id_pred_iri.clone());
+            by_predicate.remove(&id_pred_iri);
             Some(id_slot.name.clone())
         }
         _ => None,
@@ -758,7 +771,14 @@ pub fn import_from_store<T: TripleSource>(
 ) -> Result<ImportResult, ImportError> {
     let total_triples = store.len();
     let mut stream =
-        crate::rdf_streaming::import_from_store_streaming(store, sv, conv, root_classes)?;
+        crate::rdf_streaming::import_from_store_streaming(
+            store,
+            sv,
+            conv,
+            root_classes,
+            Rc::new(RefCell::new(Vec::new())),
+            false,
+        )?;
 
     let mut instances: HashMap<String, Vec<LinkMLInstance>> = HashMap::new();
     loop {

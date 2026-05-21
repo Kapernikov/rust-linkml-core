@@ -2,6 +2,8 @@
 
 use linkml_runtime::rdf_import_store::RdfImportStore;
 use linkml_runtime::rdf_streaming::import_from_store_streaming;
+use std::cell::RefCell;
+use std::rc::Rc;
 use linkml_runtime::triple_source::TripleSource;
 use linkml_runtime::LinkMLInstance;
 use linkml_schemaview::identifier::converter_from_schemas;
@@ -50,7 +52,15 @@ fn streaming_two_trains_with_shared_operator() {
     let (sv, conv, ttl) = two_trains_sharing_operator();
     let store = RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
     let stream =
-        import_from_store_streaming(&store, &sv, &conv, &["Train", "Operator"]).unwrap();
+        import_from_store_streaming(
+            &store,
+            &sv,
+            &conv,
+            &["Train", "Operator"],
+            Rc::new(RefCell::new(Vec::new())),
+            false,
+        )
+        .unwrap();
 
     let mut trains: Vec<LinkMLInstance> = Vec::new();
     let mut operators: Vec<LinkMLInstance> = Vec::new();
@@ -138,7 +148,15 @@ fn cache_avoids_rebuilding_shared_operator() {
     };
 
     let stream =
-        import_from_store_streaming(&store, &sv, &conv, &["Train", "Operator"]).unwrap();
+        import_from_store_streaming(
+            &store,
+            &sv,
+            &conv,
+            &["Train", "Operator"],
+            Rc::new(RefCell::new(Vec::new())),
+            false,
+        )
+        .unwrap();
     let _: Vec<_> = stream.collect::<Result<_, _>>().unwrap();
 
     // With the cache enabled, harvest_subject runs exactly once for op1

@@ -6,6 +6,8 @@
 use linkml_runtime::rdf_import_store::RdfImportStore;
 use linkml_runtime::rdf_import_store_disk::DiskRdfImportStore;
 use linkml_runtime::rdf_streaming::import_owned_store_streaming;
+use std::cell::RefCell;
+use std::rc::Rc;
 use linkml_runtime::triple_source::TripleSource;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::schemaview::SchemaView;
@@ -55,8 +57,15 @@ fn collect_counts<S: TripleSource + 'static>(
     sv: SchemaView,
     conv: linkml_schemaview::Converter,
 ) -> BTreeMap<String, usize> {
-    let stream = import_owned_store_streaming(store, sv, conv, &["Train", "Operator"])
-        .expect("import_owned_store_streaming");
+    let stream = import_owned_store_streaming(
+        store,
+        sv,
+        conv,
+        &["Train", "Operator"],
+        Rc::new(RefCell::new(Vec::new())),
+        false,
+    )
+    .expect("import_owned_store_streaming");
     let mut out: BTreeMap<String, usize> = BTreeMap::new();
     for item in stream {
         let (class, _inst) = item.expect("import yields ok");
