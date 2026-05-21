@@ -16,6 +16,7 @@ serde = { version = "1.0", features = ["derive"] }
 linkml_meta = { path = "../metamodel" }
 oxrdf = { version = "0.3", optional = true }
 oxttl = { version = "0.2", optional = true }
+fjall = { version = "3.1", optional = true }
 
 serde_yml = "0.0.12"
 serde_path_to_error = "0.1.17"
@@ -34,6 +35,7 @@ tempfile = "3"
 default = ["ttl", "curies", "full_regex"]
 resolve = ["linkml_schemaview/resolve"]
 ttl = ["oxrdf", "oxttl", "percent-encoding"]
+disk_graph = ["ttl", "dep:fjall"]
 curies = ["linkml_schemaview/curies"]
 full_regex = ["dep:regex"]
 slim = ["dep:regex-lite"]
