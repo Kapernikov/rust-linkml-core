@@ -1629,14 +1629,16 @@ fn py_from_turtle_tracked(
     schema_view: &PySchemaView,
     root_classes: Vec<String>,
 ) -> PyResult<(HashMap<String, Vec<Py<PyLinkMLInstance>>>, Vec<String>)> {
-    use linkml_runtime::rdf_import_store::TrackingRdfImportStore;
+    use linkml_runtime::rdf_import_store::RdfImportStore;
     use linkml_runtime::turtle_import::import_from_store;
 
     let rust_sv = schema_view.as_rust();
     let conv = rust_sv.converter();
     let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
 
-    let store = TrackingRdfImportStore::from_turtle(std::io::Cursor::new(turtle_str.as_bytes()))
+    // RdfImportStore now always tracks consumed subjects; the separate
+    // TrackingRdfImportStore type was removed in Phase 3.
+    let store = RdfImportStore::from_turtle(std::io::Cursor::new(turtle_str.as_bytes()))
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
     let result = import_from_store(&store, rust_sv, &conv, &class_refs)

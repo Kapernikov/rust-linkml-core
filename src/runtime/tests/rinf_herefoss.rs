@@ -1,6 +1,6 @@
 #![cfg(feature = "ttl")]
 
-use linkml_runtime::rdf_import_store::{RdfImportStore, TrackingRdfImportStore};
+use linkml_runtime::rdf_import_store::RdfImportStore;
 use linkml_runtime::turtle_import::import_ntriples;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::io::from_yaml;
@@ -170,7 +170,7 @@ fn import_era_with_tracking() {
     let file = fs::File::open(ERA_NT_FILE).unwrap();
     let reader = BufReader::new(file);
 
-    let store = TrackingRdfImportStore::from_ntriples(reader).unwrap();
+    let store = RdfImportStore::from_ntriples(reader).unwrap();
 
     let root_classes = &[
         "OperationalPoint",
@@ -224,8 +224,9 @@ fn import_era_with_tracking_via_conversion() {
     let file = fs::File::open(ERA_NT_FILE).unwrap();
     let reader = BufReader::new(file);
 
-    let plain_store = RdfImportStore::from_ntriples(reader).unwrap();
-    let store = plain_store.with_tracking();
+    // Tracking is now always-on in RdfImportStore; the legacy
+    // .with_tracking() conversion is no longer needed.
+    let store = RdfImportStore::from_ntriples(reader).unwrap();
 
     let result = store.import(&sv, &conv, &["OperationalPoint"]).unwrap();
 
