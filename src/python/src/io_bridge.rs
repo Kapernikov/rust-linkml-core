@@ -6,7 +6,7 @@
 //! happen once per chunk, not per slice — amortized away on multi-MB
 //! inputs.
 
-use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
+use std::io::{Error as IoError, Read, Result as IoResult};
 
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyBytes};
@@ -65,10 +65,9 @@ impl PyReader {
                 }
                 Ok(())
             }
-            Err(e) => Err(IoError::new(
-                ErrorKind::Other,
-                format!("Python file-like read() failed: {e}"),
-            )),
+            Err(e) => Err(IoError::other(format!(
+                "Python file-like read() failed: {e}"
+            ))),
         }
     }
 }
@@ -105,7 +104,7 @@ impl std::io::Write for PyWriter {
                 Ok(n)
             }
         });
-        result.map_err(|e| IoError::new(ErrorKind::Other, format!("Python write() failed: {e}")))
+        result.map_err(|e| IoError::other(format!("Python write() failed: {e}")))
     }
 
     fn flush(&mut self) -> IoResult<()> {
@@ -117,7 +116,7 @@ impl std::io::Write for PyWriter {
             }
             Ok(())
         });
-        result.map_err(|e| IoError::new(ErrorKind::Other, format!("Python flush() failed: {e}")))
+        result.map_err(|e| IoError::other(format!("Python flush() failed: {e}")))
     }
 }
 

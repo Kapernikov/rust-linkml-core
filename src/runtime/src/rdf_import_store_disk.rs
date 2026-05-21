@@ -181,8 +181,8 @@ impl DiskRdfImportStore {
     fn finalize_load(&mut self) -> Result<(), DiskStoreError> {
         self.term_by_id.shrink_to_fit();
         let count_bytes = (self.triple_count as u64).to_be_bytes();
-        self.meta.insert(b"len", &count_bytes)?;
-        self.meta.insert(b"format_version", &1u32.to_be_bytes())?;
+        self.meta.insert(b"len", count_bytes)?;
+        self.meta.insert(b"format_version", 1u32.to_be_bytes())?;
         self.db.persist(PersistMode::SyncAll)?;
         Ok(())
     }

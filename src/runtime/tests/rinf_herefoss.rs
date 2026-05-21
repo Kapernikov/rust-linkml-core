@@ -216,7 +216,7 @@ fn import_era_with_tracking() {
     .unwrap();
     let mut total = 0usize;
     let mut owned_stream = stream;
-    while let Some(item) = owned_stream.next() {
+    for item in &mut owned_stream {
         let _ = item.expect("harvest yields ok");
         total += 1;
     }
@@ -272,7 +272,7 @@ fn import_era_with_tracking_via_conversion() {
     .unwrap();
     let mut owned_stream = stream;
     let mut ops_count = 0usize;
-    while let Some(item) = owned_stream.next() {
+    for item in &mut owned_stream {
         let (cls, _inst) = item.expect("harvest yields ok");
         if cls == "OperationalPoint" {
             ops_count += 1;

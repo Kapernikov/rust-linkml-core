@@ -1775,3 +1775,6 @@ fn do_py_export(
         .map_err(|e| PyException::new_err(e.to_string()))?;
     Ok(())
 }
+
+#[cfg(feature = "stubgen")]
+define_stub_info_gatherer!(stub_info);

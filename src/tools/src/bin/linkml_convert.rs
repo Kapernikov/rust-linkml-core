@@ -142,10 +142,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Build the input iterator + warnings handle ──
 
     type InstanceItem = Result<LinkMLInstance, Box<dyn std::error::Error>>;
-    let (instances, warnings_handle): (
-        Box<dyn Iterator<Item = InstanceItem>>,
-        Option<std::rc::Rc<std::cell::RefCell<Vec<linkml_runtime::ValidationResult>>>>,
-    ) = match in_fmt {
+    type InstanceIter = Box<dyn Iterator<Item = InstanceItem>>;
+    type WarningsHandle =
+        Option<std::rc::Rc<std::cell::RefCell<Vec<linkml_runtime::ValidationResult>>>>;
+    let (instances, warnings_handle): (InstanceIter, WarningsHandle) = match in_fmt {
         Format::Yaml | Format::Json => {
             let class_view = sv.get_tree_root_or(None).ok_or_else(|| {
                 format!(

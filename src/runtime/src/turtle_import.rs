@@ -47,7 +47,8 @@ pub enum ImportError {
         expected_type: String,
     },
     /// In strict mode, a harvest warning is promoted to an error.
-    ValidationFailure(ValidationResult),
+    /// Boxed so the `Result` shape stays narrow (clippy result_large_err).
+    ValidationFailure(Box<ValidationResult>),
 }
 
 impl std::fmt::Display for ImportError {
@@ -329,7 +330,7 @@ impl<'a, T: TripleSource> HarvestContext<'a, T> {
     /// error that aborts the import; otherwise returns Ok(()).
     pub(crate) fn emit_warning(&self, vr: ValidationResult) -> Result<(), ImportError> {
         if self.strict {
-            return Err(ImportError::ValidationFailure(vr));
+            return Err(ImportError::ValidationFailure(Box::new(vr)));
         }
         self.warnings.borrow_mut().push(vr);
         Ok(())
