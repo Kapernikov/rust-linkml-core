@@ -83,8 +83,9 @@ fn lookup_of_unknown_term_returns_empty() {
     let dir = tempdir().unwrap();
     let store =
         DiskRdfImportStore::from_ntriples(std::io::Cursor::new(TINY_NT), dir.path()).unwrap();
-    let s =
-        NamedOrBlankNode::NamedNode(NamedNode::new_unchecked("http://example.org/does-not-exist"));
+    let s = NamedOrBlankNode::NamedNode(NamedNode::new_unchecked(
+        "http://example.org/does-not-exist",
+    ));
     let n: usize = store.triples_for_subject(&s).count();
     assert_eq!(n, 0);
 }

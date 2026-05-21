@@ -75,7 +75,12 @@ fn import_turtle_pop_warnings_when_clean() {
     while stream.next().is_some() {}
     let warnings = stream.pop_warnings();
     for w in &warnings {
-        eprintln!("WARN: {:?} {} - {}", w.problem_type, w.subject.join("/"), w.detail);
+        eprintln!(
+            "WARN: {:?} {} - {}",
+            w.problem_type,
+            w.subject.join("/"),
+            w.detail
+        );
     }
     assert_eq!(warnings.len(), 0);
 }

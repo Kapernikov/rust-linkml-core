@@ -2,12 +2,12 @@
 
 use linkml_runtime::rdf_import_store::RdfImportStore;
 use linkml_runtime::rdf_streaming::import_from_store_streaming;
-use std::cell::RefCell;
-use std::rc::Rc;
 use linkml_runtime::triple_source::TripleSource;
 use linkml_runtime::LinkMLInstance;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::schemaview::SchemaView;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn two_trains_sharing_operator() -> (SchemaView, linkml_schemaview::Converter, String) {
     let schema_yaml = r#"
@@ -51,16 +51,15 @@ classes:
 fn streaming_two_trains_with_shared_operator() {
     let (sv, conv, ttl) = two_trains_sharing_operator();
     let store = RdfImportStore::from_turtle(std::io::Cursor::new(ttl.as_bytes())).unwrap();
-    let stream =
-        import_from_store_streaming(
-            &store,
-            &sv,
-            &conv,
-            &["Train", "Operator"],
-            Rc::new(RefCell::new(Vec::new())),
-            false,
-        )
-        .unwrap();
+    let stream = import_from_store_streaming(
+        &store,
+        &sv,
+        &conv,
+        &["Train", "Operator"],
+        Rc::new(RefCell::new(Vec::new())),
+        false,
+    )
+    .unwrap();
 
     let mut trains: Vec<LinkMLInstance> = Vec::new();
     let mut operators: Vec<LinkMLInstance> = Vec::new();
@@ -129,7 +128,11 @@ impl<'a> TripleSource for CountingStore<'a> {
         s: &oxrdf::NamedOrBlankNode,
     ) -> Box<dyn Iterator<Item = oxrdf::TripleRef<'b>> + 'b> {
         let k = s.to_string();
-        *self.triples_for_subject_calls.borrow_mut().entry(k).or_insert(0) += 1;
+        *self
+            .triples_for_subject_calls
+            .borrow_mut()
+            .entry(k)
+            .or_insert(0) += 1;
         self.inner.triples_for_subject(s)
     }
     fn len(&self) -> Option<usize> {
@@ -147,26 +150,22 @@ fn cache_avoids_rebuilding_shared_operator() {
         triples_for_subject_calls: std::cell::RefCell::new(std::collections::HashMap::new()),
     };
 
-    let stream =
-        import_from_store_streaming(
-            &store,
-            &sv,
-            &conv,
-            &["Train", "Operator"],
-            Rc::new(RefCell::new(Vec::new())),
-            false,
-        )
-        .unwrap();
+    let stream = import_from_store_streaming(
+        &store,
+        &sv,
+        &conv,
+        &["Train", "Operator"],
+        Rc::new(RefCell::new(Vec::new())),
+        false,
+    )
+    .unwrap();
     let _: Vec<_> = stream.collect::<Result<_, _>>().unwrap();
 
     // With the cache enabled, harvest_subject runs exactly once for op1
     // (in Pass 2), so `triples_for_subject` is called twice in total for
     // <op1>: once in Pass 1 (structural walk) and once in Pass 2 (harvest).
     let calls = store.triples_for_subject_calls.borrow();
-    let op1_calls = calls
-        .get("<http://example.org/op1>")
-        .copied()
-        .unwrap_or(0);
+    let op1_calls = calls.get("<http://example.org/op1>").copied().unwrap_or(0);
     assert_eq!(
         op1_calls, 2,
         "op1's triples should be read exactly twice with caching enabled \

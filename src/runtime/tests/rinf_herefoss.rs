@@ -3,15 +3,15 @@
 use linkml_runtime::rdf_import::{import_ntriples, ImportOptions};
 use linkml_runtime::rdf_import_store::RdfImportStore;
 use linkml_runtime::rdf_streaming::import_owned_store_streaming;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
 use std::path::Path;
+use std::rc::Rc;
 
 const SCHEMA_DIR: &str = "/home/kervel/projects/asset360/consolidator-server/components/py/asset360-model/asset360_model/schemas/rinf/repository/v1.0.0";
 const NT_FILE: &str = "/tmp/export_4.nt";

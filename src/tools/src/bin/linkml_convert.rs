@@ -181,10 +181,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let file = File::open(&args.data)?;
             let reader = BufReader::new(file);
             let stream = match in_fmt {
-                Format::Ntriples => {
-                    import_ntriples(reader, sv.clone(), conv.clone(), &class_refs_borrow, options)
-                }
-                _ => import_turtle(reader, sv.clone(), conv.clone(), &class_refs_borrow, options),
+                Format::Ntriples => import_ntriples(
+                    reader,
+                    sv.clone(),
+                    conv.clone(),
+                    &class_refs_borrow,
+                    options,
+                ),
+                _ => import_turtle(
+                    reader,
+                    sv.clone(),
+                    conv.clone(),
+                    &class_refs_borrow,
+                    options,
+                ),
             }
             .map_err(|e| e.to_string())?;
 
@@ -270,9 +280,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut by_type: std::collections::BTreeMap<String, usize> =
                 std::collections::BTreeMap::new();
             for w in &drained {
-                *by_type
-                    .entry(format!("{:?}", w.problem_type))
-                    .or_insert(0) += 1;
+                *by_type.entry(format!("{:?}", w.problem_type)).or_insert(0) += 1;
             }
             eprintln!("Harvest emitted {} warning(s):", drained.len());
             for (kind, n) in &by_type {

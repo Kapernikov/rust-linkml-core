@@ -27,21 +27,21 @@ use constraints::{run_object_constraints, run_slot_constraints};
 pub mod blame;
 pub mod diff;
 #[cfg(feature = "ttl")]
+pub mod rdf_export;
+#[cfg(feature = "ttl")]
+pub mod rdf_import;
+#[cfg(feature = "ttl")]
 pub mod rdf_import_store;
+#[cfg(feature = "disk_graph")]
+pub mod rdf_import_store_disk;
+#[cfg(feature = "ttl")]
+pub mod rdf_streaming;
 #[cfg(feature = "ttl")]
 pub mod triple_source;
 #[cfg(feature = "ttl")]
 pub mod turtle;
 #[cfg(feature = "ttl")]
 pub mod turtle_import;
-#[cfg(feature = "ttl")]
-pub mod rdf_streaming;
-#[cfg(feature = "disk_graph")]
-pub mod rdf_import_store_disk;
-#[cfg(feature = "ttl")]
-pub mod rdf_import;
-#[cfg(feature = "ttl")]
-pub mod rdf_export;
 pub use blame::{
     blame_map_to_paths, format_blame_map, format_blame_map_with, get_blame_info, patch_with_blame,
     record_blame_from_trace,
@@ -433,7 +433,10 @@ impl LinkMLInstance {
                 ..
             } => LinkMLInstance::List {
                 node_id: new_node_id(),
-                values: values.iter().map(|v| v.clone_with_fresh_node_ids()).collect(),
+                values: values
+                    .iter()
+                    .map(|v| v.clone_with_fresh_node_ids())
+                    .collect(),
                 slot: slot.clone(),
                 class: class.clone(),
                 sv: sv.clone(),

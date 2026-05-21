@@ -91,11 +91,7 @@ fn clone_with_fresh_node_ids_yields_disjoint_ids_and_equal_json() {
     collect_ids(&person, &mut orig_ids);
     collect_ids(&cloned, &mut cloned_ids);
 
-    assert_eq!(
-        orig_ids.len(),
-        cloned_ids.len(),
-        "tree shape must match"
-    );
+    assert_eq!(orig_ids.len(), cloned_ids.len(), "tree shape must match");
     let orig_set: std::collections::HashSet<u64> = orig_ids.iter().copied().collect();
     for id in &cloned_ids {
         assert!(

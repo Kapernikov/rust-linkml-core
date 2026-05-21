@@ -184,7 +184,11 @@ fn initialize_materializations(structure: &mut InlineStructure, roots: &[NamedOr
     // Claimed roots start at 0 — they get count via incoming inline edges.
     for root in roots {
         let key = root.to_string();
-        let init = if structure.claimed.contains(&key) { 0 } else { 1 };
+        let init = if structure.claimed.contains(&key) {
+            0
+        } else {
+            1
+        };
         structure.materializations.insert(key, init);
     }
     // Every subject reachable via inline edges (as parent or child) must
@@ -205,7 +209,11 @@ fn initialize_materializations(structure: &mut InlineStructure, roots: &[NamedOr
 fn propagate_materializations(structure: &mut InlineStructure) {
     let order = topo_order(&structure.inline_edges);
     for parent in order {
-        let parent_count = structure.materializations.get(&parent).copied().unwrap_or(0);
+        let parent_count = structure
+            .materializations
+            .get(&parent)
+            .copied()
+            .unwrap_or(0);
         if parent_count == 0 {
             continue;
         }

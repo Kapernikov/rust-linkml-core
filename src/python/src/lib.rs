@@ -1623,7 +1623,15 @@ fn py_import_turtle(
     disk_path: Option<String>,
     strict: bool,
 ) -> PyResult<Py<PyRdfStream>> {
-    build_py_rdf_stream(py, reader, schema_view, root_classes, disk_path, strict, false)
+    build_py_rdf_stream(
+        py,
+        reader,
+        schema_view,
+        root_classes,
+        disk_path,
+        strict,
+        false,
+    )
 }
 
 /// Import RDF/N-Triples into a streaming iterator of LinkML instances.
@@ -1637,7 +1645,15 @@ fn py_import_ntriples(
     disk_path: Option<String>,
     strict: bool,
 ) -> PyResult<Py<PyRdfStream>> {
-    build_py_rdf_stream(py, reader, schema_view, root_classes, disk_path, strict, true)
+    build_py_rdf_stream(
+        py,
+        reader,
+        schema_view,
+        root_classes,
+        disk_path,
+        strict,
+        true,
+    )
 }
 
 fn build_py_rdf_stream(
@@ -1723,9 +1739,7 @@ fn do_py_export(
     is_ntriples: bool,
 ) -> PyResult<()> {
     use io_bridge::PyWriter;
-    use linkml_runtime::rdf_export::{
-        export_ntriples_many, export_turtle_many, ExportOptions,
-    };
+    use linkml_runtime::rdf_export::{export_ntriples_many, export_turtle_many, ExportOptions};
 
     let sv = schema_view.as_rust();
     let conv = sv.converter();
@@ -1761,4 +1775,3 @@ fn do_py_export(
         .map_err(|e| PyException::new_err(e.to_string()))?;
     Ok(())
 }
-

@@ -1,10 +1,10 @@
 #![cfg(feature = "ttl")]
 
 use linkml_runtime::rdf_import::{import_ntriples, ImportOptions};
-use std::collections::HashMap;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
+use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
 use std::path::Path;
