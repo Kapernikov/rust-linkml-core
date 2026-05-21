@@ -6451,6 +6451,7 @@ impl Expression for crate::StructuredAlias {}
 impl Expression for crate::AnonymousExpression {}
 impl Expression for crate::PathExpression {}
 impl Expression for crate::SlotExpression {}
+impl Expression for crate::ExtraSlotsExpression {}
 impl Expression for crate::AnonymousSlotExpression {}
 impl Expression for crate::SlotDefinition {}
 impl Expression for crate::AnonymousClassExpression {}
@@ -7274,6 +7275,10 @@ pub trait SlotExpression: Expression {
     ) -> Option<impl poly_containers::SeqRef<'a, crate::AnonymousSlotExpression>>;
     // fn all_of_mut(&mut self) -> &mut Option<impl poly_containers::SeqRef<'a, crate::AnonymousSlotExpression>>;
     // fn set_all_of<E>(&mut self, value: Option<&Vec<E>>) where E: Into<AnonymousSlotExpression>;
+
+    fn array<'a>(&'a self) -> Option<&'a crate::ArrayExpression>;
+    // fn array_mut(&mut self) -> &mut Option<&'a crate::ArrayExpression>;
+    // fn set_array<E>(&mut self, value: Option<E>) where E: Into<ArrayExpression>;
 }
 
 impl SlotExpression for crate::SlotExpression {
@@ -7371,6 +7376,9 @@ impl SlotExpression for crate::SlotExpression {
         &'a self,
     ) -> Option<impl poly_containers::SeqRef<'a, crate::AnonymousSlotExpression>> {
         return self.all_of.as_ref();
+    }
+    fn array<'a>(&'a self) -> Option<&'a crate::ArrayExpression> {
+        return self.array.as_ref();
     }
 }
 impl SlotExpression for crate::AnonymousSlotExpression {
@@ -7481,6 +7489,9 @@ impl SlotExpression for crate::AnonymousSlotExpression {
             .as_ref()
             .map(|x| poly_containers::ListView::new(x));
     }
+    fn array<'a>(&'a self) -> Option<&'a crate::ArrayExpression> {
+        return self.array.as_ref();
+    }
 }
 impl SlotExpression for crate::SlotDefinition {
     fn range<'a>(&'a self) -> Option<&'a str> {
@@ -7589,6 +7600,9 @@ impl SlotExpression for crate::SlotDefinition {
             .all_of
             .as_ref()
             .map(|x| poly_containers::ListView::new(x));
+    }
+    fn array<'a>(&'a self) -> Option<&'a crate::ArrayExpression> {
+        return self.array.as_ref();
     }
 }
 
@@ -7791,6 +7805,12 @@ impl SlotExpression for crate::SlotExpressionOrSubtype {
             SlotExpressionOrSubtype::SlotDefinition(val) => val.all_of().map(|x| x.to_any()),
         }
     }
+    fn array<'a>(&'a self) -> Option<&'a crate::ArrayExpression> {
+        match self {
+            SlotExpressionOrSubtype::AnonymousSlotExpression(val) => val.array(),
+            SlotExpressionOrSubtype::SlotDefinition(val) => val.array(),
+        }
+    }
 }
 
 pub trait AnonymousSlotExpression: AnonymousExpression + SlotExpression {}
@@ -7809,10 +7829,6 @@ pub trait SlotDefinition: Definition + SlotExpression {
     fn slot_uri<'a>(&'a self) -> Option<&'a crate::uriorcurie>;
     // fn slot_uri_mut(&mut self) -> &mut Option<&'a crate::uriorcurie>;
     // fn set_slot_uri(&mut self, value: Option<&'a uriorcurie>);
-
-    fn array<'a>(&'a self) -> Option<&'a crate::ArrayExpression>;
-    // fn array_mut(&mut self) -> &mut Option<&'a crate::ArrayExpression>;
-    // fn set_array<E>(&mut self, value: Option<E>) where E: Into<ArrayExpression>;
 
     fn inherited(&self) -> Option<bool>;
     // fn inherited_mut(&mut self) -> &mut Option<bool>;
@@ -7962,9 +7978,6 @@ impl SlotDefinition for crate::SlotDefinition {
     }
     fn slot_uri<'a>(&'a self) -> Option<&'a crate::uriorcurie> {
         return self.slot_uri.as_ref();
-    }
-    fn array<'a>(&'a self) -> Option<&'a crate::ArrayExpression> {
-        return self.array.as_ref();
     }
     fn inherited(&self) -> Option<bool> {
         return self.inherited;
@@ -8353,6 +8366,14 @@ pub trait ClassDefinition: Definition + ClassExpression {
     fn children_are_mutually_disjoint(&self) -> Option<bool>;
     // fn children_are_mutually_disjoint_mut(&mut self) -> &mut Option<bool>;
     // fn set_children_are_mutually_disjoint(&mut self, value: Option<bool>);
+
+    fn extra_slots<'a>(&'a self) -> Option<&'a crate::ExtraSlotsExpression>;
+    // fn extra_slots_mut(&mut self) -> &mut Option<&'a crate::ExtraSlotsExpression>;
+    // fn set_extra_slots<E>(&mut self, value: Option<E>) where E: Into<ExtraSlotsExpression>;
+
+    fn alias<'a>(&'a self) -> Option<&'a str>;
+    // fn alias_mut(&mut self) -> &mut Option<&'a str>;
+    // fn set_alias(&mut self, value: Option<&'a str>);
 }
 
 impl ClassDefinition for crate::ClassDefinition {
@@ -8414,6 +8435,12 @@ impl ClassDefinition for crate::ClassDefinition {
     }
     fn children_are_mutually_disjoint(&self) -> Option<bool> {
         return self.children_are_mutually_disjoint;
+    }
+    fn extra_slots<'a>(&'a self) -> Option<&'a crate::ExtraSlotsExpression> {
+        return self.extra_slots.as_deref();
+    }
+    fn alias<'a>(&'a self) -> Option<&'a str> {
+        return self.alias.as_deref();
     }
 }
 
@@ -8805,5 +8832,24 @@ impl TypeMapping for crate::TypeMapping {
     }
     fn string_serialization<'a>(&'a self) -> Option<&'a str> {
         return self.string_serialization.as_deref();
+    }
+}
+
+pub trait ExtraSlotsExpression: Expression {
+    fn allowed(&self) -> Option<bool>;
+    // fn allowed_mut(&mut self) -> &mut Option<bool>;
+    // fn set_allowed(&mut self, value: Option<bool>);
+
+    fn range_expression<'a>(&'a self) -> Option<&'a crate::AnonymousSlotExpression>;
+    // fn range_expression_mut(&mut self) -> &mut Option<&'a crate::AnonymousSlotExpression>;
+    // fn set_range_expression<E>(&mut self, value: Option<E>) where E: Into<AnonymousSlotExpression>;
+}
+
+impl ExtraSlotsExpression for crate::ExtraSlotsExpression {
+    fn allowed(&self) -> Option<bool> {
+        return self.allowed;
+    }
+    fn range_expression<'a>(&'a self) -> Option<&'a crate::AnonymousSlotExpression> {
+        return self.range_expression.as_deref();
     }
 }
