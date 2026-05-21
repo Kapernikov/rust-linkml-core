@@ -18,11 +18,16 @@ NT_FILE="${NT_FILE:-/home/kervel/projects/asset360/lml/de_1080.nt}"
 SCHEMA="${SCHEMA:-/home/kervel/projects/asset360/consolidator-server/components/py/asset360-model/asset360_model/schemas/rinf/repository/v1.0.0/rinf_subset.yaml}"
 LABEL="${LABEL:-$(date +%Y%m%d-%H%M%S)}"
 OUT_DIR="${OUT_DIR:-target/rinf-measure/$LABEL}"
+DISK_GRAPH="${DISK_GRAPH:-}"   # non-empty path → use disk-backed store at this path
 
 mkdir -p "$OUT_DIR"
 
 # Rebuild linkml-convert against the current source.
-cargo build -p linkml_tools --release 2>&1 | tail -3
+if [ -n "$DISK_GRAPH" ]; then
+    cargo build -p linkml_tools --release --features disk_graph 2>&1 | tail -3
+else
+    cargo build -p linkml_tools --release 2>&1 | tail -3
+fi
 
 BIN="target/release/linkml-convert"
 if [ ! -x "$BIN" ]; then
@@ -57,6 +62,12 @@ echo "output:    $OUT_DIR/output.json"
 echo "procmon:   $PROCMON"
 
 CMD=("$BIN" "$SCHEMA" "$NT_FILE" --from ntriples --to json --output "$OUT_DIR/output.json" "${CLASS_ARGS[@]}")
+if [ -n "$DISK_GRAPH" ]; then
+    rm -rf "$DISK_GRAPH"
+    mkdir -p "$DISK_GRAPH"
+    CMD+=(--disk-graph "$DISK_GRAPH")
+    echo "disk-graph: $DISK_GRAPH"
+fi
 
 if [ -x "$PROCMON" ]; then
     "$PROCMON" --output "$OUT_DIR/procmon.log" -- "${CMD[@]}" 2>&1 | tee "$OUT_DIR/stdout.log"
