@@ -3068,7 +3068,6 @@ classes:
 
   class_definition:
     rank: 2
-    class_uri: linkml:ClassDefinition
     mixins:
       - class_expression
     description: an element whose instances are complex objects that may have slot-value assignments
