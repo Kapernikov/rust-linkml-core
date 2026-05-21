@@ -3,7 +3,8 @@ use clap::{Parser, ValueEnum};
 #[cfg(feature = "ttl")]
 use linkml_runtime::{
     load_json_file, load_yaml_file,
-    turtle::{write_ntriples, write_turtle, TurtleOptions},
+    rdf_export::{export_ntriples_many, export_turtle_many, ExportOptions},
+    rdf_import::{import_ntriples, import_turtle, ImportOptions},
     validate, LinkMLInstance,
 };
 #[cfg(feature = "ttl")]
@@ -52,6 +53,9 @@ struct Args {
     /// Use skolem IRIs instead of blank nodes (Turtle output only)
     #[arg(long)]
     skolem: bool,
+    /// Treat harvest warnings as fatal errors (RDF input only).
+    #[arg(long)]
+    strict: bool,
     /// Path to a disk-backed RDF graph store (fjall). Only used for RDF
     /// inputs; without this flag, the in-memory store is used. Requires
     /// the `disk_graph` build feature.
@@ -135,18 +139,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Box::new(std::io::stdout())
     };
 
-    // ── Input: build a streaming iterator of instances ──
-    //
-    // The iterator yields one `LinkMLInstance` at a time so the output side
-    // never has to materialise a `Vec<LinkMLInstance>`. For YAML/JSON input
-    // it yields exactly one element (the tree root). For RDF input it
-    // yields each unclaimed root from the streaming harvest.
-    //
-    // For RDF inputs, `import_owned_store_streaming` keeps the parsed store
-    // alive inside the iterator itself, so we don't need separate scaffolding
-    // here.
+    // ── Build the input iterator + warnings handle ──
+
     type InstanceItem = Result<LinkMLInstance, Box<dyn std::error::Error>>;
-    let instances: Box<dyn Iterator<Item = InstanceItem>> = match in_fmt {
+    let (instances, warnings_handle): (
+        Box<dyn Iterator<Item = InstanceItem>>,
+        Option<std::rc::Rc<std::cell::RefCell<Vec<linkml_runtime::ValidationResult>>>>,
+    ) = match in_fmt {
         Format::Yaml | Format::Json => {
             let class_view = sv.get_tree_root_or(None).ok_or_else(|| {
                 format!(
@@ -165,90 +164,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("invalid: {e}");
                 std::process::exit(1);
             }
-            Box::new(std::iter::once(Ok(value)))
+            (Box::new(std::iter::once(Ok(value))), None)
         }
         Format::Turtle | Format::Ntriples => {
-            use linkml_runtime::rdf_import_store::RdfImportStore;
-            use linkml_runtime::rdf_streaming::import_owned_store_streaming;
-
             let class_refs: Vec<String> = args.class.clone();
             let class_refs_borrow: Vec<&str> = class_refs.iter().map(|s| s.as_str()).collect();
 
-            // Branch on --disk-graph (feature-gated) vs the default
-            // in-memory backend.
-            #[cfg(feature = "disk_graph")]
-            {
-                if let Some(disk_path) = args.disk_graph.as_ref() {
-                    use linkml_runtime::rdf_import_store_disk::DiskRdfImportStore;
-                    let file = File::open(&args.data)?;
-                    let reader = BufReader::new(file);
-                    let store = match in_fmt {
-                        Format::Ntriples => DiskRdfImportStore::from_ntriples(reader, disk_path)
-                            .map_err(|e| e.to_string())?,
-                        _ => DiskRdfImportStore::from_turtle(reader, disk_path)
-                            .map_err(|e| e.to_string())?,
-                    };
-                    let owned_stream = import_owned_store_streaming(
-                        store,
-                        sv.clone(),
-                        conv.clone(),
-                        &class_refs_borrow,
-                        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-                        false,
-                    )
-                    .map_err(|e| e.to_string())?;
-                    Box::new(owned_stream.map(|res| {
-                        res.map(|(_class, inst)| inst)
-                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                    }))
-                } else {
-                    let file = File::open(&args.data)?;
-                    let reader = BufReader::new(file);
-                    let store = match in_fmt {
-                        Format::Ntriples => {
-                            RdfImportStore::from_ntriples(reader).map_err(|e| e.to_string())?
-                        }
-                        _ => RdfImportStore::from_turtle(reader).map_err(|e| e.to_string())?,
-                    };
-                    let owned_stream = import_owned_store_streaming(
-                        store,
-                        sv.clone(),
-                        conv.clone(),
-                        &class_refs_borrow,
-                        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-                        false,
-                    )
-                    .map_err(|e| e.to_string())?;
-                    Box::new(owned_stream.map(|res| {
-                        res.map(|(_class, inst)| inst)
-                            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                    }))
+            let options = ImportOptions {
+                #[cfg(feature = "disk_graph")]
+                disk_path: args.disk_graph.clone(),
+                #[cfg(not(feature = "disk_graph"))]
+                disk_path: None,
+                strict: args.strict,
+            };
+
+            let file = File::open(&args.data)?;
+            let reader = BufReader::new(file);
+            let stream = match in_fmt {
+                Format::Ntriples => {
+                    import_ntriples(reader, sv.clone(), conv.clone(), &class_refs_borrow, options)
                 }
+                _ => import_turtle(reader, sv.clone(), conv.clone(), &class_refs_borrow, options),
             }
-            #[cfg(not(feature = "disk_graph"))]
-            {
-                let file = File::open(&args.data)?;
-                let reader = BufReader::new(file);
-                let store = match in_fmt {
-                    Format::Ntriples => {
-                        RdfImportStore::from_ntriples(reader).map_err(|e| e.to_string())?
-                    }
-                    _ => RdfImportStore::from_turtle(reader).map_err(|e| e.to_string())?,
-                };
-                let owned_stream = import_owned_store_streaming(
-                    store,
-                    sv.clone(),
-                    conv.clone(),
-                    &class_refs_borrow,
-                    std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-                    false,
-                )
-                .map_err(|e| e.to_string())?;
-                Box::new(owned_stream.map(|res| {
+            .map_err(|e| e.to_string())?;
+
+            let handle = stream.warnings_handle();
+            (
+                Box::new(stream.map(|res| {
                     res.map(|(_class, inst)| inst)
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-                }))
-            }
+                })),
+                Some(handle),
+            )
         }
     };
 
@@ -257,9 +204,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut count: usize = 0;
     match out_fmt {
         Format::Json => {
-            // Always emit a JSON array, regardless of how many instances we
-            // end up with. Streaming-friendly: we don't know the count up
-            // front. Single-element input still yields `[ {...} ]`.
             writeln!(writer, "[")?;
             let mut first = true;
             for item in instances {
@@ -275,7 +219,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             writeln!(writer, "]")?;
         }
         Format::Yaml => {
-            // YAML stream-of-documents: each instance separated by `---`.
             for item in instances {
                 let value = item?;
                 writeln!(writer, "---")?;
@@ -284,15 +227,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Format::Turtle => {
+            // Adapt the iterator: write one instance at a time via export_turtle_many.
             for item in instances {
                 let value = item?;
-                write_turtle(
-                    &value,
+                export_turtle_many(
+                    std::iter::once(value),
                     &sv,
                     &schema,
                     &conv,
                     &mut writer,
-                    TurtleOptions {
+                    ExportOptions {
                         skolem: args.skolem,
                     },
                 )?;
@@ -302,13 +246,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Format::Ntriples => {
             for item in instances {
                 let value = item?;
-                write_ntriples(
-                    &value,
+                export_ntriples_many(
+                    std::iter::once(value),
                     &sv,
                     &schema,
                     &conv,
                     &mut writer,
-                    TurtleOptions {
+                    ExportOptions {
                         skolem: args.skolem,
                     },
                 )?;
@@ -318,5 +262,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     eprintln!("Wrote {count} instances (streaming, no Vec accumulation)");
+
+    // ── Warning summary ──
+    if let Some(handle) = warnings_handle {
+        let drained = std::mem::take(&mut *handle.borrow_mut());
+        if !drained.is_empty() {
+            let mut by_type: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
+            for w in &drained {
+                *by_type
+                    .entry(format!("{:?}", w.problem_type))
+                    .or_insert(0) += 1;
+            }
+            eprintln!("Harvest emitted {} warning(s):", drained.len());
+            for (kind, n) in &by_type {
+                eprintln!("  {kind}: {n}");
+            }
+            if std::env::var_os("LINKML_CONVERT_SHOW_WARNINGS").is_some() {
+                for w in &drained {
+                    eprintln!(
+                        "  - [{:?}] {}: {}",
+                        w.problem_type,
+                        w.subject.join("/"),
+                        w.detail
+                    );
+                }
+            } else {
+                eprintln!("  (set LINKML_CONVERT_SHOW_WARNINGS=1 for per-occurrence detail)");
+            }
+        }
+    }
+
     Ok(())
 }

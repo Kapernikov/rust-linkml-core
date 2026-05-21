@@ -69,6 +69,13 @@ impl RdfStream {
         self.warnings.borrow().len()
     }
 
+    /// Borrow a clone of the shared warnings handle. Useful when the
+    /// caller wants to consume the stream as an iterator (which moves
+    /// `self`) but still drain warnings afterwards via the cloned `Rc`.
+    pub fn warnings_handle(&self) -> Rc<RefCell<Vec<ValidationResult>>> {
+        self.warnings.clone()
+    }
+
     /// Subjects present in the source RDF that the harvest never visited.
     /// Returns `None` if:
     ///   - the disk backend is in use (computing this on disk requires a
