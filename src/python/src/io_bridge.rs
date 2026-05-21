@@ -73,6 +73,54 @@ impl PyReader {
     }
 }
 
+/// Writer that pushes bytes into a Python file-like object via `.write()`.
+/// Each `write` call acquires the GIL; for streaming writes the caller
+/// should wrap this in a `BufWriter` to amortize.
+pub struct PyWriter {
+    obj: PyObject,
+}
+
+impl PyWriter {
+    pub fn new(obj: PyObject) -> Self {
+        Self { obj }
+    }
+}
+
+impl std::io::Write for PyWriter {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let result: PyResult<usize> = Python::with_gil(|py| {
+            let bound = self.obj.bind(py);
+            let py_bytes = PyBytes::new(py, buf);
+            // Python's IOBase.write() can return None (text mode) or the
+            // number of bytes actually written. Accept either; if None,
+            // assume the whole buffer was consumed.
+            let res = bound.call_method1("write", (py_bytes,))?;
+            if res.is_none() {
+                Ok(buf.len())
+            } else {
+                let n: usize = res.extract().unwrap_or(buf.len());
+                Ok(n)
+            }
+        });
+        result.map_err(|e| IoError::new(ErrorKind::Other, format!("Python write() failed: {e}")))
+    }
+
+    fn flush(&mut self) -> IoResult<()> {
+        let result: PyResult<()> = Python::with_gil(|py| {
+            let bound = self.obj.bind(py);
+            // flush is optional on Python file-likes.
+            if bound.hasattr("flush").unwrap_or(false) {
+                bound.call_method0("flush")?;
+            }
+            Ok(())
+        });
+        result.map_err(|e| IoError::new(ErrorKind::Other, format!("Python flush() failed: {e}")))
+    }
+}
+
 impl Read for PyReader {
     fn read(&mut self, dst: &mut [u8]) -> IoResult<usize> {
         if dst.is_empty() {

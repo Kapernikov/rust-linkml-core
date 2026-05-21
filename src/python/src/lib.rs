@@ -3,7 +3,6 @@ use linkml_runtime::diff::{
     diff as diff_internal, patch as patch_internal, Delta, DeltaOp, DiffOptions, PatchTrace,
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
-use linkml_runtime::turtle_import::import_turtle_from_string;
 use linkml_runtime::{
     load_json_str, load_yaml_str, validate_issues, LinkMLInstance, LoadResult, NodeId,
     ValidationProblemType, ValidationResult, ValidationSeverity, ValidationValue,
@@ -719,17 +718,11 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_json, m)?)?;
     m.add_function(wrap_pyfunction!(py_diff, m)?)?;
     m.add_function(wrap_pyfunction!(py_patch, m)?)?;
-    m.add_function(wrap_pyfunction!(py_to_turtle, m)?)?;
-    m.add_function(wrap_pyfunction!(py_from_turtle, m)?)?;
-    m.add_function(wrap_pyfunction!(py_from_turtle_tracked, m)?)?;
-    m.add_function(wrap_pyfunction!(py_from_turtle_streaming, m)?)?;
-    #[cfg(feature = "disk_graph")]
-    m.add_function(wrap_pyfunction!(py_from_turtle_streaming_disk, m)?)?;
-    #[cfg(feature = "disk_graph")]
-    m.add_function(wrap_pyfunction!(py_from_ntriples_streaming_disk, m)?)?;
-    m.add_class::<PyTurtleStream>()?;
-    #[cfg(feature = "disk_graph")]
-    m.add_class::<PyDiskTurtleStream>()?;
+    m.add_function(wrap_pyfunction!(py_import_turtle, m)?)?;
+    m.add_function(wrap_pyfunction!(py_import_ntriples, m)?)?;
+    m.add_function(wrap_pyfunction!(py_export_turtle, m)?)?;
+    m.add_function(wrap_pyfunction!(py_export_ntriples, m)?)?;
+    m.add_class::<PyRdfStream>()?;
     m.add_class::<PyLinkMLInstance>()?;
     m.add_class::<PyDelta>()?;
     m.add_class::<PyValidationResult>()?;
@@ -1550,201 +1543,21 @@ fn py_patch(
     Py::new(py, result)
 }
 
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "to_turtle", signature = (value, skolem=None))]
-fn py_to_turtle(
-    py: Python<'_>,
-    value: &PyLinkMLInstance,
-    skolem: Option<bool>,
-) -> PyResult<String> {
-    value.as_turtle(py, skolem)
-}
+// ── RDF import/export ───────────────────────────────────────────────────────
 
-/// Import RDF/Turtle data into LinkML instances.
+/// Streaming iterator over harvested LinkML instances.
 ///
-/// Parses the given Turtle string and harvests instances of the specified
-/// root classes from the RDF graph, guided by the loaded schema.
-///
-/// Args:
-///     turtle_str: RDF/Turtle content as a string.
-///     schema_view: A SchemaView with the schema loaded.
-///     root_classes: List of classes to extract (names, CURIEs, or full URIs).
-///
-/// Returns:
-///     A dict mapping class names to lists of LinkMLInstance objects.
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "from_turtle", signature = (turtle_str, schema_view, root_classes))]
-fn py_from_turtle(
-    py: Python<'_>,
-    turtle_str: &str,
-    schema_view: &PySchemaView,
-    root_classes: Vec<String>,
-) -> PyResult<HashMap<String, Vec<Py<PyLinkMLInstance>>>> {
-    let rust_sv = schema_view.as_rust();
-    let conv = rust_sv.converter();
-    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
-
-    let result = import_turtle_from_string(turtle_str, rust_sv, &conv, &class_refs)
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let sv_py: Py<PySchemaView> = Py::new(
-        py,
-        PySchemaView {
-            inner: schema_view.inner.clone(),
-        },
-    )?;
-
-    let mut py_result: HashMap<String, Vec<Py<PyLinkMLInstance>>> = HashMap::new();
-    for (class_name, instances) in result.instances {
-        let mut py_instances = Vec::new();
-        for instance in instances {
-            let py_inst = Py::new(py, PyLinkMLInstance::new(instance, sv_py.clone_ref(py)))?;
-            py_instances.push(py_inst);
-        }
-        py_result.insert(class_name, py_instances);
-    }
-
-    Ok(py_result)
-}
-
-/// Parse RDF/Turtle into LinkML instances with tracking of unconsumed subjects.
-///
-/// Imports instances of the given root classes from the RDF graph, guided by the loaded schema.
-/// Unlike `from_turtle`, this function also returns the list of subject IRIs that were
-/// not consumed during the import, along with the number of triples each subject has.
-///
-/// Args:
-///     turtle_str: RDF/Turtle content as a string.
-///     schema_view: A SchemaView with the schema loaded.
-///     root_classes: List of classes to extract (names, CURIEs, or full URIs).
-///
-/// Returns:
-///     A tuple of (instances_dict, unconsumed_subjects) where instances_dict maps class
-///     names to lists of LinkMLInstance objects, and unconsumed_subjects is a list of
-///     subject IRIs that were not consumed during import.
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "from_turtle_tracked", signature = (turtle_str, schema_view, root_classes))]
-#[allow(clippy::type_complexity)]
-fn py_from_turtle_tracked(
-    py: Python<'_>,
-    turtle_str: &str,
-    schema_view: &PySchemaView,
-    root_classes: Vec<String>,
-) -> PyResult<(HashMap<String, Vec<Py<PyLinkMLInstance>>>, Vec<String>)> {
-    use linkml_runtime::rdf_import_store::RdfImportStore;
-    use linkml_runtime::turtle_import::import_from_store;
-
-    let rust_sv = schema_view.as_rust();
-    let conv = rust_sv.converter();
-    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
-
-    // RdfImportStore now always tracks consumed subjects; the separate
-    // TrackingRdfImportStore type was removed in Phase 3.
-    let store = RdfImportStore::from_turtle(std::io::Cursor::new(turtle_str.as_bytes()))
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let result = import_from_store(&store, rust_sv, &conv, &class_refs)
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let sv_py: Py<PySchemaView> = Py::new(
-        py,
-        PySchemaView {
-            inner: schema_view.inner.clone(),
-        },
-    )?;
-
-    let mut py_result: HashMap<String, Vec<Py<PyLinkMLInstance>>> = HashMap::new();
-    for (class_name, instances) in result.instances {
-        let mut py_instances = Vec::new();
-        for instance in instances {
-            let py_inst = Py::new(py, PyLinkMLInstance::new(instance, sv_py.clone_ref(py)))?;
-            py_instances.push(py_inst);
-        }
-        py_result.insert(class_name, py_instances);
-    }
-
-    let unconsumed: Vec<String> = store
-        .unconsumed_subjects()
-        .into_iter()
-        .map(|(subj, _)| subj)
-        .collect();
-
-    Ok((py_result, unconsumed))
-}
-
-/// Streaming RDF/Turtle import. Yields one root instance at a time as
-/// `(class_name, LinkMLInstance)` tuples. Suitable for huge datasets where
-/// the caller processes each root and discards it.
-///
-/// Pass 1 (structural analysis) runs eagerly when this function returns the
-/// iterator — so structural errors (cycles, unknown classes) surface up
-/// front rather than mid-iteration.
-///
-/// Args:
-///     turtle_str: RDF/Turtle content as a string.
-///     schema_view: A SchemaView with the schema loaded.
-///     root_classes: List of classes to extract (names, CURIEs, or full URIs).
-///
-/// Returns:
-///     A `TurtleStream` iterator yielding (class_name, LinkMLInstance) tuples.
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "from_turtle_streaming", signature = (turtle_str, schema_view, root_classes))]
-fn py_from_turtle_streaming(
-    py: Python<'_>,
-    turtle_str: &str,
-    schema_view: &PySchemaView,
-    root_classes: Vec<String>,
-) -> PyResult<Py<PyTurtleStream>> {
-    use linkml_runtime::rdf_import_store::RdfImportStore;
-    use linkml_runtime::rdf_streaming::import_owned_store_streaming;
-
-    let sv: linkml_schemaview::schemaview::SchemaView = (*schema_view.inner).clone();
-    let conv = sv.converter();
-    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
-
-    let store = RdfImportStore::from_turtle(std::io::Cursor::new(turtle_str.as_bytes()))
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let iter = import_owned_store_streaming(
-        store,
-        sv,
-        conv,
-        &class_refs,
-        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-        false,
-    )
-    .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let sv_py: Py<PySchemaView> = Py::new(
-        py,
-        PySchemaView {
-            inner: schema_view.inner.clone(),
-        },
-    )?;
-
-    Py::new(
-        py,
-        PyTurtleStream {
-            iter: Some(iter),
-            sv_py,
-        },
-    )
-}
-
-/// Python iterator wrapping an `OwnedImportStream`.
+/// Yields `(class_name, LinkMLInstance)` tuples. Diagnostic warnings
+/// accumulate as iteration proceeds; drain them with `pop_warnings()`.
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "TurtleStream", unsendable)]
-pub struct PyTurtleStream {
-    iter: Option<
-        linkml_runtime::rdf_streaming::OwnedImportStream<
-            linkml_runtime::rdf_import_store::RdfImportStore,
-        >,
-    >,
+#[pyclass(name = "RdfStream", unsendable)]
+pub struct PyRdfStream {
+    inner: Option<linkml_runtime::rdf_import::RdfStream>,
     sv_py: Py<PySchemaView>,
 }
 
 #[pymethods]
-impl PyTurtleStream {
+impl PyRdfStream {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
@@ -1754,13 +1567,14 @@ impl PyTurtleStream {
         mut slf: PyRefMut<'_, Self>,
         py: Python<'_>,
     ) -> PyResult<Option<(String, Py<PyLinkMLInstance>)>> {
-        let iter = match slf.iter.as_mut() {
+        let iter = match slf.inner.as_mut() {
             Some(i) => i,
             None => return Ok(None),
         };
         match iter.next() {
             None => {
-                slf.iter = None;
+                // Don't drop `inner` here — the caller may still want
+                // pop_warnings() and unconsumed_subjects() after iteration.
                 Ok(None)
             }
             Some(Err(e)) => Err(PyException::new_err(e.to_string())),
@@ -1771,150 +1585,180 @@ impl PyTurtleStream {
             }
         }
     }
-}
 
-// ── Disk-backed RDF graph entry points ─────────────────────────────────────
-
-#[cfg(feature = "disk_graph")]
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "from_turtle_streaming_disk", signature = (turtle_str, schema_view, root_classes, disk_path))]
-fn py_from_turtle_streaming_disk(
-    py: Python<'_>,
-    turtle_str: &str,
-    schema_view: &PySchemaView,
-    root_classes: Vec<String>,
-    disk_path: &str,
-) -> PyResult<Py<PyDiskTurtleStream>> {
-    use linkml_runtime::rdf_import_store_disk::DiskRdfImportStore;
-    use linkml_runtime::rdf_streaming::import_owned_store_streaming;
-
-    let sv: linkml_schemaview::schemaview::SchemaView = (*schema_view.inner).clone();
-    let conv = sv.converter();
-    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
-
-    let store = DiskRdfImportStore::from_turtle(
-        std::io::Cursor::new(turtle_str.as_bytes()),
-        std::path::Path::new(disk_path),
-    )
-    .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let iter = import_owned_store_streaming(
-        store,
-        sv,
-        conv,
-        &class_refs,
-        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-        false,
-    )
-    .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let sv_py: Py<PySchemaView> = Py::new(
-        py,
-        PySchemaView {
-            inner: schema_view.inner.clone(),
-        },
-    )?;
-
-    Py::new(
-        py,
-        PyDiskTurtleStream {
-            iter: Some(iter),
-            sv_py,
-        },
-    )
-}
-
-#[cfg(feature = "disk_graph")]
-#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "from_ntriples_streaming_disk", signature = (ntriples_path, schema_view, root_classes, disk_path))]
-fn py_from_ntriples_streaming_disk(
-    py: Python<'_>,
-    ntriples_path: &str,
-    schema_view: &PySchemaView,
-    root_classes: Vec<String>,
-    disk_path: &str,
-) -> PyResult<Py<PyDiskTurtleStream>> {
-    use linkml_runtime::rdf_import_store_disk::DiskRdfImportStore;
-    use linkml_runtime::rdf_streaming::import_owned_store_streaming;
-
-    let sv: linkml_schemaview::schemaview::SchemaView = (*schema_view.inner).clone();
-    let conv = sv.converter();
-    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
-
-    let file = std::fs::File::open(ntriples_path).map_err(|e| PyException::new_err(e.to_string()))?;
-    let reader = std::io::BufReader::new(file);
-    let store =
-        DiskRdfImportStore::from_ntriples(reader, std::path::Path::new(disk_path))
-            .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let iter = import_owned_store_streaming(
-        store,
-        sv,
-        conv,
-        &class_refs,
-        std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
-        false,
-    )
-    .map_err(|e| PyException::new_err(e.to_string()))?;
-
-    let sv_py: Py<PySchemaView> = Py::new(
-        py,
-        PySchemaView {
-            inner: schema_view.inner.clone(),
-        },
-    )?;
-
-    Py::new(
-        py,
-        PyDiskTurtleStream {
-            iter: Some(iter),
-            sv_py,
-        },
-    )
-}
-
-#[cfg(feature = "disk_graph")]
-#[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "DiskTurtleStream", unsendable)]
-pub struct PyDiskTurtleStream {
-    iter: Option<
-        linkml_runtime::rdf_streaming::OwnedImportStream<
-            linkml_runtime::rdf_import_store_disk::DiskRdfImportStore,
-        >,
-    >,
-    sv_py: Py<PySchemaView>,
-}
-
-#[cfg(feature = "disk_graph")]
-#[pymethods]
-impl PyDiskTurtleStream {
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
+    /// Drain accumulated warnings. Subsequent calls return only warnings
+    /// emitted since the previous drain.
+    fn pop_warnings(&mut self, py: Python<'_>) -> PyResult<Vec<Py<PyValidationResult>>> {
+        let drained: Vec<ValidationResult> = match self.inner.as_mut() {
+            Some(s) => s.pop_warnings(),
+            None => Vec::new(),
+        };
+        let mut out: Vec<Py<PyValidationResult>> = Vec::with_capacity(drained.len());
+        for vr in drained {
+            out.push(Py::new(py, PyValidationResult::from(vr))?);
+        }
+        Ok(out)
     }
 
-    #[allow(clippy::type_complexity)]
-    fn __next__(
-        mut slf: PyRefMut<'_, Self>,
-        py: Python<'_>,
-    ) -> PyResult<Option<(String, Py<PyLinkMLInstance>)>> {
-        let iter = match slf.iter.as_mut() {
-            Some(i) => i,
-            None => return Ok(None),
-        };
-        match iter.next() {
-            None => {
-                slf.iter = None;
-                Ok(None)
-            }
-            Some(Err(e)) => Err(PyException::new_err(e.to_string())),
-            Some(Ok((class_name, inst))) => {
-                let sv_clone = slf.sv_py.clone_ref(py);
-                let py_inst = Py::new(py, PyLinkMLInstance::new(inst, sv_clone))?;
-                Ok(Some((class_name, py_inst)))
-            }
+    /// Current buffered warning count (does not drain).
+    fn warning_count(&self) -> usize {
+        self.inner.as_ref().map(|s| s.warning_count()).unwrap_or(0)
+    }
+
+    /// Per-orphan-subject breakdown (in-memory backend only). Returns
+    /// `None` on the disk backend, or before iteration completes.
+    fn unconsumed_subjects(&self) -> Option<Vec<(String, usize)>> {
+        self.inner.as_ref().and_then(|s| s.unconsumed_subjects())
+    }
+}
+
+/// Import RDF/Turtle into a streaming iterator of LinkML instances.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "import_turtle", signature = (reader, schema_view, root_classes, *, disk_path=None, strict=false))]
+fn py_import_turtle(
+    py: Python<'_>,
+    reader: PyObject,
+    schema_view: &PySchemaView,
+    root_classes: Vec<String>,
+    disk_path: Option<String>,
+    strict: bool,
+) -> PyResult<Py<PyRdfStream>> {
+    build_py_rdf_stream(py, reader, schema_view, root_classes, disk_path, strict, false)
+}
+
+/// Import RDF/N-Triples into a streaming iterator of LinkML instances.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "import_ntriples", signature = (reader, schema_view, root_classes, *, disk_path=None, strict=false))]
+fn py_import_ntriples(
+    py: Python<'_>,
+    reader: PyObject,
+    schema_view: &PySchemaView,
+    root_classes: Vec<String>,
+    disk_path: Option<String>,
+    strict: bool,
+) -> PyResult<Py<PyRdfStream>> {
+    build_py_rdf_stream(py, reader, schema_view, root_classes, disk_path, strict, true)
+}
+
+fn build_py_rdf_stream(
+    py: Python<'_>,
+    reader: PyObject,
+    schema_view: &PySchemaView,
+    root_classes: Vec<String>,
+    disk_path: Option<String>,
+    strict: bool,
+    is_ntriples: bool,
+) -> PyResult<Py<PyRdfStream>> {
+    use io_bridge::PyReader;
+    use linkml_runtime::rdf_import::{import_ntriples, import_turtle, ImportOptions};
+
+    let sv: linkml_schemaview::schemaview::SchemaView = (*schema_view.inner).clone();
+    let conv = sv.converter();
+    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
+
+    let options = ImportOptions {
+        disk_path: disk_path.map(std::path::PathBuf::from),
+        strict,
+    };
+
+    let py_reader = PyReader::new(reader);
+
+    let stream = if is_ntriples {
+        import_ntriples(py_reader, sv, conv, &class_refs, options)
+    } else {
+        import_turtle(py_reader, sv, conv, &class_refs, options)
+    }
+    .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let sv_py: Py<PySchemaView> = Py::new(
+        py,
+        PySchemaView {
+            inner: schema_view.inner.clone(),
+        },
+    )?;
+
+    Py::new(
+        py,
+        PyRdfStream {
+            inner: Some(stream),
+            sv_py,
+        },
+    )
+}
+
+/// Write LinkML instances as Turtle into a Python file-like object.
+///
+/// `instances` may be a single LinkMLInstance or an iterable of them.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "export_turtle", signature = (instances, schema_view, writer, *, skolem=false))]
+fn py_export_turtle(
+    py: Python<'_>,
+    instances: Bound<'_, PyAny>,
+    schema_view: &PySchemaView,
+    writer: PyObject,
+    skolem: bool,
+) -> PyResult<()> {
+    do_py_export(py, instances, schema_view, writer, skolem, false)
+}
+
+/// Write LinkML instances as N-Triples into a Python file-like object.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "export_ntriples", signature = (instances, schema_view, writer, *, skolem=false))]
+fn py_export_ntriples(
+    py: Python<'_>,
+    instances: Bound<'_, PyAny>,
+    schema_view: &PySchemaView,
+    writer: PyObject,
+    skolem: bool,
+) -> PyResult<()> {
+    do_py_export(py, instances, schema_view, writer, skolem, true)
+}
+
+fn do_py_export(
+    _py: Python<'_>,
+    instances: Bound<'_, PyAny>,
+    schema_view: &PySchemaView,
+    writer: PyObject,
+    skolem: bool,
+    is_ntriples: bool,
+) -> PyResult<()> {
+    use io_bridge::PyWriter;
+    use linkml_runtime::rdf_export::{
+        export_ntriples_many, export_turtle_many, ExportOptions,
+    };
+
+    let sv = schema_view.as_rust();
+    let conv = sv.converter();
+    let schema = sv
+        .primary_schema()
+        .ok_or_else(|| PyException::new_err("no schema loaded"))?;
+
+    // Collect instances: either a single PyLinkMLInstance, or iterate.
+    let mut items: Vec<LinkMLInstance> = Vec::new();
+    if let Ok(single) = instances.extract::<PyRef<PyLinkMLInstance>>() {
+        items.push(single.value.clone());
+    } else {
+        for item in instances.try_iter()? {
+            let bound = item?;
+            let one: PyRef<PyLinkMLInstance> = bound.extract()?;
+            items.push(one.value.clone());
         }
     }
+
+    let mut py_writer = PyWriter::new(writer);
+    let buffered = std::io::BufWriter::new(&mut py_writer);
+    let mut buffered = buffered;
+    let options = ExportOptions { skolem };
+    let res = if is_ntriples {
+        export_ntriples_many(items, sv, &schema, &conv, &mut buffered, options)
+    } else {
+        export_turtle_many(items, sv, &schema, &conv, &mut buffered, options)
+    };
+    res.map_err(|e| PyException::new_err(e.to_string()))?;
+    use std::io::Write;
+    buffered
+        .flush()
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+    Ok(())
 }
 
-#[cfg(feature = "stubgen")]
-define_stub_info_gatherer!(stub_info);
