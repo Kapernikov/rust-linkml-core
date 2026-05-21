@@ -10,7 +10,7 @@ use std::io::Read;
 
 use oxrdf::{
     vocab::{rdf, xsd},
-    Literal, NamedNode, NamedOrBlankNode, Term, TermRef,
+    Literal, NamedOrBlankNode, Term, TermRef,
 };
 use serde_json::Value as JsonValue;
 
@@ -269,20 +269,20 @@ fn ancestor_depth(cv: &ClassView) -> usize {
 // ── Harvest context & main algorithm ────────────────────────────────────────
 
 /// State carried through recursive instance assembly.
-struct HarvestContext<'a, T: TripleSource> {
-    store: &'a T,
-    sv: &'a SchemaView,
-    conv: &'a Converter,
+pub struct HarvestContext<'a, T: TripleSource> {
+    pub(crate) store: &'a T,
+    pub(crate) sv: &'a SchemaView,
+    pub(crate) conv: &'a Converter,
     /// Subjects currently being assembled (for cycle detection on inlined paths).
-    visit_stack: HashSet<String>,
+    pub(crate) visit_stack: HashSet<String>,
     /// Subjects that have been inlined into a parent (should not appear as top-level).
-    claimed: HashSet<String>,
+    pub(crate) claimed: HashSet<String>,
     /// Count of triples consumed during harvesting.
-    consumed_count: usize,
+    pub(crate) consumed_count: usize,
 }
 
 impl<'a, T: TripleSource> HarvestContext<'a, T> {
-    fn new(store: &'a T, sv: &'a SchemaView, conv: &'a Converter) -> Self {
+    pub fn new(store: &'a T, sv: &'a SchemaView, conv: &'a Converter) -> Self {
         Self {
             store,
             sv,
@@ -292,11 +292,27 @@ impl<'a, T: TripleSource> HarvestContext<'a, T> {
             consumed_count: 0,
         }
     }
+
+    pub fn consumed_count(&self) -> usize {
+        self.consumed_count
+    }
+
+    pub fn claimed(&self) -> &HashSet<String> {
+        &self.claimed
+    }
 }
 
 /// Assemble a single subject into a `LinkMLInstance::Object`.
-fn harvest_subject<T: TripleSource>(
+///
+/// Recursive inline calls (named-node Inline-mode objects, all blank-node
+/// objects) are routed through `materializer.materialise(...)` so the
+/// streaming path can deduplicate shared subtrees. For the legacy
+/// non-streaming path, the caller passes an empty `Materializer` which
+/// always builds without caching — behaviour identical to the pre-streaming
+/// code.
+pub fn harvest_subject<T: TripleSource>(
     ctx: &mut HarvestContext<'_, T>,
+    materializer: &mut crate::rdf_streaming::Materializer,
     subject: &NamedOrBlankNode,
     class: &ClassView,
 ) -> Result<LinkMLInstance, ImportError> {
@@ -488,10 +504,11 @@ fn harvest_subject<T: TripleSource>(
                             sv: ctx.sv.clone(),
                         });
                     } else if inline_mode == SlotInlineMode::Inline {
-                        // Inline: recursively harvest
+                        // Inline: recursively harvest via the materializer so
+                        // shared subjects can be cached.
                         let obj_subject = NamedOrBlankNode::NamedNode(nn);
                         let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
-                        let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
+                        let child = materializer.materialise(ctx, &obj_subject, &obj_class)?;
                         ctx.claimed.insert(obj_subject.to_string());
                         items.push(child);
                     } else {
@@ -506,10 +523,11 @@ fn harvest_subject<T: TripleSource>(
                     }
                 }
                 Term::BlankNode(bn) => {
-                    // Blank nodes are always inlined
+                    // Blank nodes are always inlined; route through the
+                    // materializer for cache awareness.
                     let obj_subject = NamedOrBlankNode::BlankNode(bn);
                     let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
-                    let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
+                    let child = materializer.materialise(ctx, &obj_subject, &obj_class)?;
                     ctx.claimed.insert(obj_subject.to_string());
                     items.push(child);
                 }
@@ -631,6 +649,10 @@ fn extract_mapping_key(instance: &LinkMLInstance) -> String {
 /// This is the core import function, generic over any [`TripleSource`]
 /// implementation. The one-shot functions (`import_turtle`, etc.) are thin
 /// wrappers that create an [`RdfImportStore`] and call this.
+///
+/// Internally driven by the streaming iterator from `rdf_streaming`. The
+/// difference is purely output shape: we collect every yielded root into
+/// the legacy `HashMap<class, Vec<LinkMLInstance>>` shape.
 pub fn import_from_store<T: TripleSource>(
     store: &T,
     sv: &SchemaView,
@@ -638,46 +660,22 @@ pub fn import_from_store<T: TripleSource>(
     root_classes: &[&str],
 ) -> Result<ImportResult, ImportError> {
     let total_triples = store.len();
+    let mut stream =
+        crate::rdf_streaming::import_from_store_streaming(store, sv, conv, root_classes)?;
 
-    // Resolve root classes (names, CURIEs, or full URIs) to ClassViews and their URIs
-    let mut root_class_info: Vec<(ClassView, NamedNode)> = Vec::new();
-    for &name in root_classes {
-        let cv = sv
-            .get_class(&Identifier::new(name), conv)
-            .map_err(ImportError::SchemaError)?
-            .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
-        let class_uri = cv.get_uri(conv, false, true)?;
-        let class_uri_node = NamedNode::new_unchecked(class_uri.to_string());
-        root_class_info.push((cv, class_uri_node));
-    }
-
-    // Collect all (subject, class) pairs for root classes
-    let rdf_type_node = rdf::TYPE.into_owned();
-    let mut candidates: Vec<(NamedOrBlankNode, ClassView)> = Vec::new();
-    for (cv, class_uri_node) in &root_class_info {
-        for subject in store.subjects_for_predicate_object(&rdf_type_node, class_uri_node) {
-            candidates.push((subject.into_owned(), cv.clone()));
-        }
-    }
-
-    // Harvest all candidates
-    let mut ctx = HarvestContext::new(store, sv, conv);
-    let mut harvested: Vec<(String, NamedOrBlankNode, LinkMLInstance)> = Vec::new();
-    for (subject, cv) in &candidates {
-        let instance = harvest_subject(&mut ctx, subject, cv)?;
-        harvested.push((cv.name().to_string(), subject.clone(), instance));
-    }
-
-    // Filter: only keep instances whose subject is not claimed (not inlined somewhere)
     let mut instances: HashMap<String, Vec<LinkMLInstance>> = HashMap::new();
-    for (class_name, subject, instance) in harvested {
-        let subject_key = subject.to_string();
-        if !ctx.claimed.contains(&subject_key) {
-            instances.entry(class_name).or_default().push(instance);
+    loop {
+        match stream.next() {
+            None => break,
+            Some(Err(e)) => return Err(e),
+            Some(Ok((class_name, instance))) => {
+                instances.entry(class_name).or_default().push(instance);
+            }
         }
     }
 
-    let unconsumed_count = total_triples.map(|total| total.saturating_sub(ctx.consumed_count));
+    let consumed = stream.consumed_count();
+    let unconsumed_count = total_triples.map(|total| total.saturating_sub(consumed));
 
     Ok(ImportResult {
         instances,
@@ -742,7 +740,7 @@ pub fn import_turtle_from_string(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oxrdf::Term;
+    use oxrdf::{NamedNode, Term};
 
     #[test]
     fn test_parse_turtle_basic() {

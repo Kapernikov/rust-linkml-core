@@ -23,7 +23,9 @@ use linkml_schemaview::schemaview::{SchemaView, SlotInlineMode};
 use linkml_schemaview::Converter;
 
 use crate::triple_source::TripleSource;
-use crate::turtle_import::{resolve_class, ImportError};
+use crate::turtle_import::{harvest_subject, resolve_class, HarvestContext, ImportError};
+use crate::LinkMLInstance;
+use linkml_schemaview::schemaview::ClassView;
 
 /// Output of Pass 1. Drives Pass 2's caching and top-level suppression.
 #[derive(Debug, Default)]
@@ -252,9 +254,9 @@ fn topo_order(edges: &HashMap<String, Vec<String>>) -> Vec<String> {
 /// Constructed empty (no caching) for the legacy `import_from_store` path,
 /// or populated from an [`InlineStructure`] for the streaming path.
 pub struct Materializer {
-    pub(crate) materializations: HashMap<String, usize>,
-    pub(crate) remaining: HashMap<String, usize>,
-    pub(crate) cache: HashMap<String, crate::LinkMLInstance>,
+    materializations: HashMap<String, usize>,
+    remaining: HashMap<String, usize>,
+    cache: HashMap<String, LinkMLInstance>,
 }
 
 impl Materializer {
@@ -275,4 +277,131 @@ impl Materializer {
             cache: HashMap::new(),
         }
     }
+
+    /// Build a single subject's tree, using the cache if appropriate.
+    ///
+    /// Behaviour:
+    /// - If `materializations[subject] < 2` → not worth caching, just build.
+    /// - Otherwise: build once, cache the original; clone-with-fresh-ids for
+    ///   every consumer except the last, which receives the cached tree by
+    ///   move and frees the slot.
+    pub fn materialise<T: TripleSource>(
+        &mut self,
+        ctx: &mut HarvestContext<'_, T>,
+        subject: &NamedOrBlankNode,
+        class: &ClassView,
+    ) -> Result<LinkMLInstance, ImportError> {
+        let key = subject.to_string();
+        let mats = self.materializations.get(&key).copied().unwrap_or(0);
+
+        if mats < 2 {
+            // single-use → build, do not cache
+            return harvest_subject(ctx, self, subject, class);
+        }
+
+        if !self.cache.contains_key(&key) {
+            let tree = harvest_subject(ctx, self, subject, class)?;
+            self.cache.insert(key.clone(), tree);
+        }
+        let r = self.remaining.entry(key.clone()).or_insert(mats);
+        if *r == 0 {
+            // Defensive: should never happen — Pass 1 counted exactly `mats`
+            // calls. Surface as a structural error rather than panic.
+            return Err(ImportError::Parse(format!(
+                "rdf_streaming: materialise called more than {mats} times for {key}"
+            )));
+        }
+        *r -= 1;
+        if *r == 0 {
+            // Last consumer: move out, no clone.
+            return Ok(self
+                .cache
+                .remove(&key)
+                .expect("cache must contain key after insert"));
+        }
+        // Earlier consumer: clone with fresh node_ids so denormalised copies
+        // have independent identities.
+        Ok(self
+            .cache
+            .get(&key)
+            .expect("cache must contain key after insert")
+            .clone_with_fresh_node_ids())
+    }
+}
+
+/// Iterator returned by [`import_from_store_streaming`].
+///
+/// Each call to `next()` yields the next unclaimed root candidate's
+/// fully-built tree (or an `ImportError`). After it yields, the caller owns
+/// the tree and we drop our reference, so peak RAM stays bounded by the
+/// cache (shared subtrees still with future consumers) plus one in-flight
+/// root tree.
+pub struct ImportStream<'a, T: TripleSource> {
+    ctx: HarvestContext<'a, T>,
+    materializer: Materializer,
+    candidates: std::vec::IntoIter<(NamedOrBlankNode, ClassView)>,
+    claimed: HashSet<String>,
+}
+
+impl<'a, T: TripleSource> ImportStream<'a, T> {
+    /// Total triples consumed so far during Pass 2. Useful for computing
+    /// `unconsumed_count` once the iterator is exhausted.
+    pub fn consumed_count(&self) -> usize {
+        self.ctx.consumed_count()
+    }
+}
+
+impl<T: TripleSource> Iterator for ImportStream<'_, T> {
+    type Item = Result<(String, LinkMLInstance), ImportError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let (subj, cv) = self.candidates.next()?;
+            if self.claimed.contains(&subj.to_string()) {
+                continue;
+            }
+            let class_name = cv.name().to_string();
+            let res = self.materializer.materialise(&mut self.ctx, &subj, &cv);
+            return Some(res.map(|inst| (class_name, inst)));
+        }
+    }
+}
+
+/// Streaming entry point. Pass 1 runs eagerly here, so structural errors
+/// (cycles, unknown classes) surface before any item is yielded.
+pub fn import_from_store_streaming<'a, T: TripleSource>(
+    store: &'a T,
+    sv: &'a SchemaView,
+    conv: &'a Converter,
+    root_classes: &[&str],
+) -> Result<ImportStream<'a, T>, ImportError> {
+    let structure = compute_inline_structure(store, sv, conv, root_classes)?;
+
+    // Enumerate candidates again, this time with ClassView attached.
+    let mut root_class_info: Vec<(ClassView, NamedNode)> = Vec::new();
+    for &name in root_classes {
+        let cv = sv
+            .get_class(&Identifier::new(name), conv)
+            .map_err(ImportError::SchemaError)?
+            .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
+        let class_uri = cv.get_uri(conv, false, true)?;
+        root_class_info.push((cv, NamedNode::new_unchecked(class_uri.to_string())));
+    }
+    let rdf_type = rdf::TYPE.into_owned();
+    let mut candidates: Vec<(NamedOrBlankNode, ClassView)> = Vec::new();
+    for (cv, class_uri) in &root_class_info {
+        for subj in store.subjects_for_predicate_object(&rdf_type, class_uri) {
+            candidates.push((subj.into_owned(), cv.clone()));
+        }
+    }
+
+    let claimed = structure.claimed.clone();
+    let materializer = Materializer::new(&structure);
+    let ctx = HarvestContext::new(store, sv, conv);
+    Ok(ImportStream {
+        ctx,
+        materializer,
+        candidates: candidates.into_iter(),
+        claimed,
+    })
 }
