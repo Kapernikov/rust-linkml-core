@@ -115,6 +115,99 @@ impl DiskRdfImportStore {
     }
 }
 
-// `TripleSource` impl, term interning, and tracking variant arrive in
-// subsequent tasks. Imports above are pre-declared so this file's
-// dependency surface lands in one commit.
+// ── Key packing ─────────────────────────────────────────────────────────────
+
+#[inline]
+fn pack_spo(s: u64, p: u64, o: u64) -> [u8; 24] {
+    let mut k = [0u8; 24];
+    k[0..8].copy_from_slice(&s.to_be_bytes());
+    k[8..16].copy_from_slice(&p.to_be_bytes());
+    k[16..24].copy_from_slice(&o.to_be_bytes());
+    k
+}
+
+#[inline]
+fn pack_pos(p: u64, o: u64, s: u64) -> [u8; 24] {
+    let mut k = [0u8; 24];
+    k[0..8].copy_from_slice(&p.to_be_bytes());
+    k[8..16].copy_from_slice(&o.to_be_bytes());
+    k[16..24].copy_from_slice(&s.to_be_bytes());
+    k
+}
+
+#[inline]
+fn unpack_u64(slice: &[u8], offset: usize) -> u64 {
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&slice[offset..offset + 8]);
+    u64::from_be_bytes(buf)
+}
+
+// ── Load helpers (private) ──────────────────────────────────────────────────
+
+impl DiskRdfImportStore {
+    /// Get-or-insert a term, returning its u64 ID.
+    fn intern(&mut self, term: Term) -> u64 {
+        if let Some(&id) = self.id_by_term.get(&term) {
+            return id;
+        }
+        let id = self.term_by_id.len() as u64;
+        self.term_by_id.push(term.clone());
+        self.id_by_term.insert(term, id);
+        id
+    }
+
+    /// Insert one parsed triple into both index keyspaces.
+    fn insert_triple(
+        &mut self,
+        subject: NamedOrBlankNode,
+        predicate: NamedNode,
+        object: Term,
+    ) -> Result<(), DiskStoreError> {
+        let subj_term: Term = match subject {
+            NamedOrBlankNode::NamedNode(n) => Term::NamedNode(n),
+            NamedOrBlankNode::BlankNode(b) => Term::BlankNode(b),
+        };
+        let pred_term: Term = Term::NamedNode(predicate);
+        let sid = self.intern(subj_term);
+        let pid = self.intern(pred_term);
+        let oid = self.intern(object);
+        self.spo.insert(pack_spo(sid, pid, oid), b"")?;
+        self.pos.insert(pack_pos(pid, oid, sid), b"")?;
+        self.triple_count += 1;
+        Ok(())
+    }
+
+    /// Finalize the load: shrink the dictionary, write metadata, persist.
+    fn finalize_load(&mut self) -> Result<(), DiskStoreError> {
+        self.term_by_id.shrink_to_fit();
+        let count_bytes = (self.triple_count as u64).to_be_bytes();
+        self.meta.insert(b"len", &count_bytes)?;
+        self.meta.insert(b"format_version", &1u32.to_be_bytes())?;
+        self.db.persist(PersistMode::SyncAll)?;
+        Ok(())
+    }
+}
+
+// ── Public constructors ─────────────────────────────────────────────────────
+
+use oxttl::NTriplesParser;
+
+impl DiskRdfImportStore {
+    /// Build a disk store by streaming an N-Triples document into fjall.
+    /// `path` is the directory where the fjall database lives.
+    pub fn from_ntriples(reader: impl Read, path: &Path) -> Result<Self, DiskStoreError> {
+        let mut store = Self::open_empty(path)?;
+        let parser = NTriplesParser::new().for_reader(reader);
+        for result in parser {
+            let triple = result.map_err(|e| DiskStoreError::Parse(e.to_string()))?;
+            store.insert_triple(triple.subject, triple.predicate, triple.object)?;
+        }
+        store.finalize_load()?;
+        Ok(store)
+    }
+
+    /// Read-only accessor for the cached triple count. Stable after load.
+    pub fn triple_count(&self) -> usize {
+        self.triple_count
+    }
+}
