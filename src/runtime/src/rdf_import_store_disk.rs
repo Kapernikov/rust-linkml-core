@@ -211,3 +211,139 @@ impl DiskRdfImportStore {
         self.triple_count
     }
 }
+
+// ── TripleSource impl ───────────────────────────────────────────────────────
+
+impl DiskRdfImportStore {
+    fn lookup_named_id(&self, n: &NamedNode) -> Option<u64> {
+        self.id_by_term.get(&Term::NamedNode(n.clone())).copied()
+    }
+
+    fn lookup_subject_id(&self, s: &NamedOrBlankNode) -> Option<u64> {
+        let term = match s {
+            NamedOrBlankNode::NamedNode(n) => Term::NamedNode(n.clone()),
+            NamedOrBlankNode::BlankNode(b) => Term::BlankNode(b.clone()),
+        };
+        self.id_by_term.get(&term).copied()
+    }
+}
+
+impl TripleSource for DiskRdfImportStore {
+    fn subjects_for_predicate_object<'a>(
+        &'a self,
+        predicate: &NamedNode,
+        object: &NamedNode,
+    ) -> Box<dyn Iterator<Item = NamedOrBlankNodeRef<'a>> + 'a> {
+        let pid = match self.lookup_named_id(predicate) {
+            Some(i) => i,
+            None => return Box::new(std::iter::empty()),
+        };
+        let oid = match self.lookup_named_id(object) {
+            Some(i) => i,
+            None => return Box::new(std::iter::empty()),
+        };
+        let mut prefix = [0u8; 16];
+        prefix[0..8].copy_from_slice(&pid.to_be_bytes());
+        prefix[8..16].copy_from_slice(&oid.to_be_bytes());
+        let term_by_id = &self.term_by_id;
+        Box::new(
+            self.pos
+                .prefix(prefix)
+                .filter_map(|guard| guard.key().ok())
+                .filter_map(move |key| {
+                    if key.len() != 24 {
+                        return None;
+                    }
+                    let sid = unpack_u64(&key, 16) as usize;
+                    let term: &'a Term = term_by_id.get(sid)?;
+                    match term.as_ref() {
+                        TermRef::NamedNode(n) => Some(NamedOrBlankNodeRef::NamedNode(n)),
+                        TermRef::BlankNode(b) => Some(NamedOrBlankNodeRef::BlankNode(b)),
+                        TermRef::Literal(_) => None, // subjects can't be literals
+                    }
+                }),
+        )
+    }
+
+    fn objects_for_subject_predicate<'a>(
+        &'a self,
+        subject: &NamedOrBlankNode,
+        predicate: &NamedNode,
+    ) -> Box<dyn Iterator<Item = TermRef<'a>> + 'a> {
+        let sid = match self.lookup_subject_id(subject) {
+            Some(i) => i,
+            None => return Box::new(std::iter::empty()),
+        };
+        let pid = match self.lookup_named_id(predicate) {
+            Some(i) => i,
+            None => return Box::new(std::iter::empty()),
+        };
+        let mut prefix = [0u8; 16];
+        prefix[0..8].copy_from_slice(&sid.to_be_bytes());
+        prefix[8..16].copy_from_slice(&pid.to_be_bytes());
+        let term_by_id = &self.term_by_id;
+        Box::new(
+            self.spo
+                .prefix(prefix)
+                .filter_map(|guard| guard.key().ok())
+                .filter_map(move |key| {
+                    if key.len() != 24 {
+                        return None;
+                    }
+                    let oid = unpack_u64(&key, 16) as usize;
+                    let term: &'a Term = term_by_id.get(oid)?;
+                    Some(term.as_ref())
+                }),
+        )
+    }
+
+    fn triples_for_subject<'a>(
+        &'a self,
+        subject: &NamedOrBlankNode,
+    ) -> Box<dyn Iterator<Item = TripleRef<'a>> + 'a> {
+        let sid = match self.lookup_subject_id(subject) {
+            Some(i) => i,
+            None => return Box::new(std::iter::empty()),
+        };
+        let prefix = sid.to_be_bytes();
+        let term_by_id = &self.term_by_id;
+        Box::new(
+            self.spo
+                .prefix(prefix)
+                .filter_map(|guard| guard.key().ok())
+                .filter_map(move |key| {
+                    if key.len() != 24 {
+                        return None;
+                    }
+                    let s_id = unpack_u64(&key, 0) as usize;
+                    let p_id = unpack_u64(&key, 8) as usize;
+                    let o_id = unpack_u64(&key, 16) as usize;
+                    let s_term = term_by_id.get(s_id)?;
+                    let p_term = term_by_id.get(p_id)?;
+                    let o_term = term_by_id.get(o_id)?;
+                    let subj: NamedOrBlankNodeRef<'a> = match s_term.as_ref() {
+                        TermRef::NamedNode(n) => NamedOrBlankNodeRef::NamedNode(n),
+                        TermRef::BlankNode(b) => NamedOrBlankNodeRef::BlankNode(b),
+                        TermRef::Literal(_) => return None,
+                    };
+                    let pred = match p_term.as_ref() {
+                        TermRef::NamedNode(n) => n,
+                        _ => return None,
+                    };
+                    Some(TripleRef {
+                        subject: subj,
+                        predicate: pred,
+                        object: o_term.as_ref(),
+                    })
+                }),
+        )
+    }
+
+    fn len(&self) -> Option<usize> {
+        Some(self.triple_count)
+    }
+
+    fn on_consumed(&self, _subject: &str, _predicate: &str, _object: &str) {
+        // no-op for the non-tracking variant
+    }
+}
