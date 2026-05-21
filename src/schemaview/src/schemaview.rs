@@ -210,6 +210,65 @@ fn to_curie_identifier(candidate: &str, conv: &Converter) -> Option<Identifier> 
     }
 }
 
+/// LinkML's `camelcase` from `linkml_runtime.utils.formatutils`:
+/// strip, drop commas, split on runs of underscores or whitespace,
+/// capitalise each piece, concatenate.
+/// Mirrors `SchemaView.get_uri` default for `ClassDefinition`.
+fn linkml_camelcase(name: &str) -> String {
+    let cleaned = name.trim().replace(',', "");
+    let mut out = String::with_capacity(cleaned.len());
+    for word in cleaned.split(|c: char| c == '_' || c.is_whitespace()) {
+        if word.is_empty() {
+            continue;
+        }
+        let mut chars = word.chars();
+        if let Some(first) = chars.next() {
+            for u in first.to_uppercase() {
+                out.push(u);
+            }
+            out.push_str(chars.as_str());
+        }
+    }
+    out
+}
+
+/// LinkML's `underscore` from `linkml_runtime.utils.formatutils`:
+/// collapse whitespace runs into `_` and turn `-` into `_`.
+/// Mirrors `SchemaView.get_uri` default for `SlotDefinition` / `TypeDefinition`.
+fn linkml_underscore(name: &str) -> String {
+    let cleaned = name.trim().replace(',', "").replace('-', "_");
+    let mut out = String::with_capacity(cleaned.len());
+    let mut in_ws = false;
+    for c in cleaned.chars() {
+        if c.is_whitespace() {
+            if !in_ws {
+                out.push('_');
+                in_ws = true;
+            }
+        } else {
+            out.push(c);
+            in_ws = false;
+        }
+    }
+    out
+}
+
+/// Default CURIE for a class without an explicit `class_uri`, per LinkML spec.
+fn default_class_curie(default_prefix: &str, class_name: &str) -> String {
+    format!("{}:{}", default_prefix, linkml_camelcase(class_name))
+}
+
+/// Default CURIE for a slot without an explicit `slot_uri`, per LinkML spec.
+fn default_slot_curie(default_prefix: &str, slot_name: &str) -> String {
+    format!("{}:{}", default_prefix, linkml_underscore(slot_name))
+}
+
+/// Default CURIE for an enum without an explicit `enum_uri`, per LinkML spec.
+/// Enum names are not transformed.
+fn default_enum_curie(default_prefix: &str, enum_name: &str) -> String {
+    format!("{}:{}", default_prefix, enum_name)
+}
+
 fn compute_class_canonical_ids(
     schema: &SchemaDefinition,
     class_name: &str,
@@ -220,7 +279,7 @@ fn compute_class_canonical_ids(
     let default_curie = if class_name.contains(':') && class_def.class_uri.is_none() {
         class_name.to_string()
     } else {
-        format!("{}:{}", default_prefix, class_name)
+        default_class_curie(default_prefix, class_name)
     };
     let fallback = fallback_uri(schema, class_name);
     let canonical_source = class_def
@@ -245,7 +304,7 @@ fn compute_slot_canonical_ids_from_parts(
     let default_curie = if slot_name.contains(':') && explicit_uri.is_none() {
         slot_name.to_string()
     } else {
-        format!("{}:{}", default_prefix, slot_name)
+        default_slot_curie(default_prefix, slot_name)
     };
     let fallback = fallback_uri(schema, slot_name);
     let canonical_source = explicit_uri.unwrap_or(default_curie.as_str());
@@ -267,7 +326,7 @@ fn compute_enum_canonical_ids(
     let default_curie = if enum_name.contains(':') && enum_def.enum_uri.is_none() {
         enum_name.to_string()
     } else {
-        format!("{}:{}", default_prefix, enum_name)
+        default_enum_curie(default_prefix, enum_name)
     };
     let fallback = fallback_uri(schema, enum_name);
     let canonical_source = enum_def
@@ -827,11 +886,19 @@ impl SchemaView {
                 let default_id = if class_name.contains(':') && class_def.class_uri.is_none() {
                     Identifier::new(class_name)
                 } else {
-                    Identifier::new(&format!("{}:{}", default_prefix, class_name))
+                    Identifier::new(&default_class_curie(default_prefix, class_name))
                 };
                 let default_uri = default_id.to_uri(conv).map(|u| u.0).unwrap_or_else(|_| {
                     format!("{}/{}", schema.id.trim_end_matches('/'), class_name)
                 });
+                // Also remember the literal-name URI (`linkml:class_definition`) so
+                // CURIE-form lookups that quote the source-level class name keep
+                // working alongside the linkml-spec default (`linkml:ClassDefinition`).
+                let literal_curie = format!("{}:{}", default_prefix, class_name);
+                let literal_uri = Identifier::new(&literal_curie)
+                    .to_uri(conv)
+                    .map(|u| u.0)
+                    .unwrap_or_else(|_| fallback_uri(schema, class_name));
                 let canonical_ids =
                     compute_class_canonical_ids(schema, class_name, class_def, conv);
                 {
@@ -841,23 +908,23 @@ impl SchemaView {
                         .entry(class_name.clone())
                         .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
 
+                    let mut insert_uri = |uri: String| {
+                        index
+                            .class_uri_index
+                            .entry(uri)
+                            .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
+                    };
                     if let Some(curi) = &class_def.class_uri {
                         let explicit_uri = Identifier::new(curi).to_uri(conv)?.0;
-                        index
-                            .class_uri_index
-                            .entry(explicit_uri.clone())
-                            .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
+                        insert_uri(explicit_uri.clone());
                         if explicit_uri != default_uri {
-                            index
-                                .class_uri_index
-                                .entry(default_uri.clone())
-                                .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
+                            insert_uri(default_uri.clone());
                         }
                     } else {
-                        index
-                            .class_uri_index
-                            .entry(default_uri.clone())
-                            .or_insert_with(|| (schema_uri.to_string(), class_name.clone()));
+                        insert_uri(default_uri.clone());
+                    }
+                    if literal_uri != default_uri {
+                        insert_uri(literal_uri);
                     }
 
                     index
@@ -894,14 +961,25 @@ impl SchemaView {
                 let default_id = if slot_name.contains(':') && slot_def.slot_uri.is_none() {
                     Identifier::new(slot_name)
                 } else {
-                    Identifier::new(&format!("{}:{}", default_prefix, slot_name))
+                    Identifier::new(&default_slot_curie(default_prefix, slot_name))
                 };
                 let default_uri = default_id.to_uri(conv).map(|u| u.0).unwrap_or_else(|_| {
                     format!("{}/{}", schema.id.trim_end_matches('/'), slot_name)
                 });
+                // Mirror class indexing: also remember the literal-name URI so
+                // CURIE-form lookups using the source slot name keep working
+                // alongside the linkml-spec underscored default.
+                let literal_curie = format!("{}:{}", default_prefix, slot_name);
+                let literal_uri = Identifier::new(&literal_curie)
+                    .to_uri(conv)
+                    .map(|u| u.0)
+                    .unwrap_or_else(|_| fallback_uri(schema, slot_name));
 
                 let mut uris = Vec::new();
                 uris.push(default_uri.clone());
+                if literal_uri != default_uri {
+                    uris.push(literal_uri);
+                }
                 if let Some(suri) = &slot_def.slot_uri {
                     let explicit_uri = Identifier::new(suri).to_uri(conv)?.0;
                     if !uris.contains(&explicit_uri) {
@@ -1013,7 +1091,7 @@ impl SchemaView {
                 let default_id = if enum_name.contains(':') && enum_def.enum_uri.is_none() {
                     Identifier::new(enum_name)
                 } else {
-                    Identifier::new(&format!("{}:{}", default_prefix, enum_name))
+                    Identifier::new(&default_enum_curie(default_prefix, enum_name))
                 };
                 let default_uri = default_id.to_uri(conv).map(|u| u.0).unwrap_or_else(|_| {
                     format!("{}/{}", schema.id.trim_end_matches('/'), enum_name)
