@@ -367,6 +367,74 @@ impl<T: TripleSource> Iterator for ImportStream<'_, T> {
     }
 }
 
+/// An owned-store streaming iterator: the parsed `RdfImportStore` is
+/// kept alive inside the iterator itself.
+///
+/// Used by FFI callers (Python) that can't easily keep a separate store
+/// alive alongside the iterator. The store is boxed (so its address is
+/// stable) and we erase the lifetime of the borrowing `ImportStream` via
+/// one carefully-scoped `unsafe` block. Sound because the only reference
+/// into the store is held by `iter`, which is dropped before `_store`
+/// thanks to drop order (fields are dropped top-to-bottom).
+pub struct OwnedImportStream {
+    iter: ImportStream<'static, crate::rdf_import_store::RdfImportStore>,
+    // Kept alive for `iter`'s reference. Must be declared AFTER `iter` so it
+    // is dropped after; otherwise the &'static reference would dangle.
+    #[allow(dead_code)]
+    store: Box<crate::rdf_import_store::RdfImportStore>,
+    // Same for the SchemaView and Converter.
+    #[allow(dead_code)]
+    sv: Box<SchemaView>,
+    #[allow(dead_code)]
+    conv: Box<Converter>,
+}
+
+impl OwnedImportStream {
+    pub fn consumed_count(&self) -> usize {
+        self.iter.consumed_count()
+    }
+}
+
+impl Iterator for OwnedImportStream {
+    type Item = Result<(String, LinkMLInstance), ImportError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
+    }
+}
+
+/// Build an owned streaming iterator from a parsed `RdfImportStore` and the
+/// caller's schema/converter (which we take by value and box).
+pub fn import_owned_store_streaming(
+    store: crate::rdf_import_store::RdfImportStore,
+    sv: SchemaView,
+    conv: Converter,
+    root_classes: &[&str],
+) -> Result<OwnedImportStream, ImportError> {
+    let store_box: Box<crate::rdf_import_store::RdfImportStore> = Box::new(store);
+    let sv_box: Box<SchemaView> = Box::new(sv);
+    let conv_box: Box<Converter> = Box::new(conv);
+
+    // SAFETY: the references handed to `import_from_store_streaming` live as
+    // long as the boxes that own them. The boxes are stored as later fields
+    // of `OwnedImportStream`; Rust drops struct fields in declaration order,
+    // so `iter` (which holds the references) is dropped BEFORE `store`,
+    // `sv`, `conv`. Until then the references remain valid.
+    let store_ref: &'static crate::rdf_import_store::RdfImportStore =
+        unsafe { &*(store_box.as_ref() as *const _) };
+    let sv_ref: &'static SchemaView = unsafe { &*(sv_box.as_ref() as *const _) };
+    let conv_ref: &'static Converter = unsafe { &*(conv_box.as_ref() as *const _) };
+
+    let iter = import_from_store_streaming(store_ref, sv_ref, conv_ref, root_classes)?;
+
+    Ok(OwnedImportStream {
+        iter,
+        store: store_box,
+        sv: sv_box,
+        conv: conv_box,
+    })
+}
+
 /// Streaming entry point. Pass 1 runs eagerly here, so structural errors
 /// (cycles, unknown classes) surface before any item is yielded.
 pub fn import_from_store_streaming<'a, T: TripleSource>(
