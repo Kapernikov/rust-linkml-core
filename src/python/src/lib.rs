@@ -31,6 +31,8 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+
+mod io_bridge;
 fn py_filelike_or_string_to_string(obj: &Bound<'_, PyAny>) -> PyResult<(String, Option<String>)> {
     if let Ok(s) = obj.extract::<String>() {
         if Path::new(&s).exists() {
