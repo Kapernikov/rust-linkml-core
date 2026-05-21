@@ -5,8 +5,10 @@
 //! then "harvests" typed instances by walking the graph guided by the schema's
 //! class and slot definitions.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
+use std::rc::Rc;
 
 use oxrdf::{
     vocab::{rdf, xsd},
@@ -22,7 +24,7 @@ use linkml_schemaview::Converter;
 
 use crate::rdf_import_store::RdfImportStore;
 use crate::triple_source::TripleSource;
-use crate::{new_node_id, LinkMLInstance};
+use crate::{new_node_id, LinkMLInstance, ValidationProblemType, ValidationResult};
 
 // ── Error types ──────────────────────────────────────────────────────────────
 
@@ -46,6 +48,8 @@ pub enum ImportError {
         value: String,
         expected_type: String,
     },
+    /// In strict mode, a harvest warning is promoted to an error.
+    ValidationFailure(ValidationResult),
 }
 
 impl std::fmt::Display for ImportError {
@@ -67,6 +71,9 @@ impl std::fmt::Display for ImportError {
                 value,
                 expected_type,
             } => write!(f, "Cannot convert \"{value}\" to {expected_type}"),
+            ImportError::ValidationFailure(vr) => {
+                write!(f, "Validation failure in strict mode: {}", vr.detail)
+            }
         }
     }
 }
@@ -277,8 +284,15 @@ pub struct HarvestContext<'a, T: TripleSource> {
     pub(crate) visit_stack: HashSet<String>,
     /// Subjects that have been inlined into a parent (should not appear as top-level).
     pub(crate) claimed: HashSet<String>,
-    /// Count of triples consumed during harvesting.
+    /// Count of triples consumed during harvesting. Kept for legacy callers
+    /// that read it; the new public API (`RdfStream`) does not expose it.
     pub(crate) consumed_count: usize,
+    /// Schema/data mismatches discovered during harvest. Drained by
+    /// `RdfStream::pop_warnings`. Shared with the parent `RdfStream`.
+    pub(crate) warnings: Rc<RefCell<Vec<ValidationResult>>>,
+    /// If true, `emit_warning` returns `Err(ImportError::ValidationFailure)`
+    /// instead of pushing to the buffer.
+    pub(crate) strict: bool,
 }
 
 impl<'a, T: TripleSource> HarvestContext<'a, T> {
@@ -290,6 +304,27 @@ impl<'a, T: TripleSource> HarvestContext<'a, T> {
             visit_stack: HashSet::new(),
             claimed: HashSet::new(),
             consumed_count: 0,
+            warnings: Rc::new(RefCell::new(Vec::new())),
+            strict: false,
+        }
+    }
+
+    pub fn new_with_warnings(
+        store: &'a T,
+        sv: &'a SchemaView,
+        conv: &'a Converter,
+        warnings: Rc<RefCell<Vec<ValidationResult>>>,
+        strict: bool,
+    ) -> Self {
+        Self {
+            store,
+            sv,
+            conv,
+            visit_stack: HashSet::new(),
+            claimed: HashSet::new(),
+            consumed_count: 0,
+            warnings,
+            strict,
         }
     }
 
@@ -299,6 +334,16 @@ impl<'a, T: TripleSource> HarvestContext<'a, T> {
 
     pub fn claimed(&self) -> &HashSet<String> {
         &self.claimed
+    }
+
+    /// Push a warning into the shared buffer. In strict mode, returns an
+    /// error that aborts the import; otherwise returns Ok(()).
+    pub(crate) fn emit_warning(&self, vr: ValidationResult) -> Result<(), ImportError> {
+        if self.strict {
+            return Err(ImportError::ValidationFailure(vr));
+        }
+        self.warnings.borrow_mut().push(vr);
+        Ok(())
     }
 }
 
@@ -467,8 +512,29 @@ pub fn harvest_subject<T: TripleSource>(
                         }
                     }
 
-                    // Regular literal → scalar
-                    let json_val = literal_to_json(&lit)?;
+                    // Regular literal → scalar. If conversion to the
+                    // declared range fails (e.g. "abc"^^xsd:string in an
+                    // xsd:integer-ranged slot), fall back to the raw string
+                    // and emit a SlotRangeViolation warning so the caller
+                    // sees the mismatch rather than the whole import dying.
+                    let json_val = match literal_to_json(&lit) {
+                        Ok(v) => v,
+                        Err(ImportError::LiteralConversion {
+                            value,
+                            expected_type,
+                        }) => {
+                            ctx.emit_warning(ValidationResult::warning(
+                                ValidationProblemType::SlotRangeViolation,
+                                vec![subject_key.clone(), slot.name.clone()],
+                                format!(
+                                    "literal {value:?} could not be converted to slot `{}`'s range (`{expected_type}`); kept as raw string",
+                                    slot.name,
+                                ),
+                            ))?;
+                            JsonValue::String(value)
+                        }
+                        Err(other) => return Err(other),
+                    };
                     items.push(LinkMLInstance::Scalar {
                         node_id: new_node_id(),
                         value: json_val,
@@ -545,6 +611,23 @@ pub fn harvest_subject<T: TripleSource>(
         // Wrap items according to container mode
         let instance = match container_mode {
             SlotContainerMode::SingleValue => {
+                if items.len() > 1 {
+                    // Schema says single-valued; RDF has multiple objects.
+                    // First wins (HashMap order — nondeterministic across runs);
+                    // emit a warning so the caller can see they have either
+                    // a schema bug or unexpectedly multi-valued source data.
+                    let dropped = items.len() - 1;
+                    ctx.emit_warning(ValidationResult::warning(
+                        ValidationProblemType::MaxCountViolation,
+                        vec![subject_key.clone(), slot.name.clone()],
+                        format!(
+                            "slot `{}` is single-valued but RDF has {} objects; keeping first, dropping {} others",
+                            slot.name,
+                            items.len(),
+                            dropped,
+                        ),
+                    ))?;
+                }
                 items
                     .into_iter()
                     .next()
@@ -590,6 +673,20 @@ pub fn harvest_subject<T: TripleSource>(
         if consumed_predicates.contains(&pred_iri) {
             continue;
         }
+        // The subject's class has no slot matching this predicate. The data
+        // carries information the schema doesn't model. Emit a warning per
+        // distinct predicate (not per occurrence — N objects for the same
+        // unknown predicate is still one "you forgot this slot" finding).
+        ctx.emit_warning(ValidationResult::warning(
+            ValidationProblemType::UndeclaredSlot,
+            vec![subject_key.clone(), pred_iri.clone()],
+            format!(
+                "subject of class `{}` has predicate <{}> that is not a slot of that class; {} object(s) dropped into unknown_fields",
+                class.name(),
+                pred_iri,
+                objs.len(),
+            ),
+        ))?;
         if let Some(obj) = objs.into_iter().last() {
             let val = match obj {
                 Term::Literal(lit) => JsonValue::String(lit.value().to_string()),
