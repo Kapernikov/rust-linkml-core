@@ -373,24 +373,9 @@ impl TripleSource for DiskRdfImportStore {
     }
 }
 
-// ── Import convenience ──────────────────────────────────────────────────────
-
-use linkml_schemaview::schemaview::SchemaView;
-use linkml_schemaview::Converter;
-
-use crate::turtle_import::{import_from_store, ImportResult};
-
-impl DiskRdfImportStore {
-    /// Run a full LinkML import against this store.
-    pub fn import(
-        &self,
-        sv: &SchemaView,
-        conv: &Converter,
-        root_classes: &[&str],
-    ) -> Result<ImportResult, ImportError> {
-        import_from_store(self, sv, conv, root_classes)
-    }
-}
+// The DiskRdfImportStore::import() convenience method was removed in
+// Phase 3. Use crate::rdf_import::import_turtle / import_ntriples with
+// ImportOptions { disk_path: Some(...) } to harvest from this backend.
 
 // Tracking variant removed in Phase 3: the disk backend doesn't track
 // consumed subjects — computing unconsumed_subjects on disk would require

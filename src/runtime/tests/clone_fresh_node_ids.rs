@@ -1,6 +1,9 @@
 #![cfg(feature = "ttl")]
 
-use linkml_runtime::{turtle_import::import_turtle_from_string, LinkMLInstance};
+use linkml_runtime::{
+    rdf_import::{import_turtle, ImportOptions},
+    LinkMLInstance,
+};
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::schemaview::SchemaView;
 
@@ -67,12 +70,18 @@ fn clone_with_fresh_node_ids_yields_disjoint_ids_and_equal_json() {
         @prefix ex: <http://example.org/> .
         ex:p1 a ex:Person ; ex:id "P1" ; ex:name "Alice" .
     "#;
-    let mut result = import_turtle_from_string(ttl, &sv, &conv, &["Person"]).unwrap();
-    let person = result
-        .instances
-        .get_mut("Person")
-        .expect("Person class in result")
-        .pop()
+    let stream = import_turtle(
+        std::io::Cursor::new(ttl.as_bytes()),
+        sv,
+        conv,
+        &["Person"],
+        ImportOptions::default(),
+    )
+    .unwrap();
+    let person = stream
+        .map(|r| r.unwrap())
+        .find(|(c, _)| c == "Person")
+        .map(|(_, i)| i)
         .expect("at least one Person");
 
     let cloned = person.clone_with_fresh_node_ids();

@@ -1,6 +1,7 @@
 #![cfg(feature = "ttl")]
 
-use linkml_runtime::turtle_import::import_ntriples;
+use linkml_runtime::rdf_import::{import_ntriples, ImportOptions};
+use std::collections::HashMap;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
@@ -62,20 +63,24 @@ fn import_rinf_ntriples() {
     ];
 
     let start = std::time::Instant::now();
-    let result = import_ntriples(reader, &sv, &conv, root_classes);
-    let elapsed = start.elapsed();
+    let stream_result = import_ntriples(reader, sv, conv, root_classes, ImportOptions::default());
 
-    match result {
-        Ok(import_result) => {
+    match stream_result {
+        Ok(stream) => {
+            let mut counts: HashMap<String, usize> = HashMap::new();
+            let mut total = 0usize;
+            for item in stream {
+                let (class_name, _inst) = item.expect("harvest yields ok");
+                *counts.entry(class_name).or_insert(0) += 1;
+                total += 1;
+            }
+            let elapsed = start.elapsed();
             eprintln!("\n=== RINF Import Results ===");
             eprintln!("Time: {elapsed:?}");
-            let mut total = 0;
-            for (class_name, instances) in &import_result.instances {
-                eprintln!("  {class_name}: {} instances", instances.len());
-                total += instances.len();
+            for (class_name, n) in &counts {
+                eprintln!("  {class_name}: {n} instances");
             }
             eprintln!("  Total instances: {total}");
-            eprintln!("  Unconsumed triples: {:?}", import_result.unconsumed_count);
             eprintln!("===========================\n");
 
             assert!(total > 0, "Expected at least some instances");

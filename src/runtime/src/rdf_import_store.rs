@@ -13,9 +13,7 @@ use oxrdf::{Graph, NamedNode, NamedOrBlankNode, NamedOrBlankNodeRef, TermRef, Tr
 use oxttl::{NTriplesParser, TurtleParser};
 
 use crate::triple_source::TripleSource;
-use crate::turtle_import::{import_from_store, ImportError, ImportResult, RdfFormat};
-use linkml_schemaview::schemaview::SchemaView;
-use linkml_schemaview::Converter;
+use crate::turtle_import::{ImportError, RdfFormat};
 
 // ── Parsing helpers ─────────────────────────────────────────────────────────
 
@@ -80,18 +78,6 @@ impl RdfImportStore {
             graph,
             consumed: RefCell::new(HashSet::new()),
         }
-    }
-
-    /// Run a full LinkML import against this store. Kept for direct Rust
-    /// callers; the new public API (`import_turtle` / `import_ntriples` in
-    /// `crate::rdf_import`) is preferred.
-    pub fn import(
-        &self,
-        sv: &SchemaView,
-        conv: &Converter,
-        root_classes: &[&str],
-    ) -> Result<ImportResult, ImportError> {
-        import_from_store(self, sv, conv, root_classes)
     }
 
     /// Subjects that were touched (had at least one triple read) during

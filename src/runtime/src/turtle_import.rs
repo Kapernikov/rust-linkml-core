@@ -7,7 +7,6 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::io::Read;
 use std::rc::Rc;
 
 use oxrdf::{
@@ -22,7 +21,6 @@ use linkml_schemaview::schemaview::{
 };
 use linkml_schemaview::Converter;
 
-use crate::rdf_import_store::RdfImportStore;
 use crate::triple_source::TripleSource;
 use crate::{new_node_id, LinkMLInstance, ValidationProblemType, ValidationResult};
 
@@ -90,15 +88,6 @@ impl From<IdentifierError> for ImportError {
     fn from(e: IdentifierError) -> Self {
         ImportError::Parse(format!("Identifier error: {e:?}"))
     }
-}
-
-/// Result of a successful import.
-pub struct ImportResult {
-    /// Instances grouped by class name.
-    pub instances: HashMap<String, Vec<LinkMLInstance>>,
-    /// Number of triples in the graph that were not consumed during harvesting.
-    /// `None` when the store does not support counting.
-    pub unconsumed_count: Option<usize>,
 }
 
 /// Supported RDF serialization formats for import.
@@ -753,110 +742,19 @@ fn extract_mapping_key(instance: &LinkMLInstance) -> String {
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
-
-/// Harvest instances from a triple source.
-///
-/// This is the core import function, generic over any [`TripleSource`]
-/// implementation. The one-shot functions (`import_turtle`, etc.) are thin
-/// wrappers that create an [`RdfImportStore`] and call this.
-///
-/// Internally driven by the streaming iterator from `rdf_streaming`. The
-/// difference is purely output shape: we collect every yielded root into
-/// the legacy `HashMap<class, Vec<LinkMLInstance>>` shape.
-pub fn import_from_store<T: TripleSource>(
-    store: &T,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let total_triples = store.len();
-    let mut stream =
-        crate::rdf_streaming::import_from_store_streaming(
-            store,
-            sv,
-            conv,
-            root_classes,
-            Rc::new(RefCell::new(Vec::new())),
-            false,
-        )?;
-
-    let mut instances: HashMap<String, Vec<LinkMLInstance>> = HashMap::new();
-    loop {
-        match stream.next() {
-            None => break,
-            Some(Err(e)) => return Err(e),
-            Some(Ok((class_name, instance))) => {
-                instances.entry(class_name).or_default().push(instance);
-            }
-        }
-    }
-
-    let consumed = stream.consumed_count();
-    let unconsumed_count = total_triples.map(|total| total.saturating_sub(consumed));
-
-    Ok(ImportResult {
-        instances,
-        unconsumed_count,
-    })
-}
-
-/// Import RDF/Turtle data into LinkML instances.
-///
-/// Parses the Turtle from `reader`, then harvests instances of the specified
-/// `root_classes` from the graph. Each root class can be specified as a plain
-/// name (`"OperationalPoint"`), CURIE (`"rinf:OperationalPoint"`), or full
-/// URI (`"http://data.europa.eu/949/OperationalPoint"`).
-///
-/// Subjects reachable as inlined sub-objects from another root instance are
-/// inlined there, not emitted as top-level.
-pub fn import_turtle(
-    reader: impl Read,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let store = RdfImportStore::from_turtle(reader)?;
-    import_from_store(&store, sv, conv, root_classes)
-}
-
-/// Import RDF/N-Triples data into LinkML instances.
-pub fn import_ntriples(
-    reader: impl Read,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let store = RdfImportStore::from_ntriples(reader)?;
-    import_from_store(&store, sv, conv, root_classes)
-}
-
-/// Import RDF data in the specified format into LinkML instances.
-pub fn import_rdf(
-    reader: impl Read,
-    format: RdfFormat,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let store = RdfImportStore::from_rdf(reader, format)?;
-    import_from_store(&store, sv, conv, root_classes)
-}
-
-/// Convenience: import from a Turtle string.
-pub fn import_turtle_from_string(
-    ttl: &str,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    import_turtle(std::io::Cursor::new(ttl.as_bytes()), sv, conv, root_classes)
-}
+//
+// The top-level RDF entry points (import_turtle / import_ntriples /
+// export_turtle / export_ntriples) live in `crate::rdf_import` and
+// `crate::rdf_export`. The legacy HashMap-shaped ImportResult and the
+// import_from_store wrapper were removed in Phase 3 — the new RdfStream
+// iterator is the single user-facing harvest surface.
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rdf_import_store::RdfImportStore;
     use oxrdf::{NamedNode, Term};
 
     #[test]

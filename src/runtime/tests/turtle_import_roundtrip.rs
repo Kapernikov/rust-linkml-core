@@ -2,8 +2,9 @@
 
 use linkml_runtime::{
     load_yaml_file,
+    rdf_import::{import_turtle, ImportOptions},
     turtle::{turtle_to_string, TurtleOptions},
-    turtle_import::import_turtle_from_string,
+    LinkMLInstance,
 };
 use linkml_schemaview::identifier::{converter_from_schema, converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -50,17 +51,22 @@ fn roundtrip(
     let ttl =
         turtle_to_string(original, sv, schema, conv, TurtleOptions { skolem: false }).unwrap();
 
-    let result = import_turtle_from_string(&ttl, sv, conv, &[class_name]).unwrap();
-
-    let instances = result
-        .instances
-        .get(class_name)
-        .unwrap_or_else(|| panic!("No instances found for class {class_name}"));
+    let stream = import_turtle(
+        std::io::Cursor::new(ttl.as_bytes()),
+        sv.clone(),
+        conv.clone(),
+        &[class_name],
+        ImportOptions::default(),
+    )
+    .unwrap();
+    let instances: Vec<LinkMLInstance> = stream
+        .filter_map(|r| r.ok())
+        .filter_map(|(c, i)| if c == class_name { Some(i) } else { None })
+        .collect();
     assert!(
         !instances.is_empty(),
         "Expected at least one {class_name} instance"
     );
-
     instances[0].to_json()
 }
 
