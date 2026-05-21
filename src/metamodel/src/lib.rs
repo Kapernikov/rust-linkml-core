@@ -733,7 +733,11 @@ impl serde_utils::InlinedPair for Extension {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("extension_tag".into()), Value::String(k));
+        if !map.contains_key(&Value::String("extension_tag".into()))
+            && !map.contains_key(&Value::String("tag".into()))
+        {
+            map.insert(Value::String("extension_tag".into()), Value::String(k));
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -1704,7 +1708,11 @@ impl serde_utils::InlinedPair for Annotation {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("extension_tag".into()), Value::String(k));
+        if !map.contains_key(&Value::String("extension_tag".into()))
+            && !map.contains_key(&Value::String("tag".into()))
+        {
+            map.insert(Value::String("extension_tag".into()), Value::String(k));
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -1721,6 +1729,44 @@ impl serde_utils::InlinedPair for Annotation {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
         }
+    }
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod annotation_deserialization_tests {
+    use super::*;
+
+    #[test]
+    fn inlined_annotation_accepts_explicit_tag_alias() {
+        let mut map = BTreeMap::new();
+        map.insert(Value::String("tag".into()), Value::String("foo".into()));
+        map.insert(Value::String("value".into()), Value::String("bar".into()));
+
+        let annotation = <Annotation as serde_utils::InlinedPair>::from_pair_mapping(
+            "foo".into(),
+            Value::Map(map),
+        )
+        .expect("annotation with explicit tag alias should deserialize");
+
+        assert_eq!(annotation.extension_tag, "foo");
+    }
+
+    #[test]
+    fn inlined_annotation_accepts_explicit_extension_tag() {
+        let mut map = BTreeMap::new();
+        map.insert(
+            Value::String("extension_tag".into()),
+            Value::String("foo".into()),
+        );
+        map.insert(Value::String("value".into()), Value::String("bar".into()));
+
+        let annotation = <Annotation as serde_utils::InlinedPair>::from_pair_mapping(
+            "foo".into(),
+            Value::Map(map),
+        )
+        .expect("annotation with explicit extension_tag should deserialize");
+
+        assert_eq!(annotation.extension_tag, "foo");
     }
 }
 
