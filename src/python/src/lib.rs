@@ -721,7 +721,13 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_from_turtle, m)?)?;
     m.add_function(wrap_pyfunction!(py_from_turtle_tracked, m)?)?;
     m.add_function(wrap_pyfunction!(py_from_turtle_streaming, m)?)?;
+    #[cfg(feature = "disk_graph")]
+    m.add_function(wrap_pyfunction!(py_from_turtle_streaming_disk, m)?)?;
+    #[cfg(feature = "disk_graph")]
+    m.add_function(wrap_pyfunction!(py_from_ntriples_streaming_disk, m)?)?;
     m.add_class::<PyTurtleStream>()?;
+    #[cfg(feature = "disk_graph")]
+    m.add_class::<PyDiskTurtleStream>()?;
     m.add_class::<PyLinkMLInstance>()?;
     m.add_class::<PyDelta>()?;
     m.add_class::<PyValidationResult>()?;
@@ -1728,6 +1734,135 @@ pub struct PyTurtleStream {
 
 #[pymethods]
 impl PyTurtleStream {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn __next__(
+        mut slf: PyRefMut<'_, Self>,
+        py: Python<'_>,
+    ) -> PyResult<Option<(String, Py<PyLinkMLInstance>)>> {
+        let iter = match slf.iter.as_mut() {
+            Some(i) => i,
+            None => return Ok(None),
+        };
+        match iter.next() {
+            None => {
+                slf.iter = None;
+                Ok(None)
+            }
+            Some(Err(e)) => Err(PyException::new_err(e.to_string())),
+            Some(Ok((class_name, inst))) => {
+                let sv_clone = slf.sv_py.clone_ref(py);
+                let py_inst = Py::new(py, PyLinkMLInstance::new(inst, sv_clone))?;
+                Ok(Some((class_name, py_inst)))
+            }
+        }
+    }
+}
+
+// ── Disk-backed RDF graph entry points ─────────────────────────────────────
+
+#[cfg(feature = "disk_graph")]
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "from_turtle_streaming_disk", signature = (turtle_str, schema_view, root_classes, disk_path))]
+fn py_from_turtle_streaming_disk(
+    py: Python<'_>,
+    turtle_str: &str,
+    schema_view: &PySchemaView,
+    root_classes: Vec<String>,
+    disk_path: &str,
+) -> PyResult<Py<PyDiskTurtleStream>> {
+    use linkml_runtime::rdf_import_store_disk::DiskRdfImportStore;
+    use linkml_runtime::rdf_streaming::import_owned_store_streaming;
+
+    let sv: linkml_schemaview::schemaview::SchemaView = (*schema_view.inner).clone();
+    let conv = sv.converter();
+    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
+
+    let store = DiskRdfImportStore::from_turtle(
+        std::io::Cursor::new(turtle_str.as_bytes()),
+        std::path::Path::new(disk_path),
+    )
+    .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let iter = import_owned_store_streaming(store, sv, conv, &class_refs)
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let sv_py: Py<PySchemaView> = Py::new(
+        py,
+        PySchemaView {
+            inner: schema_view.inner.clone(),
+        },
+    )?;
+
+    Py::new(
+        py,
+        PyDiskTurtleStream {
+            iter: Some(iter),
+            sv_py,
+        },
+    )
+}
+
+#[cfg(feature = "disk_graph")]
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "from_ntriples_streaming_disk", signature = (ntriples_path, schema_view, root_classes, disk_path))]
+fn py_from_ntriples_streaming_disk(
+    py: Python<'_>,
+    ntriples_path: &str,
+    schema_view: &PySchemaView,
+    root_classes: Vec<String>,
+    disk_path: &str,
+) -> PyResult<Py<PyDiskTurtleStream>> {
+    use linkml_runtime::rdf_import_store_disk::DiskRdfImportStore;
+    use linkml_runtime::rdf_streaming::import_owned_store_streaming;
+
+    let sv: linkml_schemaview::schemaview::SchemaView = (*schema_view.inner).clone();
+    let conv = sv.converter();
+    let class_refs: Vec<&str> = root_classes.iter().map(|s| s.as_str()).collect();
+
+    let file = std::fs::File::open(ntriples_path).map_err(|e| PyException::new_err(e.to_string()))?;
+    let reader = std::io::BufReader::new(file);
+    let store =
+        DiskRdfImportStore::from_ntriples(reader, std::path::Path::new(disk_path))
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let iter = import_owned_store_streaming(store, sv, conv, &class_refs)
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+    let sv_py: Py<PySchemaView> = Py::new(
+        py,
+        PySchemaView {
+            inner: schema_view.inner.clone(),
+        },
+    )?;
+
+    Py::new(
+        py,
+        PyDiskTurtleStream {
+            iter: Some(iter),
+            sv_py,
+        },
+    )
+}
+
+#[cfg(feature = "disk_graph")]
+#[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
+#[pyclass(name = "DiskTurtleStream", unsendable)]
+pub struct PyDiskTurtleStream {
+    iter: Option<
+        linkml_runtime::rdf_streaming::OwnedImportStream<
+            linkml_runtime::rdf_import_store_disk::DiskRdfImportStore,
+        >,
+    >,
+    sv_py: Py<PySchemaView>,
+}
+
+#[cfg(feature = "disk_graph")]
+#[pymethods]
+impl PyDiskTurtleStream {
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
