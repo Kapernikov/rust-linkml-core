@@ -4,6 +4,8 @@ pub mod poly;
 pub mod poly_containers;
 #[cfg(feature = "serde")]
 mod serde_utils;
+#[cfg(feature = "stubgen")]
+pub mod stub_utils;
 
 use chrono::NaiveDateTime;
 use merge::Merge;
@@ -177,6 +179,8 @@ pub type unique_key_name = String;
 pub type consider_nulls_inequal = bool;
 pub type unique_key_slots = Vec<SlotDefinition>;
 pub type slot_names_unique = bool;
+pub type extra_slots = ExtraSlotsExpression;
+pub type allowed = bool;
 pub type domain = ClassDefinition;
 pub type range = Element;
 pub type slot_uri = uriorcurie;
@@ -670,7 +674,10 @@ pub struct Extension {
     pub extension_value: AnyValue,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, Box<ExtensionOrSubtype>>>,
@@ -733,7 +740,16 @@ impl serde_utils::InlinedPair for Extension {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("extension_tag".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("extension_tag".into()))
+            || map.contains_key(&Value::String("tag".into()));
+        if !already_keyed {
+            map.insert(Value::String("extension_tag".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -743,12 +759,32 @@ impl serde_utils::InlinedPair for Extension {
 
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("extension_tag".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("extension_tag".into()), key_value);
         map.insert(Value::String("extension_value".into()), v);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        Some(&self.extension_value)
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("extension_tag".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -814,7 +850,7 @@ impl<'py> FromPyObject<'py> for Box<ExtensionOrSubtype> {
 
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for ExtensionOrSubtype {
-    type Key = String;
+    type Key = uriorcurie;
     type Value = serde_value::Value;
     type Error = String;
 
@@ -849,7 +885,10 @@ impl serde_utils::InlinedPair for ExtensionOrSubtype {
 pub struct Extensible {
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
@@ -1231,7 +1270,10 @@ impl<'py> FromPyObject<'py> for Box<ExtensibleOrSubtype> {
 pub struct Annotatable {
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -1628,7 +1670,10 @@ impl<'py> FromPyObject<'py> for Box<AnnotatableOrSubtype> {
 pub struct Annotation {
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Box<Annotation>>>,
@@ -1638,7 +1683,10 @@ pub struct Annotation {
     pub extension_value: AnyValue,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
@@ -1704,7 +1752,16 @@ impl serde_utils::InlinedPair for Annotation {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("extension_tag".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("extension_tag".into()))
+            || map.contains_key(&Value::String("tag".into()));
+        if !already_keyed {
+            map.insert(Value::String("extension_tag".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -1714,12 +1771,32 @@ impl serde_utils::InlinedPair for Annotation {
 
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("extension_tag".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("extension_tag".into()), key_value);
         map.insert(Value::String("extension_value".into()), v);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        Some(&self.extension_value)
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("extension_tag".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -1738,7 +1815,8 @@ pub struct UnitOfMeasure {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -1848,7 +1926,10 @@ impl<'py> FromPyObject<'py> for Anything {
                 return Ok(Value::Unit);
             }
 
-            // Try simple primitives first (bool before int — Python bool is a subclass of int)
+            // Try simple primitives first.
+            // Order matters: Python's `bool` is a subclass of `int`, so `bool`
+            // must be tried before `i64`. Likewise, `i64` before `f64` so we
+            // don't widen integers to floats.
             if let Ok(b) = o.extract::<bool>() {
                 return Ok(Value::Bool(b));
             }
@@ -1911,7 +1992,7 @@ impl<'py> IntoPyObject<'py> for Anything {
     type Error = PyErr;
 
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
-        use pyo3::types::{PyAny, PyDict, PyList, PyString};
+        use pyo3::types::{PyAny, PyBytes, PyDict, PyList, PyString};
         use serde_value::Value;
 
         fn value_to_py<'py>(py: Python<'py>, v: &Value) -> pyo3::PyResult<Bound<'py, PyAny>> {
@@ -1919,6 +2000,23 @@ impl<'py> IntoPyObject<'py> for Anything {
                 Value::Unit => Ok(py.None().into_bound(py)),
                 Value::Bool(b) => Ok(pyo3::types::PyBool::new(py, *b).to_owned().into_any()),
                 Value::String(s) => Ok(PyString::new(py, s).into_any()),
+                Value::U8(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::U16(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::U32(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::U64(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I8(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I16(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I32(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::I64(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::F32(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::F64(n) => Ok(n.into_pyobject(py)?.into_any()),
+                Value::Char(c) => Ok(PyString::new(py, &c.to_string()).into_any()),
+                Value::Bytes(b) => Ok(PyBytes::new(py, b).into_any()),
+                Value::Option(opt) => match opt {
+                    Some(inner) => value_to_py(py, inner),
+                    None => Ok(py.None().into_bound(py)),
+                },
+                Value::Newtype(inner) => value_to_py(py, inner),
                 Value::Seq(seq) => {
                     let list = PyList::empty(py);
                     for item in seq.iter() {
@@ -1936,23 +2034,6 @@ impl<'py> IntoPyObject<'py> for Anything {
                     }
                     Ok(dict.into_any())
                 }
-                Value::U8(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::U16(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::U32(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::U64(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::I8(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::I16(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::I32(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::I64(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::F32(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::F64(n) => Ok(n.into_pyobject(py)?.into_any()),
-                Value::Char(c) => Ok(PyString::new(py, &c.to_string()).into_any()),
-                Value::Option(opt) => match opt {
-                    Some(inner) => value_to_py(py, inner),
-                    None => Ok(py.None().into_bound(py)),
-                },
-                Value::Newtype(inner) => value_to_py(py, inner),
-                Value::Bytes(b) => Ok(pyo3::types::PyBytes::new(py, b).into_any()),
             }
         }
 
@@ -1978,7 +2059,10 @@ pub struct CommonMetadata {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -1989,7 +2073,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -1997,7 +2082,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2005,7 +2091,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2025,7 +2112,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2037,7 +2125,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2047,7 +2136,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2055,7 +2145,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2063,7 +2154,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2071,7 +2163,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2079,7 +2172,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2087,7 +2181,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2097,7 +2192,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2115,7 +2211,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2123,7 +2220,8 @@ pub struct CommonMetadata {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2650,7 +2748,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2661,7 +2760,10 @@ pub struct Element {
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -2670,7 +2772,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2678,20 +2781,27 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -2699,7 +2809,10 @@ pub struct Element {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -2710,7 +2823,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2718,7 +2832,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2726,7 +2841,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2746,7 +2862,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2758,7 +2875,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2768,7 +2886,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2776,7 +2895,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2784,7 +2904,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2792,7 +2913,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2800,7 +2922,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2808,7 +2931,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2818,7 +2942,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2836,7 +2961,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2844,7 +2970,8 @@ pub struct Element {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -2980,7 +3107,7 @@ impl<'py> FromPyObject<'py> for Box<Element> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for Element {
     type Key = String;
-    type Value = bool;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -2992,7 +3119,15 @@ impl serde_utils::InlinedPair for Element {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -3000,14 +3135,29 @@ impl serde_utils::InlinedPair for Element {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
-        map.insert(Value::String("id_prefixes_are_closed".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -3234,7 +3384,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3243,14 +3394,18 @@ pub struct SchemaDefinition {
     pub license: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub prefixes: Option<HashMap<String, Prefix>>,
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3258,7 +3413,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3269,32 +3425,47 @@ pub struct SchemaDefinition {
     pub default_range: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub subsets: Option<HashMap<String, SubsetDefinition>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub types: Option<HashMap<String, TypeDefinition>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub enums: Option<HashMap<String, EnumDefinition>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "slots"))]
     pub slot_definitions: Option<HashMap<String, SlotDefinition>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub classes: Option<HashMap<String, ClassDefinition>>,
@@ -3312,7 +3483,10 @@ pub struct SchemaDefinition {
     pub slot_names_unique: Option<bool>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub settings: Option<HashMap<String, Setting>>,
@@ -3322,7 +3496,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3333,7 +3508,10 @@ pub struct SchemaDefinition {
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -3342,7 +3520,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3350,20 +3529,27 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -3371,7 +3557,10 @@ pub struct SchemaDefinition {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -3382,7 +3571,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3390,7 +3580,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3398,7 +3589,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3418,7 +3610,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3430,7 +3623,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3440,7 +3634,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3448,7 +3643,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3456,7 +3652,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3464,7 +3661,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3472,7 +3670,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3480,7 +3679,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3490,7 +3690,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3508,7 +3709,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3516,7 +3718,8 @@ pub struct SchemaDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3716,7 +3919,15 @@ impl serde_utils::InlinedPair for SchemaDefinition {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -3726,12 +3937,32 @@ impl serde_utils::InlinedPair for SchemaDefinition {
 
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         map.insert(Value::String("id".into()), v);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        Some(&self.id)
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -3754,7 +3985,8 @@ pub struct AnonymousTypeExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3849,7 +4081,6 @@ impl<'py> FromPyObject<'py> for Box<AnonymousTypeExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct TypeDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
-    #[cfg_attr(feature = "serde", serde(alias = "typeof"))]
     pub typeof_: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub base: Option<String>,
@@ -3873,7 +4104,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3896,7 +4128,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3907,7 +4140,10 @@ pub struct TypeDefinition {
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -3916,7 +4152,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3924,20 +4161,27 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -3945,7 +4189,10 @@ pub struct TypeDefinition {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -3956,7 +4203,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3964,7 +4212,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3972,7 +4221,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -3992,7 +4242,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4004,7 +4255,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4014,7 +4266,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4022,7 +4275,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4030,7 +4284,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4038,7 +4293,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4046,7 +4302,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4054,7 +4311,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4064,7 +4322,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4082,7 +4341,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4090,7 +4350,8 @@ pub struct TypeDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4270,7 +4531,7 @@ impl<'py> FromPyObject<'py> for Box<TypeDefinition> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for TypeDefinition {
     type Key = String;
-    type Value = TypeDefinition;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -4282,7 +4543,15 @@ impl serde_utils::InlinedPair for TypeDefinition {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -4290,14 +4559,29 @@ impl serde_utils::InlinedPair for TypeDefinition {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
-        map.insert(Value::String("typeof_".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -4311,7 +4595,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4322,7 +4607,10 @@ pub struct SubsetDefinition {
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -4331,7 +4619,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4339,20 +4628,27 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -4360,7 +4656,10 @@ pub struct SubsetDefinition {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -4371,7 +4670,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4379,7 +4679,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4387,7 +4688,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4407,7 +4709,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4419,7 +4722,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4429,7 +4733,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4437,7 +4742,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4445,7 +4751,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4453,7 +4760,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4461,7 +4769,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4469,7 +4778,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4479,7 +4789,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4497,7 +4808,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4505,7 +4817,8 @@ pub struct SubsetDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4641,7 +4954,7 @@ impl<'py> FromPyObject<'py> for Box<SubsetDefinition> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for SubsetDefinition {
     type Key = String;
-    type Value = bool;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -4653,7 +4966,15 @@ impl serde_utils::InlinedPair for SubsetDefinition {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -4661,14 +4982,29 @@ impl serde_utils::InlinedPair for SubsetDefinition {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
-        map.insert(Value::String("id_prefixes_are_closed".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -4900,7 +5236,6 @@ pub struct Definition {
     #[cfg_attr(feature = "serde", serde(default))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
-    #[cfg_attr(feature = "serde", serde(alias = "abstract"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub mixin: Option<bool>,
@@ -4911,7 +5246,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4922,7 +5258,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4933,7 +5270,10 @@ pub struct Definition {
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -4942,7 +5282,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4950,20 +5291,27 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -4971,7 +5319,10 @@ pub struct Definition {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -4982,7 +5333,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4990,7 +5342,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4998,7 +5351,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5018,7 +5372,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5030,7 +5385,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5040,7 +5396,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5048,7 +5405,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5056,7 +5414,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5064,7 +5423,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5072,7 +5432,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5080,7 +5441,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5090,7 +5452,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5108,7 +5471,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5116,7 +5480,8 @@ pub struct Definition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5266,7 +5631,7 @@ impl<'py> FromPyObject<'py> for Box<Definition> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for Definition {
     type Key = String;
-    type Value = Definition;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -5278,7 +5643,15 @@ impl serde_utils::InlinedPair for Definition {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -5286,14 +5659,29 @@ impl serde_utils::InlinedPair for Definition {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
-        map.insert(Value::String("is_a".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -5444,7 +5832,10 @@ pub struct AnonymousEnumExpression {
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub permissible_values: Option<HashMap<String, PermissibleValue>>,
@@ -5461,7 +5852,8 @@ pub struct AnonymousEnumExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5546,7 +5938,10 @@ pub struct EnumDefinition {
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub permissible_values: Option<HashMap<String, PermissibleValue>>,
@@ -5563,7 +5958,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5571,7 +5967,6 @@ pub struct EnumDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
-    #[cfg_attr(feature = "serde", serde(alias = "abstract"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub mixin: Option<bool>,
@@ -5582,7 +5977,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5593,7 +5989,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5604,7 +6001,10 @@ pub struct EnumDefinition {
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -5613,7 +6013,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5621,20 +6022,27 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -5642,7 +6050,10 @@ pub struct EnumDefinition {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -5653,7 +6064,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5661,7 +6073,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5669,7 +6082,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5689,7 +6103,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5701,7 +6116,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5711,7 +6127,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5719,7 +6136,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5727,7 +6145,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5735,7 +6154,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5743,7 +6163,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5751,7 +6172,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5761,7 +6183,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5779,7 +6202,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5787,7 +6211,8 @@ pub struct EnumDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5966,7 +6391,7 @@ impl<'py> FromPyObject<'py> for Box<EnumDefinition> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for EnumDefinition {
     type Key = String;
-    type Value = uriorcurie;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -5978,7 +6403,15 @@ impl serde_utils::InlinedPair for EnumDefinition {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -5986,14 +6419,29 @@ impl serde_utils::InlinedPair for EnumDefinition {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
-        map.insert(Value::String("enum_uri".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -6013,13 +6461,19 @@ pub struct EnumBinding {
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -6027,7 +6481,10 @@ pub struct EnumBinding {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -6038,7 +6495,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6046,7 +6504,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6054,7 +6513,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6074,7 +6534,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6086,7 +6547,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6096,7 +6558,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6104,7 +6567,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6112,7 +6576,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6120,7 +6585,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6128,7 +6594,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6136,7 +6603,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6146,7 +6614,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6164,7 +6633,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6172,7 +6642,8 @@ pub struct EnumBinding {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6352,7 +6823,8 @@ pub struct ReachabilityQuery {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6360,7 +6832,8 @@ pub struct ReachabilityQuery {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6431,7 +6904,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6439,7 +6913,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6447,13 +6922,19 @@ pub struct StructuredAlias {
     pub alias_contexts: Option<Vec<uri>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -6461,7 +6942,10 @@ pub struct StructuredAlias {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -6472,7 +6956,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6480,7 +6965,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6488,7 +6974,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6508,7 +6995,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6520,7 +7008,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6530,7 +7019,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6538,7 +7028,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6546,7 +7037,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6554,7 +7046,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6562,7 +7055,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6570,7 +7064,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6580,7 +7075,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6598,7 +7094,8 @@ pub struct StructuredAlias {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6735,6 +7232,7 @@ pub enum ExpressionOrSubtype {
     AnonymousExpression(AnonymousExpression),
     PathExpression(PathExpression),
     SlotExpression(SlotExpression),
+    ExtraSlotsExpression(ExtraSlotsExpression),
     AnonymousSlotExpression(AnonymousSlotExpression),
     SlotDefinition(SlotDefinition),
     AnonymousClassExpression(AnonymousClassExpression),
@@ -6772,6 +7270,11 @@ impl From<PathExpression> for ExpressionOrSubtype {
 impl From<SlotExpression> for ExpressionOrSubtype {
     fn from(x: SlotExpression) -> Self {
         Self::SlotExpression(x)
+    }
+}
+impl From<ExtraSlotsExpression> for ExpressionOrSubtype {
+    fn from(x: ExtraSlotsExpression) -> Self {
+        Self::ExtraSlotsExpression(x)
     }
 }
 impl From<AnonymousSlotExpression> for ExpressionOrSubtype {
@@ -6831,6 +7334,9 @@ impl<'py> FromPyObject<'py> for ExpressionOrSubtype {
         if let Ok(val) = ob.extract::<SlotExpression>() {
             return Ok(ExpressionOrSubtype::SlotExpression(val));
         }
+        if let Ok(val) = ob.extract::<ExtraSlotsExpression>() {
+            return Ok(ExpressionOrSubtype::ExtraSlotsExpression(val));
+        }
         if let Ok(val) = ob.extract::<AnonymousSlotExpression>() {
             return Ok(ExpressionOrSubtype::AnonymousSlotExpression(val));
         }
@@ -6882,6 +7388,9 @@ impl<'py> IntoPyObject<'py> for ExpressionOrSubtype {
                 val.into_pyobject(py).map(move |b| b.into_any())
             }
             ExpressionOrSubtype::SlotExpression(val) => {
+                val.into_pyobject(py).map(move |b| b.into_any())
+            }
+            ExpressionOrSubtype::ExtraSlotsExpression(val) => {
                 val.into_pyobject(py).map(move |b| b.into_any())
             }
             ExpressionOrSubtype::AnonymousSlotExpression(val) => {
@@ -6939,6 +7448,7 @@ impl<'py> FromPyObject<'py> for Box<ExpressionOrSubtype> {
         | AnonymousExpression
         | PathExpression
         | SlotExpression
+        | ExtraSlotsExpression
         | AnonymousSlotExpression
         | SlotDefinition
         | AnonymousClassExpression
@@ -6966,7 +7476,8 @@ pub struct TypeExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7149,7 +7660,10 @@ pub struct EnumExpression {
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub permissible_values: Option<HashMap<String, PermissibleValue>>,
@@ -7166,7 +7680,8 @@ pub struct EnumExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7320,13 +7835,19 @@ impl<'py> FromPyObject<'py> for Box<EnumExpressionOrSubtype> {
 pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -7334,7 +7855,10 @@ pub struct AnonymousExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -7345,7 +7869,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7353,7 +7878,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7361,7 +7887,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7381,7 +7908,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7393,7 +7921,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7403,7 +7932,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7411,7 +7941,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7419,7 +7950,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7427,7 +7959,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7435,7 +7968,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7443,7 +7977,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7453,7 +7988,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7471,7 +8007,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7479,7 +8016,8 @@ pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7697,13 +8235,19 @@ pub struct PathExpression {
     pub range_expression: Option<Box<AnonymousClassExpression>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -7711,7 +8255,10 @@ pub struct PathExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -7722,7 +8269,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7730,7 +8278,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7738,7 +8287,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7758,7 +8308,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7770,7 +8321,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7780,7 +8332,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7788,7 +8341,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7796,7 +8350,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7804,7 +8359,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7812,7 +8368,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7820,7 +8377,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7830,7 +8388,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7848,7 +8407,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7856,7 +8416,8 @@ pub struct PathExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8036,7 +8597,8 @@ pub struct SlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8063,13 +8625,15 @@ pub struct SlotExpression {
     pub any_of: Option<Vec<AnonymousSlotExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub all_of: Option<Vec<AnonymousSlotExpression>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub array: Option<ArrayExpression>,
 }
 #[cfg(feature = "pyo3")]
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
 impl SlotExpression {
     #[new]
-    #[pyo3(signature = (range=None, range_expression=None, enum_range=None, bindings=None, required=None, recommended=None, multivalued=None, inlined=None, inlined_as_list=None, minimum_value=None, maximum_value=None, pattern=None, structured_pattern=None, unit=None, implicit_prefix=None, value_presence=None, equals_string=None, equals_string_in=None, equals_number=None, equals_expression=None, exact_cardinality=None, minimum_cardinality=None, maximum_cardinality=None, has_member=None, all_members=None, none_of=None, exactly_one_of=None, any_of=None, all_of=None))]
+    #[pyo3(signature = (range=None, range_expression=None, enum_range=None, bindings=None, required=None, recommended=None, multivalued=None, inlined=None, inlined_as_list=None, minimum_value=None, maximum_value=None, pattern=None, structured_pattern=None, unit=None, implicit_prefix=None, value_presence=None, equals_string=None, equals_string_in=None, equals_number=None, equals_expression=None, exact_cardinality=None, minimum_cardinality=None, maximum_cardinality=None, has_member=None, all_members=None, none_of=None, exactly_one_of=None, any_of=None, all_of=None, array=None))]
     pub fn new(
         range: Option<String>,
         range_expression: Option<serde_utils::PyValue<AnonymousClassExpression>>,
@@ -8100,6 +8664,7 @@ impl SlotExpression {
         exactly_one_of: Option<serde_utils::PyValue<Vec<AnonymousSlotExpression>>>,
         any_of: Option<serde_utils::PyValue<Vec<AnonymousSlotExpression>>>,
         all_of: Option<serde_utils::PyValue<Vec<AnonymousSlotExpression>>>,
+        array: Option<serde_utils::PyValue<ArrayExpression>>,
     ) -> Self {
         let range_expression = range_expression.map(|v| v.into_inner());
         let enum_range = enum_range.map(|v| v.into_inner());
@@ -8114,6 +8679,7 @@ impl SlotExpression {
         let exactly_one_of = exactly_one_of.map(|v| v.into_inner());
         let any_of = any_of.map(|v| v.into_inner());
         let all_of = all_of.map(|v| v.into_inner());
+        let array = array.map(|v| v.into_inner());
         SlotExpression {
             range,
             range_expression,
@@ -8144,6 +8710,7 @@ impl SlotExpression {
             exactly_one_of,
             any_of,
             all_of,
+            array,
         }
     }
 }
@@ -8291,7 +8858,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8318,15 +8886,23 @@ pub struct AnonymousSlotExpression {
     pub any_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub all_of: Option<Vec<Box<AnonymousSlotExpression>>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub array: Option<ArrayExpression>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -8334,7 +8910,10 @@ pub struct AnonymousSlotExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -8345,7 +8924,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8353,7 +8933,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8361,7 +8942,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8381,7 +8963,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8393,7 +8976,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8403,7 +8987,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8411,7 +8996,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8419,7 +9005,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8427,7 +9014,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8435,7 +9023,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8443,7 +9032,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8453,7 +9043,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8471,7 +9062,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8479,7 +9071,8 @@ pub struct AnonymousSlotExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8490,7 +9083,7 @@ pub struct AnonymousSlotExpression {
 #[pymethods]
 impl AnonymousSlotExpression {
     #[new]
-    #[pyo3(signature = (range=None, range_expression=None, enum_range=None, bindings=None, required=None, recommended=None, multivalued=None, inlined=None, inlined_as_list=None, minimum_value=None, maximum_value=None, pattern=None, structured_pattern=None, unit=None, implicit_prefix=None, value_presence=None, equals_string=None, equals_string_in=None, equals_number=None, equals_expression=None, exact_cardinality=None, minimum_cardinality=None, maximum_cardinality=None, has_member=None, all_members=None, none_of=None, exactly_one_of=None, any_of=None, all_of=None, extensions=None, annotations=None, description=None, alt_descriptions=None, title=None, deprecated=None, todos=None, notes=None, comments=None, examples=None, in_subset=None, from_schema=None, imported_from=None, source=None, in_language=None, see_also=None, deprecated_element_has_exact_replacement=None, deprecated_element_has_possible_replacement=None, aliases=None, structured_aliases=None, mappings=None, exact_mappings=None, close_mappings=None, related_mappings=None, narrow_mappings=None, broad_mappings=None, created_by=None, contributors=None, created_on=None, last_updated_on=None, modified_by=None, status=None, rank=None, categories=None, keywords=None))]
+    #[pyo3(signature = (range=None, range_expression=None, enum_range=None, bindings=None, required=None, recommended=None, multivalued=None, inlined=None, inlined_as_list=None, minimum_value=None, maximum_value=None, pattern=None, structured_pattern=None, unit=None, implicit_prefix=None, value_presence=None, equals_string=None, equals_string_in=None, equals_number=None, equals_expression=None, exact_cardinality=None, minimum_cardinality=None, maximum_cardinality=None, has_member=None, all_members=None, none_of=None, exactly_one_of=None, any_of=None, all_of=None, array=None, extensions=None, annotations=None, description=None, alt_descriptions=None, title=None, deprecated=None, todos=None, notes=None, comments=None, examples=None, in_subset=None, from_schema=None, imported_from=None, source=None, in_language=None, see_also=None, deprecated_element_has_exact_replacement=None, deprecated_element_has_possible_replacement=None, aliases=None, structured_aliases=None, mappings=None, exact_mappings=None, close_mappings=None, related_mappings=None, narrow_mappings=None, broad_mappings=None, created_by=None, contributors=None, created_on=None, last_updated_on=None, modified_by=None, status=None, rank=None, categories=None, keywords=None))]
     pub fn new(
         range: Option<String>,
         range_expression: Option<serde_utils::PyValue<Box<AnonymousClassExpression>>>,
@@ -8521,6 +9114,7 @@ impl AnonymousSlotExpression {
         exactly_one_of: Option<serde_utils::PyValue<Vec<Box<AnonymousSlotExpression>>>>,
         any_of: Option<serde_utils::PyValue<Vec<Box<AnonymousSlotExpression>>>>,
         all_of: Option<serde_utils::PyValue<Vec<Box<AnonymousSlotExpression>>>>,
+        array: Option<serde_utils::PyValue<ArrayExpression>>,
         extensions: Option<serde_utils::PyValue<HashMap<String, ExtensionOrSubtype>>>,
         annotations: Option<serde_utils::PyValue<HashMap<String, Annotation>>>,
         description: Option<String>,
@@ -8570,6 +9164,7 @@ impl AnonymousSlotExpression {
         let exactly_one_of = exactly_one_of.map(|v| v.into_inner());
         let any_of = any_of.map(|v| v.into_inner());
         let all_of = all_of.map(|v| v.into_inner());
+        let array = array.map(|v| v.into_inner());
         let extensions = extensions.map(|v| v.into_inner());
         let annotations = annotations.map(|v| v.into_inner());
         let alt_descriptions = alt_descriptions.map(|v| v.into_inner());
@@ -8605,6 +9200,7 @@ impl AnonymousSlotExpression {
             exactly_one_of,
             any_of,
             all_of,
+            array,
             extensions,
             annotations,
             description,
@@ -8681,9 +9277,6 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
     pub slot_uri: Option<uriorcurie>,
-    #[merge(strategy = overwrite_except_none)]
-    #[cfg_attr(feature = "serde", serde(default))]
-    pub array: Option<ArrayExpression>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
     pub inherited: Option<bool>,
@@ -8786,7 +9379,10 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub type_mappings: Option<HashMap<String, TypeMapping>>,
@@ -8845,7 +9441,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8885,10 +9482,12 @@ pub struct SlotDefinition {
     pub all_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    pub array: Option<ArrayExpression>,
+    #[merge(strategy = overwrite_except_none)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub is_a: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
-    #[cfg_attr(feature = "serde", serde(alias = "abstract"))]
     pub abstract_: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8903,7 +9502,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8917,7 +9517,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8931,7 +9532,10 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -8942,7 +9546,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8951,7 +9556,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8959,14 +9565,20 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -8976,7 +9588,10 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -8990,7 +9605,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8999,7 +9615,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9008,7 +9625,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9035,7 +9653,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9050,7 +9669,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9062,7 +9682,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9071,7 +9692,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9080,7 +9702,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9089,7 +9712,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9098,7 +9722,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9107,7 +9732,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9119,7 +9745,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9143,7 +9770,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9152,7 +9780,8 @@ pub struct SlotDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9163,13 +9792,12 @@ pub struct SlotDefinition {
 #[pymethods]
 impl SlotDefinition {
     #[new]
-    #[pyo3(signature = (name, singular_name=None, domain=None, slot_uri=None, array=None, inherited=None, readonly=None, ifabsent=None, list_elements_unique=None, list_elements_ordered=None, shared=None, key=None, identifier=None, designates_type=None, alias=None, owner=None, domain_of=None, subproperty_of=None, symmetric=None, reflexive=None, locally_reflexive=None, irreflexive=None, asymmetric=None, transitive=None, inverse=None, is_class_field=None, transitive_form_of=None, reflexive_transitive_form_of=None, role=None, is_usage_slot=None, usage_slot_name=None, relational_role=None, slot_group=None, is_grouping_slot=None, path_rule=None, disjoint_with=None, children_are_mutually_disjoint=None, union_of=None, type_mappings=None, range=None, range_expression=None, enum_range=None, bindings=None, required=None, recommended=None, multivalued=None, inlined=None, inlined_as_list=None, minimum_value=None, maximum_value=None, pattern=None, structured_pattern=None, unit=None, implicit_prefix=None, value_presence=None, equals_string=None, equals_string_in=None, equals_number=None, equals_expression=None, exact_cardinality=None, minimum_cardinality=None, maximum_cardinality=None, has_member=None, all_members=None, none_of=None, exactly_one_of=None, any_of=None, all_of=None, is_a=None, abstract_=None, mixin=None, mixins=None, apply_to=None, values_from=None, string_serialization=None, id_prefixes=None, id_prefixes_are_closed=None, definition_uri=None, local_names=None, conforms_to=None, implements=None, instantiates=None, extensions=None, annotations=None, description=None, alt_descriptions=None, title=None, deprecated=None, todos=None, notes=None, comments=None, examples=None, in_subset=None, from_schema=None, imported_from=None, source=None, in_language=None, see_also=None, deprecated_element_has_exact_replacement=None, deprecated_element_has_possible_replacement=None, aliases=None, structured_aliases=None, mappings=None, exact_mappings=None, close_mappings=None, related_mappings=None, narrow_mappings=None, broad_mappings=None, created_by=None, contributors=None, created_on=None, last_updated_on=None, modified_by=None, status=None, rank=None, categories=None, keywords=None))]
+    #[pyo3(signature = (name, singular_name=None, domain=None, slot_uri=None, inherited=None, readonly=None, ifabsent=None, list_elements_unique=None, list_elements_ordered=None, shared=None, key=None, identifier=None, designates_type=None, alias=None, owner=None, domain_of=None, subproperty_of=None, symmetric=None, reflexive=None, locally_reflexive=None, irreflexive=None, asymmetric=None, transitive=None, inverse=None, is_class_field=None, transitive_form_of=None, reflexive_transitive_form_of=None, role=None, is_usage_slot=None, usage_slot_name=None, relational_role=None, slot_group=None, is_grouping_slot=None, path_rule=None, disjoint_with=None, children_are_mutually_disjoint=None, union_of=None, type_mappings=None, range=None, range_expression=None, enum_range=None, bindings=None, required=None, recommended=None, multivalued=None, inlined=None, inlined_as_list=None, minimum_value=None, maximum_value=None, pattern=None, structured_pattern=None, unit=None, implicit_prefix=None, value_presence=None, equals_string=None, equals_string_in=None, equals_number=None, equals_expression=None, exact_cardinality=None, minimum_cardinality=None, maximum_cardinality=None, has_member=None, all_members=None, none_of=None, exactly_one_of=None, any_of=None, all_of=None, array=None, is_a=None, abstract_=None, mixin=None, mixins=None, apply_to=None, values_from=None, string_serialization=None, id_prefixes=None, id_prefixes_are_closed=None, definition_uri=None, local_names=None, conforms_to=None, implements=None, instantiates=None, extensions=None, annotations=None, description=None, alt_descriptions=None, title=None, deprecated=None, todos=None, notes=None, comments=None, examples=None, in_subset=None, from_schema=None, imported_from=None, source=None, in_language=None, see_also=None, deprecated_element_has_exact_replacement=None, deprecated_element_has_possible_replacement=None, aliases=None, structured_aliases=None, mappings=None, exact_mappings=None, close_mappings=None, related_mappings=None, narrow_mappings=None, broad_mappings=None, created_by=None, contributors=None, created_on=None, last_updated_on=None, modified_by=None, status=None, rank=None, categories=None, keywords=None))]
     pub fn new(
         name: String,
         singular_name: Option<String>,
         domain: Option<String>,
         slot_uri: Option<uriorcurie>,
-        array: Option<serde_utils::PyValue<ArrayExpression>>,
         inherited: Option<bool>,
         readonly: Option<String>,
         ifabsent: Option<String>,
@@ -9233,6 +9861,7 @@ impl SlotDefinition {
         exactly_one_of: Option<serde_utils::PyValue<Vec<Box<AnonymousSlotExpression>>>>,
         any_of: Option<serde_utils::PyValue<Vec<Box<AnonymousSlotExpression>>>>,
         all_of: Option<serde_utils::PyValue<Vec<Box<AnonymousSlotExpression>>>>,
+        array: Option<serde_utils::PyValue<ArrayExpression>>,
         is_a: Option<String>,
         abstract_: Option<bool>,
         mixin: Option<bool>,
@@ -9283,7 +9912,6 @@ impl SlotDefinition {
         categories: Option<Vec<uriorcurie>>,
         keywords: Option<Vec<String>>,
     ) -> Self {
-        let array = array.map(|v| v.into_inner());
         let path_rule = path_rule.map(|v| v.into_inner());
         let type_mappings = type_mappings.map(|v| v.into_inner());
         let range_expression = range_expression.map(|v| v.into_inner());
@@ -9299,6 +9927,7 @@ impl SlotDefinition {
         let exactly_one_of = exactly_one_of.map(|v| v.into_inner());
         let any_of = any_of.map(|v| v.into_inner());
         let all_of = all_of.map(|v| v.into_inner());
+        let array = array.map(|v| v.into_inner());
         let local_names = local_names.map(|v| v.into_inner());
         let extensions = extensions.map(|v| v.into_inner());
         let annotations = annotations.map(|v| v.into_inner());
@@ -9310,7 +9939,6 @@ impl SlotDefinition {
             singular_name,
             domain,
             slot_uri,
-            array,
             inherited,
             readonly,
             ifabsent,
@@ -9374,6 +10002,7 @@ impl SlotDefinition {
             exactly_one_of,
             any_of,
             all_of,
+            array,
             is_a,
             abstract_,
             mixin,
@@ -9458,7 +10087,7 @@ impl SlotDefinition {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for SlotDefinition {
     type Key = String;
-    type Value = String;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -9470,7 +10099,15 @@ impl serde_utils::InlinedPair for SlotDefinition {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -9478,14 +10115,29 @@ impl serde_utils::InlinedPair for SlotDefinition {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
-        map.insert(Value::String("singular_name".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -9505,7 +10157,10 @@ pub struct ClassExpression {
     pub all_of: Option<Vec<AnonymousClassExpression>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub slot_conditions: Option<HashMap<String, SlotDefinition>>,
@@ -9656,19 +10311,28 @@ pub struct AnonymousClassExpression {
     pub all_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub slot_conditions: Option<HashMap<String, Box<SlotDefinition>>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -9676,7 +10340,10 @@ pub struct AnonymousClassExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -9687,7 +10354,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9695,7 +10363,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9703,7 +10372,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9723,7 +10393,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9735,7 +10406,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9745,7 +10417,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9753,7 +10426,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9761,7 +10435,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9769,7 +10444,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9777,7 +10453,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9785,7 +10462,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9795,7 +10473,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9813,7 +10492,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9821,7 +10501,8 @@ pub struct AnonymousClassExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -9963,13 +10644,19 @@ pub struct ClassDefinition {
     pub slots: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub slot_usage: Option<HashMap<String, Box<SlotDefinition>>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub attributes: Option<HashMap<String, Box<SlotDefinition>>>,
@@ -9985,7 +10672,10 @@ pub struct ClassDefinition {
     pub tree_root: Option<bool>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub unique_keys: Option<HashMap<String, Box<UniqueKey>>>,
@@ -10002,6 +10692,10 @@ pub struct ClassDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
     pub children_are_mutually_disjoint: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    pub extra_slots: Option<Box<ExtraSlotsExpression>>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub alias: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub any_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub exactly_one_of: Option<Vec<Box<AnonymousClassExpression>>>,
@@ -10011,14 +10705,16 @@ pub struct ClassDefinition {
     pub all_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub slot_conditions: Option<HashMap<String, Box<SlotDefinition>>>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
-    #[cfg_attr(feature = "serde", serde(alias = "abstract"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
     pub mixin: Option<bool>,
@@ -10029,7 +10725,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10040,7 +10737,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10051,7 +10749,10 @@ pub struct ClassDefinition {
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub local_names: Option<HashMap<String, LocalName>>,
@@ -10060,7 +10761,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10068,20 +10770,27 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -10089,7 +10798,10 @@ pub struct ClassDefinition {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -10100,7 +10812,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10108,7 +10821,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10116,7 +10830,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10136,7 +10851,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10148,7 +10864,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10158,7 +10875,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10166,7 +10884,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10174,7 +10893,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10182,7 +10902,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10190,7 +10911,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10198,7 +10920,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10208,7 +10931,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10226,7 +10950,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10234,7 +10959,8 @@ pub struct ClassDefinition {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10245,7 +10971,7 @@ pub struct ClassDefinition {
 #[pymethods]
 impl ClassDefinition {
     #[new]
-    #[pyo3(signature = (name, slots=None, slot_usage=None, attributes=None, class_uri=None, subclass_of=None, union_of=None, defining_slots=None, tree_root=None, unique_keys=None, rules=None, classification_rules=None, slot_names_unique=None, represents_relationship=None, disjoint_with=None, children_are_mutually_disjoint=None, any_of=None, exactly_one_of=None, none_of=None, all_of=None, slot_conditions=None, is_a=None, abstract_=None, mixin=None, mixins=None, apply_to=None, values_from=None, string_serialization=None, id_prefixes=None, id_prefixes_are_closed=None, definition_uri=None, local_names=None, conforms_to=None, implements=None, instantiates=None, extensions=None, annotations=None, description=None, alt_descriptions=None, title=None, deprecated=None, todos=None, notes=None, comments=None, examples=None, in_subset=None, from_schema=None, imported_from=None, source=None, in_language=None, see_also=None, deprecated_element_has_exact_replacement=None, deprecated_element_has_possible_replacement=None, aliases=None, structured_aliases=None, mappings=None, exact_mappings=None, close_mappings=None, related_mappings=None, narrow_mappings=None, broad_mappings=None, created_by=None, contributors=None, created_on=None, last_updated_on=None, modified_by=None, status=None, rank=None, categories=None, keywords=None))]
+    #[pyo3(signature = (name, slots=None, slot_usage=None, attributes=None, class_uri=None, subclass_of=None, union_of=None, defining_slots=None, tree_root=None, unique_keys=None, rules=None, classification_rules=None, slot_names_unique=None, represents_relationship=None, disjoint_with=None, children_are_mutually_disjoint=None, extra_slots=None, alias=None, any_of=None, exactly_one_of=None, none_of=None, all_of=None, slot_conditions=None, is_a=None, abstract_=None, mixin=None, mixins=None, apply_to=None, values_from=None, string_serialization=None, id_prefixes=None, id_prefixes_are_closed=None, definition_uri=None, local_names=None, conforms_to=None, implements=None, instantiates=None, extensions=None, annotations=None, description=None, alt_descriptions=None, title=None, deprecated=None, todos=None, notes=None, comments=None, examples=None, in_subset=None, from_schema=None, imported_from=None, source=None, in_language=None, see_also=None, deprecated_element_has_exact_replacement=None, deprecated_element_has_possible_replacement=None, aliases=None, structured_aliases=None, mappings=None, exact_mappings=None, close_mappings=None, related_mappings=None, narrow_mappings=None, broad_mappings=None, created_by=None, contributors=None, created_on=None, last_updated_on=None, modified_by=None, status=None, rank=None, categories=None, keywords=None))]
     pub fn new(
         name: String,
         slots: Option<Vec<String>>,
@@ -10263,6 +10989,8 @@ impl ClassDefinition {
         represents_relationship: Option<bool>,
         disjoint_with: Option<Vec<String>>,
         children_are_mutually_disjoint: Option<bool>,
+        extra_slots: Option<serde_utils::PyValue<Box<ExtraSlotsExpression>>>,
+        alias: Option<String>,
         any_of: Option<serde_utils::PyValue<Vec<Box<AnonymousClassExpression>>>>,
         exactly_one_of: Option<serde_utils::PyValue<Vec<Box<AnonymousClassExpression>>>>,
         none_of: Option<serde_utils::PyValue<Vec<Box<AnonymousClassExpression>>>>,
@@ -10323,6 +11051,7 @@ impl ClassDefinition {
         let unique_keys = unique_keys.map(|v| v.into_inner());
         let rules = rules.map(|v| v.into_inner());
         let classification_rules = classification_rules.map(|v| v.into_inner());
+        let extra_slots = extra_slots.map(|v| v.into_inner());
         let any_of = any_of.map(|v| v.into_inner());
         let exactly_one_of = exactly_one_of.map(|v| v.into_inner());
         let none_of = none_of.map(|v| v.into_inner());
@@ -10351,6 +11080,8 @@ impl ClassDefinition {
             represents_relationship,
             disjoint_with,
             children_are_mutually_disjoint,
+            extra_slots,
+            alias,
             any_of,
             exactly_one_of,
             none_of,
@@ -10434,7 +11165,7 @@ impl<'py> FromPyObject<'py> for Box<ClassDefinition> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for ClassDefinition {
     type Key = String;
-    type Value = uriorcurie;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -10446,7 +11177,15 @@ impl serde_utils::InlinedPair for ClassDefinition {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("name".into()));
+        if !already_keyed {
+            map.insert(Value::String("name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -10454,14 +11193,29 @@ impl serde_utils::InlinedPair for ClassDefinition {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("name".into()), Value::String(k));
-        map.insert(Value::String("class_uri".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -10557,13 +11311,19 @@ pub struct ClassRule {
     pub deactivated: Option<bool>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -10571,7 +11331,10 @@ pub struct ClassRule {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -10582,7 +11345,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10590,7 +11354,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10598,7 +11363,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10618,7 +11384,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10630,7 +11397,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10640,7 +11408,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10648,7 +11417,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10656,7 +11426,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10664,7 +11435,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10672,7 +11444,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10680,7 +11453,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10690,7 +11464,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10706,7 +11481,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10714,7 +11490,8 @@ pub struct ClassRule {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10935,13 +11712,19 @@ pub struct ArrayExpression {
     pub dimensions: Option<Vec<DimensionExpression>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -10949,7 +11732,10 @@ pub struct ArrayExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -10960,7 +11746,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10968,7 +11755,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10976,7 +11764,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -10996,7 +11785,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11008,7 +11798,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11018,7 +11809,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11026,7 +11818,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11034,7 +11827,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11042,7 +11836,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11050,7 +11845,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11058,7 +11854,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11068,7 +11865,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11086,7 +11884,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11094,7 +11893,8 @@ pub struct ArrayExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11234,13 +12034,19 @@ pub struct DimensionExpression {
     pub exact_cardinality: Option<isize>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -11248,7 +12054,10 @@ pub struct DimensionExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -11259,7 +12068,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11267,7 +12077,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11275,7 +12086,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11295,7 +12107,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11307,7 +12120,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11317,7 +12131,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11325,7 +12140,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11333,7 +12149,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11341,7 +12158,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11349,7 +12167,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11357,7 +12176,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11367,7 +12187,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11385,7 +12206,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11393,7 +12215,8 @@ pub struct DimensionExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11530,13 +12353,19 @@ pub struct PatternExpression {
     pub partial_match: Option<bool>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -11544,7 +12373,10 @@ pub struct PatternExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -11555,7 +12387,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11563,7 +12396,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11571,7 +12405,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11591,7 +12426,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11603,7 +12439,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11613,7 +12450,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11621,7 +12459,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11629,7 +12468,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11637,7 +12477,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11645,7 +12486,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11653,7 +12495,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11663,7 +12506,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11681,7 +12525,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11689,7 +12534,8 @@ pub struct PatternExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11821,19 +12667,28 @@ pub struct ImportExpression {
     pub import_as: Option<ncname>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub import_map: Option<HashMap<String, Setting>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -11841,7 +12696,10 @@ pub struct ImportExpression {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -11852,7 +12710,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11860,7 +12719,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11868,7 +12728,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11888,7 +12749,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11900,7 +12762,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11910,7 +12773,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11918,7 +12782,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11926,7 +12791,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11934,7 +12800,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11942,7 +12809,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11950,7 +12818,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11960,7 +12829,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11978,7 +12848,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -11986,7 +12857,8 @@ pub struct ImportExpression {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12168,7 +13040,15 @@ impl serde_utils::InlinedPair for Setting {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("setting_key".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("setting_key".into()));
+        if !already_keyed {
+            map.insert(Value::String("setting_key".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -12178,12 +13058,32 @@ impl serde_utils::InlinedPair for Setting {
 
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("setting_key".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("setting_key".into()), key_value);
         map.insert(Value::String("setting_value".into()), v);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        Some(&self.setting_value)
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("setting_key".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -12247,7 +13147,15 @@ impl serde_utils::InlinedPair for Prefix {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("prefix_prefix".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("prefix_prefix".into()));
+        if !already_keyed {
+            map.insert(Value::String("prefix_prefix".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -12257,12 +13165,32 @@ impl serde_utils::InlinedPair for Prefix {
 
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("prefix_prefix".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("prefix_prefix".into()), key_value);
         map.insert(Value::String("prefix_reference".into()), v);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        Some(&self.prefix_reference)
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("prefix_prefix".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -12326,7 +13254,15 @@ impl serde_utils::InlinedPair for LocalName {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("local_name_source".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("local_name_source".into()));
+        if !already_keyed {
+            map.insert(Value::String("local_name_source".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -12336,12 +13272,32 @@ impl serde_utils::InlinedPair for LocalName {
 
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("local_name_source".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("local_name_source".into()), key_value);
         map.insert(Value::String("local_name_value".into()), v);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        Some(&self.local_name_value)
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("local_name_source".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -12463,10 +13419,16 @@ impl serde_utils::InlinedPair for AltDescription {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(
-            Value::String("alt_description_source".into()),
-            Value::String(k),
-        );
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("alt_description_source".into()))
+            || map.contains_key(&Value::String("source".into()));
+        if !already_keyed {
+            map.insert(Value::String("alt_description_source".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -12476,15 +13438,32 @@ impl serde_utils::InlinedPair for AltDescription {
 
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(
-            Value::String("alt_description_source".into()),
-            Value::String(k),
-        );
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("alt_description_source".into()), key_value);
         map.insert(Value::String("alt_description_text".into()), v);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        Some(&self.alt_description_text)
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("alt_description_source".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -12504,7 +13483,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12512,7 +13492,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12523,19 +13504,28 @@ pub struct PermissibleValue {
     pub mixins: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -12546,7 +13536,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12554,7 +13545,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12562,7 +13554,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12582,7 +13575,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12594,7 +13588,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12604,7 +13599,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12612,7 +13608,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12620,7 +13617,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12628,7 +13626,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12636,7 +13635,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12644,7 +13644,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12654,7 +13655,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12672,7 +13674,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12680,7 +13683,8 @@ pub struct PermissibleValue {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12814,7 +13818,7 @@ impl<'py> FromPyObject<'py> for Box<PermissibleValue> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for PermissibleValue {
     type Key = String;
-    type Value = String;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -12826,7 +13830,15 @@ impl serde_utils::InlinedPair for PermissibleValue {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("text".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("text".into()));
+        if !already_keyed {
+            map.insert(Value::String("text".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -12834,14 +13846,29 @@ impl serde_utils::InlinedPair for PermissibleValue {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("text".into()), Value::String(k));
-        map.insert(Value::String("description".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("text".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("text".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -12858,13 +13885,19 @@ pub struct UniqueKey {
     pub consider_nulls_inequal: Option<bool>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -12872,7 +13905,10 @@ pub struct UniqueKey {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -12883,7 +13919,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12891,7 +13928,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12899,7 +13937,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12919,7 +13958,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12931,7 +13971,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12941,7 +13982,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12949,7 +13991,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12957,7 +14000,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12965,7 +14009,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12973,7 +14018,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12981,7 +14027,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -12991,7 +14038,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13009,7 +14057,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13017,7 +14066,8 @@ pub struct UniqueKey {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13142,7 +14192,7 @@ impl<'py> FromPyObject<'py> for Box<UniqueKey> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for UniqueKey {
     type Key = String;
-    type Value = bool;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -13154,7 +14204,15 @@ impl serde_utils::InlinedPair for UniqueKey {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("unique_key_name".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("unique_key_name".into()));
+        if !already_keyed {
+            map.insert(Value::String("unique_key_name".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -13162,14 +14220,29 @@ impl serde_utils::InlinedPair for UniqueKey {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("unique_key_name".into()), Value::String(k));
-        map.insert(Value::String("consider_nulls_inequal".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("unique_key_name".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
+        }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("unique_key_name".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
         }
     }
 }
@@ -13188,13 +14261,19 @@ pub struct TypeMapping {
     pub string_serialization: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub annotations: Option<HashMap<String, Annotation>>,
@@ -13202,7 +14281,10 @@ pub struct TypeMapping {
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
-        serde(deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional")
+        serde(
+            deserialize_with = "serde_utils::deserialize_inlined_dict_map_optional",
+            serialize_with = "serde_utils::serialize_inlined_dict_map_optional"
+        )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
@@ -13213,7 +14295,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13221,7 +14304,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13229,7 +14313,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13249,7 +14334,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13261,7 +14347,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13271,7 +14358,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13279,7 +14367,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13287,7 +14376,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13295,7 +14385,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13303,7 +14394,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13311,7 +14403,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13321,7 +14414,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13339,7 +14433,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13347,7 +14442,8 @@ pub struct TypeMapping {
     #[cfg_attr(
         feature = "serde",
         serde(
-            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional"
+            deserialize_with = "serde_utils::deserialize_primitive_list_or_single_value_optional",
+            serialize_with = "serde_utils::serialize_primitive_list_or_single_value_optional"
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
@@ -13472,7 +14568,7 @@ impl<'py> FromPyObject<'py> for Box<TypeMapping> {
 #[cfg(feature = "serde")]
 impl serde_utils::InlinedPair for TypeMapping {
     type Key = String;
-    type Value = TypeDefinition;
+    type Value = Value;
     type Error = String;
 
     fn extract_key(&self) -> &Self::Key {
@@ -13484,7 +14580,16 @@ impl serde_utils::InlinedPair for TypeMapping {
             Value::Map(m) => m,
             _ => return Err("ClassDefinition must be a mapping".into()),
         };
-        map.insert(Value::String("framework_key".into()), Value::String(k));
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        // Only inject the inferred key if the inner map does not already carry it
+        // under its canonical name or any accepted alias. Injecting unconditionally
+        // would produce a duplicate field once serde resolves aliases.
+        let already_keyed = map.contains_key(&Value::String("framework_key".into()))
+            || map.contains_key(&Value::String("framework".into()));
+        if !already_keyed {
+            map.insert(Value::String("framework_key".into()), key_value);
+        }
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
@@ -13492,15 +14597,80 @@ impl serde_utils::InlinedPair for TypeMapping {
         }
     }
 
-    fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error> {
+    fn from_pair_simple(k: Self::Key, _v: Value) -> Result<Self, Self::Error> {
         let mut map: BTreeMap<Value, Value> = BTreeMap::new();
-        map.insert(Value::String("framework_key".into()), Value::String(k));
-        map.insert(Value::String("mapped_type".into()), v);
+        let key_value = serde_value::to_value(k.clone())
+            .map_err(|e| format!("unable to serialize key: {}", e))?;
+        map.insert(Value::String("framework_key".into()), key_value);
         let de = Value::Map(map).into_deserializer();
         match serde_path_to_error::deserialize(de) {
             Ok(ok) => Ok(ok),
             Err(e) => Err(format!("at `{}`: {}", e.path(), e.inner())),
         }
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        let value = match serde_value::to_value(self) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        match value {
+            Value::Map(mut map) => {
+                map.remove(&Value::String("framework_key".into()));
+                Some(Value::Map(map))
+            }
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+pub struct ExtraSlotsExpression {
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub allowed: Option<bool>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub range_expression: Option<Box<AnonymousSlotExpression>>,
+}
+#[cfg(feature = "pyo3")]
+#[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
+#[pymethods]
+impl ExtraSlotsExpression {
+    #[new]
+    #[pyo3(signature = (allowed=None, range_expression=None))]
+    pub fn new(
+        allowed: Option<bool>,
+        range_expression: Option<serde_utils::PyValue<Box<AnonymousSlotExpression>>>,
+    ) -> Self {
+        let range_expression = range_expression.map(|v| v.into_inner());
+        ExtraSlotsExpression {
+            allowed,
+            range_expression,
+        }
+    }
+}
+
+#[cfg(feature = "pyo3")]
+impl<'py> IntoPyObject<'py> for Box<ExtraSlotsExpression> {
+    type Target = PyAny;
+    type Output = Bound<'py, Self::Target>;
+    type Error = PyErr;
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        (*self).into_pyobject(py).map(move |x| x.into_any())
+    }
+}
+
+#[cfg(feature = "pyo3")]
+impl<'py> FromPyObject<'py> for Box<ExtraSlotsExpression> {
+    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+        if let Ok(val) = ob.extract::<ExtraSlotsExpression>() {
+            return Ok(Box::new(val));
+        }
+        Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+            "invalid ExtraSlotsExpression",
+        ))
     }
 }
 

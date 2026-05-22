@@ -7,10 +7,10 @@ use serde::de::Error;
 #[cfg(feature = "serde")]
 use serde::{
     de::{DeserializeOwned, IntoDeserializer},
-    Deserialize, Deserializer,
+    Deserialize, Deserializer, Serialize, Serializer,
 };
 #[cfg(feature = "serde")]
-use serde_value::{Value, ValueDeserializer};
+use serde_value::{to_value, Value, ValueDeserializer};
 #[cfg(feature = "serde")]
 use std::collections::{BTreeMap, HashMap};
 
@@ -23,6 +23,14 @@ pub trait InlinedPair: Sized {
     fn from_pair_mapping(k: Self::Key, v: Value) -> Result<Self, Self::Error>;
     fn from_pair_simple(k: Self::Key, v: Value) -> Result<Self, Self::Error>;
     fn extract_key(&self) -> &Self::Key;
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        None
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        None
+    }
 }
 
 #[cfg(feature = "serde")]
@@ -47,6 +55,14 @@ where
     #[inline]
     fn extract_key(&self) -> &Self::Key {
         T::extract_key(self)
+    }
+
+    fn simple_value(&self) -> Option<&Self::Value> {
+        self.as_ref().simple_value()
+    }
+
+    fn compact_value(&self) -> Option<Value> {
+        self.as_ref().compact_value()
     }
 }
 
@@ -272,6 +288,139 @@ fn py_any_to_value(bound: &Bound<'_, PyAny>) -> PyResult<Value> {
     Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
         "unsupported value type for conversion",
     ))
+}
+
+#[cfg(feature = "serde")]
+#[allow(dead_code)]
+pub fn serialize_inlined_dict_map<S, T>(
+    value: &HashMap<T::Key, T>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: InlinedPair + Serialize,
+    T::Key: Serialize + Clone + Ord,
+    T::Value: Serialize,
+{
+    let mut ordered: BTreeMap<T::Key, &T> = BTreeMap::new();
+    for (k, v) in value.iter() {
+        ordered.insert(k.clone(), v);
+    }
+
+    let mut as_values: BTreeMap<T::Key, Value> = BTreeMap::new();
+    for (k, v) in ordered.iter() {
+        if let Some(simple) = v.simple_value() {
+            let val = to_value(simple).map_err(|e| <S::Error as serde::ser::Error>::custom(e))?;
+            as_values.insert((*k).clone(), val);
+            continue;
+        }
+        if let Some(compact) = v.compact_value() {
+            as_values.insert((*k).clone(), compact);
+            continue;
+        }
+        let val = to_value(*v).map_err(|e| <S::Error as serde::ser::Error>::custom(e))?;
+        as_values.insert((*k).clone(), val);
+    }
+    as_values.serialize(serializer)
+}
+
+#[cfg(feature = "serde")]
+#[allow(dead_code)]
+pub fn serialize_inlined_dict_map_optional<S, T>(
+    value: &Option<HashMap<T::Key, T>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: InlinedPair + Serialize,
+    T::Key: Serialize + Clone + Ord,
+    T::Value: Serialize,
+{
+    match value {
+        Some(map) => serialize_inlined_dict_map(map, serializer),
+        None => serializer.serialize_none(),
+    }
+}
+
+#[cfg(feature = "serde")]
+#[allow(dead_code)]
+pub fn serialize_inlined_dict_list<S, T>(value: &Vec<T>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: InlinedPair + Serialize,
+    T::Key: Serialize + Clone + Ord,
+    T::Value: Serialize,
+{
+    let mut ordered: BTreeMap<T::Key, &T> = BTreeMap::new();
+    for item in value.iter() {
+        ordered.insert(item.extract_key().clone(), item);
+    }
+
+    let mut as_values: BTreeMap<T::Key, Value> = BTreeMap::new();
+    for (k, v) in ordered.iter() {
+        if let Some(simple) = v.simple_value() {
+            let val = to_value(simple).map_err(|e| <S::Error as serde::ser::Error>::custom(e))?;
+            as_values.insert((*k).clone(), val);
+            continue;
+        }
+        if let Some(compact) = v.compact_value() {
+            as_values.insert((*k).clone(), compact);
+            continue;
+        }
+        let val = to_value(*v).map_err(|e| <S::Error as serde::ser::Error>::custom(e))?;
+        as_values.insert((*k).clone(), val);
+    }
+    as_values.serialize(serializer)
+}
+
+#[cfg(feature = "serde")]
+#[allow(dead_code)]
+pub fn serialize_inlined_dict_list_optional<S, T>(
+    value: &Option<Vec<T>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: InlinedPair + Serialize,
+    T::Key: Serialize + Clone + Ord,
+    T::Value: Serialize,
+{
+    match value {
+        Some(items) => serialize_inlined_dict_list(items, serializer),
+        None => serializer.serialize_none(),
+    }
+}
+
+#[cfg(feature = "serde")]
+#[allow(dead_code)]
+pub fn serialize_primitive_list_or_single_value<S, T>(
+    value: &Vec<T>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Serialize,
+{
+    match value.as_slice() {
+        [single] => single.serialize(serializer),
+        _ => value.serialize(serializer),
+    }
+}
+
+#[cfg(feature = "serde")]
+#[allow(dead_code)]
+pub fn serialize_primitive_list_or_single_value_optional<S, T>(
+    value: &Option<Vec<T>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Serialize,
+{
+    match value {
+        Some(v) => serialize_primitive_list_or_single_value(v, serializer),
+        None => serializer.serialize_none(),
+    }
 }
 
 #[cfg(all(feature = "serde", feature = "pyo3"))]
