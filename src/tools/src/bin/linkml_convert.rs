@@ -3,8 +3,8 @@ use clap::{Parser, ValueEnum};
 #[cfg(feature = "ttl")]
 use linkml_runtime::{
     load_json_file, load_yaml_file,
-    turtle::{write_ntriples, write_turtle, TurtleOptions},
-    turtle_import::{import_ntriples, import_turtle},
+    rdf_export::{export_ntriples_many, export_turtle_many, ExportOptions},
+    rdf_import::{import_ntriples, import_turtle, ImportOptions},
     validate, LinkMLInstance,
 };
 #[cfg(feature = "ttl")]
@@ -53,6 +53,15 @@ struct Args {
     /// Use skolem IRIs instead of blank nodes (Turtle output only)
     #[arg(long)]
     skolem: bool,
+    /// Treat harvest warnings as fatal errors (RDF input only).
+    #[arg(long)]
+    strict: bool,
+    /// Path to a disk-backed RDF graph store (fjall). Only used for RDF
+    /// inputs; without this flag, the in-memory store is used. Requires
+    /// the `disk_graph` build feature.
+    #[cfg(feature = "disk_graph")]
+    #[arg(long = "disk-graph")]
+    disk_graph: Option<PathBuf>,
 }
 
 #[cfg(not(feature = "ttl"))]
@@ -122,9 +131,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // ── Load input ──
+    // ── Writer ──
 
-    let instances: Vec<LinkMLInstance> = match in_fmt {
+    let mut writer: Box<dyn std::io::Write> = if let Some(out) = &args.output {
+        Box::new(File::create(out)?)
+    } else {
+        Box::new(std::io::stdout())
+    };
+
+    // ── Build the input iterator + warnings handle ──
+
+    type InstanceItem = Result<LinkMLInstance, Box<dyn std::error::Error>>;
+    type InstanceIter = Box<dyn Iterator<Item = InstanceItem>>;
+    type WarningsHandle =
+        Option<std::rc::Rc<std::cell::RefCell<Vec<linkml_runtime::ValidationResult>>>>;
+    let (instances, warnings_handle): (InstanceIter, WarningsHandle) = match in_fmt {
         Format::Yaml | Format::Json => {
             let class_view = sv.get_tree_root_or(None).ok_or_else(|| {
                 format!(
@@ -143,83 +164,139 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("invalid: {e}");
                 std::process::exit(1);
             }
-            vec![value]
+            (Box::new(std::iter::once(Ok(value))), None)
         }
         Format::Turtle | Format::Ntriples => {
-            // --class is validated above as mandatory for RDF input
-            let class_refs: Vec<&str> = args.class.iter().map(|s| s.as_str()).collect();
+            let class_refs: Vec<String> = args.class.clone();
+            let class_refs_borrow: Vec<&str> = class_refs.iter().map(|s| s.as_str()).collect();
+
+            let options = ImportOptions {
+                #[cfg(feature = "disk_graph")]
+                disk_path: args.disk_graph.clone(),
+                #[cfg(not(feature = "disk_graph"))]
+                disk_path: None,
+                strict: args.strict,
+            };
+
             let file = File::open(&args.data)?;
             let reader = BufReader::new(file);
-            let result = match in_fmt {
-                Format::Ntriples => {
-                    import_ntriples(reader, &sv, &conv, &class_refs).map_err(|e| e.to_string())?
-                }
-                _ => import_turtle(reader, &sv, &conv, &class_refs).map_err(|e| e.to_string())?,
-            };
-            let unconsumed_str = result
-                .unconsumed_count
-                .map(|n| format!("{n}"))
-                .unwrap_or_else(|| "unknown".to_string());
-            eprintln!(
-                "Imported {} instances ({unconsumed_str} unconsumed triples)",
-                result.instances.values().map(|v| v.len()).sum::<usize>(),
-            );
-            result.instances.into_values().flatten().collect()
+            let stream = match in_fmt {
+                Format::Ntriples => import_ntriples(
+                    reader,
+                    sv.clone(),
+                    conv.clone(),
+                    &class_refs_borrow,
+                    options,
+                ),
+                _ => import_turtle(
+                    reader,
+                    sv.clone(),
+                    conv.clone(),
+                    &class_refs_borrow,
+                    options,
+                ),
+            }
+            .map_err(|e| e.to_string())?;
+
+            let handle = stream.warnings_handle();
+            (
+                Box::new(stream.map(|res| {
+                    res.map(|(_class, inst)| inst)
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+                })),
+                Some(handle),
+            )
         }
     };
 
-    // ── Write output ──
+    // ── Output: drive from the iterator, write one instance at a time ──
 
-    let mut writer: Box<dyn std::io::Write> = if let Some(out) = &args.output {
-        Box::new(File::create(out)?)
-    } else {
-        Box::new(std::io::stdout())
-    };
-
+    let mut count: usize = 0;
     match out_fmt {
+        Format::Json => {
+            writeln!(writer, "[")?;
+            let mut first = true;
+            for item in instances {
+                let value = item?;
+                if !first {
+                    writeln!(writer, ",")?;
+                }
+                first = false;
+                serde_json::to_writer_pretty(&mut writer, &value.to_json())?;
+                count += 1;
+            }
+            writeln!(writer)?;
+            writeln!(writer, "]")?;
+        }
+        Format::Yaml => {
+            for item in instances {
+                let value = item?;
+                writeln!(writer, "---")?;
+                serde_yaml::to_writer(&mut writer, &value.to_json())?;
+                count += 1;
+            }
+        }
         Format::Turtle => {
-            for value in &instances {
-                write_turtle(
-                    value,
+            // Adapt the iterator: write one instance at a time via export_turtle_many.
+            for item in instances {
+                let value = item?;
+                export_turtle_many(
+                    std::iter::once(value),
                     &sv,
                     &schema,
                     &conv,
                     &mut writer,
-                    TurtleOptions {
+                    ExportOptions {
                         skolem: args.skolem,
                     },
                 )?;
-            }
-        }
-        Format::Json => {
-            if instances.len() == 1 {
-                serde_json::to_writer_pretty(&mut writer, &instances[0].to_json())?;
-            } else {
-                let arr: Vec<_> = instances.iter().map(|i| i.to_json()).collect();
-                serde_json::to_writer_pretty(&mut writer, &arr)?;
-            }
-            writeln!(writer)?;
-        }
-        Format::Yaml => {
-            if instances.len() == 1 {
-                serde_yaml::to_writer(&mut writer, &instances[0].to_json())?;
-            } else {
-                let arr: Vec<_> = instances.iter().map(|i| i.to_json()).collect();
-                serde_yaml::to_writer(&mut writer, &arr)?;
+                count += 1;
             }
         }
         Format::Ntriples => {
-            for value in &instances {
-                write_ntriples(
-                    value,
+            for item in instances {
+                let value = item?;
+                export_ntriples_many(
+                    std::iter::once(value),
                     &sv,
                     &schema,
                     &conv,
                     &mut writer,
-                    TurtleOptions {
+                    ExportOptions {
                         skolem: args.skolem,
                     },
                 )?;
+                count += 1;
+            }
+        }
+    }
+
+    eprintln!("Wrote {count} instances (streaming, no Vec accumulation)");
+
+    // ── Warning summary ──
+    if let Some(handle) = warnings_handle {
+        let drained = std::mem::take(&mut *handle.borrow_mut());
+        if !drained.is_empty() {
+            let mut by_type: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
+            for w in &drained {
+                *by_type.entry(format!("{:?}", w.problem_type)).or_insert(0) += 1;
+            }
+            eprintln!("Harvest emitted {} warning(s):", drained.len());
+            for (kind, n) in &by_type {
+                eprintln!("  {kind}: {n}");
+            }
+            if std::env::var_os("LINKML_CONVERT_SHOW_WARNINGS").is_some() {
+                for w in &drained {
+                    eprintln!(
+                        "  - [{:?}] {}: {}",
+                        w.problem_type,
+                        w.subject.join("/"),
+                        w.detail
+                    );
+                }
+            } else {
+                eprintln!("  (set LINKML_CONVERT_SHOW_WARNINGS=1 for per-occurrence detail)");
             }
         }
     }

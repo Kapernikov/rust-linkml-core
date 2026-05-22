@@ -55,7 +55,7 @@ struct UnknownFieldConstraint;
 
 impl ObjectConstraint for UnknownFieldConstraint {
     fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut ValidationResultSink) {
-        for (extra, _) in ctx.unknown_fields.iter() {
+        for extra in ctx.unknown_fields.keys() {
             let mut path = ctx.path.clone();
             path.push(extra.clone());
             sink.push_error(
@@ -71,7 +71,7 @@ struct UnknownDeclaredSlotConstraint;
 
 impl ObjectConstraint for UnknownDeclaredSlotConstraint {
     fn evaluate(&self, ctx: &ObjectConstraintContext, sink: &mut ValidationResultSink) {
-        for (key, _) in ctx.values.iter() {
+        for key in ctx.values.keys() {
             let known = ctx.class.slots().iter().any(|s| s.name == *key);
             if !known {
                 let mut path = ctx.path.clone();

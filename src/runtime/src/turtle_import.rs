@@ -5,12 +5,13 @@
 //! then "harvests" typed instances by walking the graph guided by the schema's
 //! class and slot definitions.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::io::Read;
+use std::rc::Rc;
 
 use oxrdf::{
     vocab::{rdf, xsd},
-    Literal, NamedNode, NamedOrBlankNode, TermRef,
+    Literal, NamedOrBlankNode, Term, TermRef,
 };
 use serde_json::Value as JsonValue;
 
@@ -20,9 +21,8 @@ use linkml_schemaview::schemaview::{
 };
 use linkml_schemaview::Converter;
 
-use crate::rdf_import_store::RdfImportStore;
 use crate::triple_source::TripleSource;
-use crate::{new_node_id, LinkMLInstance};
+use crate::{new_node_id, LinkMLInstance, ValidationProblemType, ValidationResult};
 
 // ── Error types ──────────────────────────────────────────────────────────────
 
@@ -46,6 +46,9 @@ pub enum ImportError {
         value: String,
         expected_type: String,
     },
+    /// In strict mode, a harvest warning is promoted to an error.
+    /// Boxed so the `Result` shape stays narrow (clippy result_large_err).
+    ValidationFailure(Box<ValidationResult>),
 }
 
 impl std::fmt::Display for ImportError {
@@ -67,6 +70,9 @@ impl std::fmt::Display for ImportError {
                 value,
                 expected_type,
             } => write!(f, "Cannot convert \"{value}\" to {expected_type}"),
+            ImportError::ValidationFailure(vr) => {
+                write!(f, "Validation failure in strict mode: {}", vr.detail)
+            }
         }
     }
 }
@@ -83,15 +89,6 @@ impl From<IdentifierError> for ImportError {
     fn from(e: IdentifierError) -> Self {
         ImportError::Parse(format!("Identifier error: {e:?}"))
     }
-}
-
-/// Result of a successful import.
-pub struct ImportResult {
-    /// Instances grouped by class name.
-    pub instances: HashMap<String, Vec<LinkMLInstance>>,
-    /// Number of triples in the graph that were not consumed during harvesting.
-    /// `None` when the store does not support counting.
-    pub unconsumed_count: Option<usize>,
 }
 
 /// Supported RDF serialization formats for import.
@@ -195,7 +192,7 @@ fn resolve_enum_value(
 
 /// Resolve the ClassView for a subject by looking at its rdf:type triple(s).
 /// Picks the most specific type defined in the schema.
-fn resolve_class<T: TripleSource>(
+pub(crate) fn resolve_class<T: TripleSource>(
     store: &T,
     sv: &SchemaView,
     _conv: &Converter,
@@ -269,20 +266,27 @@ fn ancestor_depth(cv: &ClassView) -> usize {
 // ── Harvest context & main algorithm ────────────────────────────────────────
 
 /// State carried through recursive instance assembly.
-struct HarvestContext<'a, T: TripleSource> {
-    store: &'a T,
-    sv: &'a SchemaView,
-    conv: &'a Converter,
+pub struct HarvestContext<'a, T: TripleSource> {
+    pub(crate) store: &'a T,
+    pub(crate) sv: &'a SchemaView,
+    pub(crate) conv: &'a Converter,
     /// Subjects currently being assembled (for cycle detection on inlined paths).
-    visit_stack: HashSet<String>,
+    pub(crate) visit_stack: HashSet<String>,
     /// Subjects that have been inlined into a parent (should not appear as top-level).
-    claimed: HashSet<String>,
-    /// Count of triples consumed during harvesting.
-    consumed_count: usize,
+    pub(crate) claimed: HashSet<String>,
+    /// Count of triples consumed during harvesting. Kept for legacy callers
+    /// that read it; the new public API (`RdfStream`) does not expose it.
+    pub(crate) consumed_count: usize,
+    /// Schema/data mismatches discovered during harvest. Drained by
+    /// `RdfStream::pop_warnings`. Shared with the parent `RdfStream`.
+    pub(crate) warnings: Rc<RefCell<Vec<ValidationResult>>>,
+    /// If true, `emit_warning` returns `Err(ImportError::ValidationFailure)`
+    /// instead of pushing to the buffer.
+    pub(crate) strict: bool,
 }
 
 impl<'a, T: TripleSource> HarvestContext<'a, T> {
-    fn new(store: &'a T, sv: &'a SchemaView, conv: &'a Converter) -> Self {
+    pub fn new(store: &'a T, sv: &'a SchemaView, conv: &'a Converter) -> Self {
         Self {
             store,
             sv,
@@ -290,13 +294,60 @@ impl<'a, T: TripleSource> HarvestContext<'a, T> {
             visit_stack: HashSet::new(),
             claimed: HashSet::new(),
             consumed_count: 0,
+            warnings: Rc::new(RefCell::new(Vec::new())),
+            strict: false,
         }
+    }
+
+    pub fn new_with_warnings(
+        store: &'a T,
+        sv: &'a SchemaView,
+        conv: &'a Converter,
+        warnings: Rc<RefCell<Vec<ValidationResult>>>,
+        strict: bool,
+    ) -> Self {
+        Self {
+            store,
+            sv,
+            conv,
+            visit_stack: HashSet::new(),
+            claimed: HashSet::new(),
+            consumed_count: 0,
+            warnings,
+            strict,
+        }
+    }
+
+    pub fn consumed_count(&self) -> usize {
+        self.consumed_count
+    }
+
+    pub fn claimed(&self) -> &HashSet<String> {
+        &self.claimed
+    }
+
+    /// Push a warning into the shared buffer. In strict mode, returns an
+    /// error that aborts the import; otherwise returns Ok(()).
+    pub(crate) fn emit_warning(&self, vr: ValidationResult) -> Result<(), ImportError> {
+        if self.strict {
+            return Err(ImportError::ValidationFailure(Box::new(vr)));
+        }
+        self.warnings.borrow_mut().push(vr);
+        Ok(())
     }
 }
 
 /// Assemble a single subject into a `LinkMLInstance::Object`.
-fn harvest_subject<T: TripleSource>(
+///
+/// Recursive inline calls (named-node Inline-mode objects, all blank-node
+/// objects) are routed through `materializer.materialise(...)` so the
+/// streaming path can deduplicate shared subtrees. For the legacy
+/// non-streaming path, the caller passes an empty `Materializer` which
+/// always builds without caching — behaviour identical to the pre-streaming
+/// code.
+pub fn harvest_subject<T: TripleSource>(
     ctx: &mut HarvestContext<'_, T>,
+    materializer: &mut crate::rdf_streaming::Materializer,
     subject: &NamedOrBlankNode,
     class: &ClassView,
 ) -> Result<LinkMLInstance, ImportError> {
@@ -320,6 +371,22 @@ fn harvest_subject<T: TripleSource>(
     // Always mark rdf:type as consumed
     consumed_predicates.insert(rdf::TYPE.as_str().to_string());
 
+    // One scan over the subject's triples; bucket objects by predicate IRI.
+    // Owned `Term`s outlive the slot loop and the unknown-fields pass so we
+    // never need a second `triples_for_subject` call.
+    let mut by_predicate: HashMap<String, Vec<Term>> = HashMap::new();
+    for triple in ctx.store.triples_for_subject(subject) {
+        let pred = triple.predicate.as_str().to_string();
+        let obj_owned: Term = match triple.object {
+            TermRef::Literal(l) => Term::Literal(l.into_owned()),
+            TermRef::NamedNode(n) => Term::NamedNode(n.into_owned()),
+            TermRef::BlankNode(b) => Term::BlankNode(b.into_owned()),
+            #[allow(unreachable_patterns)]
+            _ => continue,
+        };
+        by_predicate.entry(pred).or_default().push(obj_owned);
+    }
+
     // Populate identifier slot from subject IRI (if class has one and subject is a named node)
     let id_slot_name = match (class.identifier_slot(), subject) {
         (Some(id_slot), NamedOrBlankNode::NamedNode(nn)) => {
@@ -333,6 +400,19 @@ fn harvest_subject<T: TripleSource>(
                     sv: ctx.sv.clone(),
                 },
             );
+            // Suppress UndeclaredSlot warning for the id slot's predicate:
+            // we don't iterate it through the normal slot loop (because
+            // the value comes from the subject IRI, not a separate triple),
+            // but it IS a declared slot. Remove it from the by_predicate
+            // bucket so the unknown-fields pass doesn't see it, and from
+            // consumed_predicates for symmetry.
+            let id_canonical = id_slot.canonical_uri();
+            let id_pred_iri = id_canonical
+                .to_uri(ctx.conv)
+                .map(|u| u.0)
+                .unwrap_or_else(|_| id_canonical.to_string());
+            consumed_predicates.insert(id_pred_iri.clone());
+            by_predicate.remove(&id_pred_iri);
             Some(id_slot.name.clone())
         }
         _ => None,
@@ -360,27 +440,24 @@ fn harvest_subject<T: TripleSource>(
 
         consumed_predicates.insert(pred_iri.clone());
 
-        let predicate = NamedNode::new_unchecked(&pred_iri);
-        let objects: Vec<_> = ctx
-            .store
-            .objects_for_subject_predicate(subject, &predicate)
-            .collect();
-
-        if objects.is_empty() {
+        // Take the objects for this predicate out of the bucket so the
+        // unknown-fields pass below doesn't see them.
+        let owned_objects: Vec<Term> = by_predicate.remove(&pred_iri).unwrap_or_default();
+        if owned_objects.is_empty() {
             continue;
         }
 
-        for obj_term in &objects {
-            let obj_str = match *obj_term {
-                TermRef::Literal(l) => l.to_string(),
-                TermRef::NamedNode(n) => n.as_str().to_string(),
-                TermRef::BlankNode(b) => b.to_string(),
+        for obj_term in &owned_objects {
+            let obj_str = match obj_term {
+                Term::Literal(l) => l.to_string(),
+                Term::NamedNode(n) => n.as_str().to_string(),
+                Term::BlankNode(b) => b.to_string(),
                 #[allow(unreachable_patterns)]
                 _ => String::new(),
             };
             ctx.store.on_consumed(&subject_key, &pred_iri, &obj_str);
         }
-        ctx.consumed_count += objects.len();
+        ctx.consumed_count += owned_objects.len();
 
         let range_infos = slot.get_range_info();
         let range_info = range_infos.first();
@@ -394,10 +471,9 @@ fn harvest_subject<T: TripleSource>(
 
         // Convert each object term to a LinkMLInstance
         let mut items: Vec<LinkMLInstance> = Vec::new();
-        for obj_term in &objects {
-            match *obj_term {
-                TermRef::Literal(lit) => {
-                    let lit = lit.into_owned();
+        for obj_term in owned_objects {
+            match obj_term {
+                Term::Literal(lit) => {
                     // Check for language-tagged literal on an inlined slot
                     // whose range class has lang_tag_slots
                     if lit.language().is_some() && inline_mode == SlotInlineMode::Inline {
@@ -439,8 +515,29 @@ fn harvest_subject<T: TripleSource>(
                         }
                     }
 
-                    // Regular literal → scalar
-                    let json_val = literal_to_json(&lit)?;
+                    // Regular literal → scalar. If conversion to the
+                    // declared range fails (e.g. "abc"^^xsd:string in an
+                    // xsd:integer-ranged slot), fall back to the raw string
+                    // and emit a SlotRangeViolation warning so the caller
+                    // sees the mismatch rather than the whole import dying.
+                    let json_val = match literal_to_json(&lit) {
+                        Ok(v) => v,
+                        Err(ImportError::LiteralConversion {
+                            value,
+                            expected_type,
+                        }) => {
+                            ctx.emit_warning(ValidationResult::warning(
+                                ValidationProblemType::SlotRangeViolation,
+                                vec![subject_key.clone(), slot.name.clone()],
+                                format!(
+                                    "literal {value:?} could not be converted to slot `{}`'s range (`{expected_type}`); kept as raw string",
+                                    slot.name,
+                                ),
+                            ))?;
+                            JsonValue::String(value)
+                        }
+                        Err(other) => return Err(other),
+                    };
                     items.push(LinkMLInstance::Scalar {
                         node_id: new_node_id(),
                         value: json_val,
@@ -449,12 +546,12 @@ fn harvest_subject<T: TripleSource>(
                         sv: ctx.sv.clone(),
                     });
                 }
-                TermRef::NamedNode(nn) => {
-                    let iri_str = nn.as_str();
+                Term::NamedNode(nn) => {
+                    let iri_str = nn.as_str().to_string();
 
                     // Enum resolution
                     if has_enum {
-                        if let Some(pv_name) = resolve_enum_value(iri_str, slot, ctx.conv) {
+                        if let Some(pv_name) = resolve_enum_value(&iri_str, slot, ctx.conv) {
                             items.push(LinkMLInstance::Scalar {
                                 node_id: new_node_id(),
                                 value: JsonValue::String(pv_name),
@@ -470,34 +567,36 @@ fn harvest_subject<T: TripleSource>(
                     if inline_mode == SlotInlineMode::Reference || is_range_iri {
                         items.push(LinkMLInstance::Scalar {
                             node_id: new_node_id(),
-                            value: JsonValue::String(iri_str.to_string()),
+                            value: JsonValue::String(iri_str),
                             slot: slot.clone(),
                             class: Some(class.clone()),
                             sv: ctx.sv.clone(),
                         });
                     } else if inline_mode == SlotInlineMode::Inline {
-                        // Inline: recursively harvest
-                        let obj_subject = NamedOrBlankNode::NamedNode(nn.into_owned());
+                        // Inline: recursively harvest via the materializer so
+                        // shared subjects can be cached.
+                        let obj_subject = NamedOrBlankNode::NamedNode(nn);
                         let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
-                        let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
+                        let child = materializer.materialise(ctx, &obj_subject, &obj_class)?;
                         ctx.claimed.insert(obj_subject.to_string());
                         items.push(child);
                     } else {
                         // Primitive NamedNode — store as string
                         items.push(LinkMLInstance::Scalar {
                             node_id: new_node_id(),
-                            value: JsonValue::String(iri_str.to_string()),
+                            value: JsonValue::String(iri_str),
                             slot: slot.clone(),
                             class: Some(class.clone()),
                             sv: ctx.sv.clone(),
                         });
                     }
                 }
-                TermRef::BlankNode(bn) => {
-                    // Blank nodes are always inlined
-                    let obj_subject = NamedOrBlankNode::BlankNode(bn.into_owned());
+                Term::BlankNode(bn) => {
+                    // Blank nodes are always inlined; route through the
+                    // materializer for cache awareness.
+                    let obj_subject = NamedOrBlankNode::BlankNode(bn);
                     let obj_class = resolve_class(ctx.store, ctx.sv, ctx.conv, &obj_subject)?;
-                    let child = harvest_subject(ctx, &obj_subject, &obj_class)?;
+                    let child = materializer.materialise(ctx, &obj_subject, &obj_class)?;
                     ctx.claimed.insert(obj_subject.to_string());
                     items.push(child);
                 }
@@ -515,6 +614,23 @@ fn harvest_subject<T: TripleSource>(
         // Wrap items according to container mode
         let instance = match container_mode {
             SlotContainerMode::SingleValue => {
+                if items.len() > 1 {
+                    // Schema says single-valued; RDF has multiple objects.
+                    // First wins (HashMap order — nondeterministic across runs);
+                    // emit a warning so the caller can see they have either
+                    // a schema bug or unexpectedly multi-valued source data.
+                    let dropped = items.len() - 1;
+                    ctx.emit_warning(ValidationResult::warning(
+                        ValidationProblemType::MaxCountViolation,
+                        vec![subject_key.clone(), slot.name.clone()],
+                        format!(
+                            "slot `{}` is single-valued but RDF has {} objects; keeping first, dropping {} others",
+                            slot.name,
+                            items.len(),
+                            dropped,
+                        ),
+                    ))?;
+                }
                 items
                     .into_iter()
                     .next()
@@ -552,19 +668,37 @@ fn harvest_subject<T: TripleSource>(
         values.insert(slot.name.clone(), instance);
     }
 
-    // Collect unknown fields (predicates on subject not matching any slot)
+    // Unknown fields = predicates left in the by_predicate bucket after the
+    // slot loop. consumed_predicates is redundant with the bucket-removal
+    // strategy but kept for clarity.
     let mut unknown_fields: HashMap<String, JsonValue> = HashMap::new();
-    for triple in ctx.store.triples_for_subject(subject) {
-        let pred = triple.predicate;
-        let obj = triple.object;
-        if !consumed_predicates.contains(pred.as_str()) {
-            let key = pred.as_str().to_string();
+    for (pred_iri, objs) in by_predicate.into_iter() {
+        if consumed_predicates.contains(&pred_iri) {
+            continue;
+        }
+        // The subject's class has no slot matching this predicate. The data
+        // carries information the schema doesn't model. Emit a warning per
+        // distinct predicate (not per occurrence — N objects for the same
+        // unknown predicate is still one "you forgot this slot" finding).
+        ctx.emit_warning(ValidationResult::warning(
+            ValidationProblemType::UndeclaredSlot,
+            vec![subject_key.clone(), pred_iri.clone()],
+            format!(
+                "subject of class `{}` has predicate <{}> that is not a slot of that class; {} object(s) dropped into unknown_fields",
+                class.name(),
+                pred_iri,
+                objs.len(),
+            ),
+        ))?;
+        if let Some(obj) = objs.into_iter().last() {
             let val = match obj {
-                TermRef::Literal(lit) => JsonValue::String(lit.value().to_string()),
-                TermRef::NamedNode(nn) => JsonValue::String(nn.as_str().to_string()),
-                _ => JsonValue::String(obj.to_string()),
+                Term::Literal(lit) => JsonValue::String(lit.value().to_string()),
+                Term::NamedNode(nn) => JsonValue::String(nn.as_str().to_string()),
+                Term::BlankNode(bn) => JsonValue::String(bn.to_string()),
+                #[allow(unreachable_patterns)]
+                other => JsonValue::String(other.to_string()),
             };
-            unknown_fields.insert(key, val);
+            unknown_fields.insert(pred_iri, val);
         }
     }
 
@@ -609,124 +743,20 @@ fn extract_mapping_key(instance: &LinkMLInstance) -> String {
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
-
-/// Harvest instances from a triple source.
-///
-/// This is the core import function, generic over any [`TripleSource`]
-/// implementation. The one-shot functions (`import_turtle`, etc.) are thin
-/// wrappers that create an [`RdfImportStore`] and call this.
-pub fn import_from_store<T: TripleSource>(
-    store: &T,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let total_triples = store.len();
-
-    // Resolve root classes (names, CURIEs, or full URIs) to ClassViews and their URIs
-    let mut root_class_info: Vec<(ClassView, NamedNode)> = Vec::new();
-    for &name in root_classes {
-        let cv = sv
-            .get_class(&Identifier::new(name), conv)
-            .map_err(ImportError::SchemaError)?
-            .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
-        let class_uri = cv.get_uri(conv, false, true)?;
-        let class_uri_node = NamedNode::new_unchecked(class_uri.to_string());
-        root_class_info.push((cv, class_uri_node));
-    }
-
-    // Collect all (subject, class) pairs for root classes
-    let rdf_type_node = rdf::TYPE.into_owned();
-    let mut candidates: Vec<(NamedOrBlankNode, ClassView)> = Vec::new();
-    for (cv, class_uri_node) in &root_class_info {
-        for subject in store.subjects_for_predicate_object(&rdf_type_node, class_uri_node) {
-            candidates.push((subject.into_owned(), cv.clone()));
-        }
-    }
-
-    // Harvest all candidates
-    let mut ctx = HarvestContext::new(store, sv, conv);
-    let mut harvested: Vec<(String, NamedOrBlankNode, LinkMLInstance)> = Vec::new();
-    for (subject, cv) in &candidates {
-        let instance = harvest_subject(&mut ctx, subject, cv)?;
-        harvested.push((cv.name().to_string(), subject.clone(), instance));
-    }
-
-    // Filter: only keep instances whose subject is not claimed (not inlined somewhere)
-    let mut instances: HashMap<String, Vec<LinkMLInstance>> = HashMap::new();
-    for (class_name, subject, instance) in harvested {
-        let subject_key = subject.to_string();
-        if !ctx.claimed.contains(&subject_key) {
-            instances.entry(class_name).or_default().push(instance);
-        }
-    }
-
-    let unconsumed_count = total_triples.map(|total| total.saturating_sub(ctx.consumed_count));
-
-    Ok(ImportResult {
-        instances,
-        unconsumed_count,
-    })
-}
-
-/// Import RDF/Turtle data into LinkML instances.
-///
-/// Parses the Turtle from `reader`, then harvests instances of the specified
-/// `root_classes` from the graph. Each root class can be specified as a plain
-/// name (`"OperationalPoint"`), CURIE (`"rinf:OperationalPoint"`), or full
-/// URI (`"http://data.europa.eu/949/OperationalPoint"`).
-///
-/// Subjects reachable as inlined sub-objects from another root instance are
-/// inlined there, not emitted as top-level.
-pub fn import_turtle(
-    reader: impl Read,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let store = RdfImportStore::from_turtle(reader)?;
-    import_from_store(&store, sv, conv, root_classes)
-}
-
-/// Import RDF/N-Triples data into LinkML instances.
-pub fn import_ntriples(
-    reader: impl Read,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let store = RdfImportStore::from_ntriples(reader)?;
-    import_from_store(&store, sv, conv, root_classes)
-}
-
-/// Import RDF data in the specified format into LinkML instances.
-pub fn import_rdf(
-    reader: impl Read,
-    format: RdfFormat,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    let store = RdfImportStore::from_rdf(reader, format)?;
-    import_from_store(&store, sv, conv, root_classes)
-}
-
-/// Convenience: import from a Turtle string.
-pub fn import_turtle_from_string(
-    ttl: &str,
-    sv: &SchemaView,
-    conv: &Converter,
-    root_classes: &[&str],
-) -> Result<ImportResult, ImportError> {
-    import_turtle(std::io::Cursor::new(ttl.as_bytes()), sv, conv, root_classes)
-}
+//
+// The top-level RDF entry points (import_turtle / import_ntriples /
+// export_turtle / export_ntriples) live in `crate::rdf_import` and
+// `crate::rdf_export`. The legacy HashMap-shaped ImportResult and the
+// import_from_store wrapper were removed in Phase 3 — the new RdfStream
+// iterator is the single user-facing harvest surface.
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oxrdf::Term;
+    use crate::rdf_import_store::RdfImportStore;
+    use oxrdf::{NamedNode, Term};
 
     #[test]
     fn test_parse_turtle_basic() {

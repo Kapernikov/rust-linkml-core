@@ -1,13 +1,17 @@
 #![cfg(feature = "ttl")]
 
-use linkml_runtime::rdf_import_store::{RdfImportStore, TrackingRdfImportStore};
-use linkml_runtime::turtle_import::import_ntriples;
+use linkml_runtime::rdf_import::{import_ntriples, ImportOptions};
+use linkml_runtime::rdf_import_store::RdfImportStore;
+use linkml_runtime::rdf_streaming::import_owned_store_streaming;
 use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::io::BufReader;
 use std::path::Path;
+use std::rc::Rc;
 
 const SCHEMA_DIR: &str = "/home/kervel/projects/asset360/consolidator-server/components/py/asset360-model/asset360_model/schemas/rinf/repository/v1.0.0";
 const NT_FILE: &str = "/tmp/export_4.nt";
@@ -49,11 +53,19 @@ fn herefoss_json() {
     let file = fs::File::open(NT_FILE).unwrap();
     let reader = BufReader::new(file);
 
-    let result = import_ntriples(reader, &sv, &conv, &["OperationalPoint"]).unwrap();
+    let stream = import_ntriples(
+        reader,
+        sv,
+        conv,
+        &["OperationalPoint"],
+        ImportOptions::default(),
+    )
+    .unwrap();
 
-    let ops = result.instances.get("OperationalPoint").unwrap();
-    let herefoss = ops
-        .iter()
+    let herefoss = stream
+        .map(|r| r.unwrap())
+        .filter(|(c, _)| c == "OperationalPoint")
+        .map(|(_, inst)| inst)
         .find(|inst| {
             let json = inst.to_json();
             json.get("opName")
@@ -129,20 +141,24 @@ fn import_era_enriched_ntriples() {
     ];
 
     let start = std::time::Instant::now();
-    let result = import_ntriples(reader, &sv, &conv, root_classes);
-    let elapsed = start.elapsed();
+    let stream_result = import_ntriples(reader, sv, conv, root_classes, ImportOptions::default());
 
-    match result {
-        Ok(import_result) => {
+    match stream_result {
+        Ok(stream) => {
+            let mut counts: HashMap<String, usize> = HashMap::new();
+            let mut total = 0usize;
+            for item in stream {
+                let (class_name, _inst) = item.expect("harvest yields ok");
+                *counts.entry(class_name).or_insert(0) += 1;
+                total += 1;
+            }
+            let elapsed = start.elapsed();
             eprintln!("\n=== ERA Enriched Import Results ===");
             eprintln!("Time: {elapsed:?}");
-            let mut total = 0;
-            for (class_name, instances) in &import_result.instances {
-                eprintln!("  {class_name}: {} instances", instances.len());
-                total += instances.len();
+            for (class_name, n) in &counts {
+                eprintln!("  {class_name}: {n} instances");
             }
             eprintln!("  Total instances: {total}");
-            eprintln!("  Unconsumed triples: {:?}", import_result.unconsumed_count);
             eprintln!("===================================\n");
 
             assert!(total > 0, "Expected at least some instances");
@@ -170,7 +186,7 @@ fn import_era_with_tracking() {
     let file = fs::File::open(ERA_NT_FILE).unwrap();
     let reader = BufReader::new(file);
 
-    let store = TrackingRdfImportStore::from_ntriples(reader).unwrap();
+    let store = RdfImportStore::from_ntriples(reader).unwrap();
 
     let root_classes = &[
         "OperationalPoint",
@@ -186,9 +202,27 @@ fn import_era_with_tracking() {
         "ETCS",
     ];
 
-    let result = store.import(&sv, &conv, root_classes).unwrap();
+    // Drive the harvest via the low-level owned-store streaming API so
+    // we keep access to the store for consumed/unconsumed introspection
+    // (the new RdfStream owns its own store and exposes equivalents).
+    let stream = import_owned_store_streaming(
+        store,
+        sv,
+        conv,
+        root_classes,
+        Rc::new(RefCell::new(Vec::new())),
+        false,
+    )
+    .unwrap();
+    let mut total = 0usize;
+    let mut owned_stream = stream;
+    for item in &mut owned_stream {
+        let _ = item.expect("harvest yields ok");
+        total += 1;
+    }
+    let store_ref = owned_stream.store();
 
-    let consumed = store.consumed_subjects();
+    let consumed = store_ref.consumed_subjects();
     eprintln!("Consumed subjects: {}", consumed.len());
     assert!(
         !consumed.is_empty(),
@@ -199,14 +233,13 @@ fn import_era_with_tracking() {
         "Expected at least one consumed subject containing 'matdata.eu'"
     );
 
-    let unconsumed = store.unconsumed_subjects();
+    let unconsumed = store_ref.unconsumed_subjects();
     eprintln!("Unconsumed subjects: {}", unconsumed.len());
     assert!(
         !unconsumed.is_empty(),
         "Expected unconsumed subjects (Switch, Signal etc. not in schema)"
     );
 
-    let total: usize = result.instances.values().map(|v| v.len()).sum();
     eprintln!("Total instances: {total}");
 }
 
@@ -224,19 +257,31 @@ fn import_era_with_tracking_via_conversion() {
     let file = fs::File::open(ERA_NT_FILE).unwrap();
     let reader = BufReader::new(file);
 
-    let plain_store = RdfImportStore::from_ntriples(reader).unwrap();
-    let store = plain_store.with_tracking();
+    // Tracking is now always-on in RdfImportStore; the legacy
+    // .with_tracking() conversion is no longer needed.
+    let store = RdfImportStore::from_ntriples(reader).unwrap();
 
-    let result = store.import(&sv, &conv, &["OperationalPoint"]).unwrap();
+    let stream = import_owned_store_streaming(
+        store,
+        sv,
+        conv,
+        &["OperationalPoint"],
+        Rc::new(RefCell::new(Vec::new())),
+        false,
+    )
+    .unwrap();
+    let mut owned_stream = stream;
+    let mut ops_count = 0usize;
+    for item in &mut owned_stream {
+        let (cls, _inst) = item.expect("harvest yields ok");
+        if cls == "OperationalPoint" {
+            ops_count += 1;
+        }
+    }
+    assert!(ops_count > 0, "Expected OperationalPoint instances");
+    eprintln!("OperationalPoint instances: {ops_count}");
 
-    let ops = result.instances.get("OperationalPoint");
-    assert!(
-        ops.is_some_and(|v| !v.is_empty()),
-        "Expected OperationalPoint instances"
-    );
-    eprintln!("OperationalPoint instances: {}", ops.unwrap().len());
-
-    let consumed = store.consumed_subjects();
+    let consumed = owned_stream.store().consumed_subjects();
     eprintln!("Consumed subjects: {}", consumed.len());
     assert!(
         !consumed.is_empty(),

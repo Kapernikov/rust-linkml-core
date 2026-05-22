@@ -27,7 +27,15 @@ use constraints::{run_object_constraints, run_slot_constraints};
 pub mod blame;
 pub mod diff;
 #[cfg(feature = "ttl")]
+pub mod rdf_export;
+#[cfg(feature = "ttl")]
+pub mod rdf_import;
+#[cfg(feature = "ttl")]
 pub mod rdf_import_store;
+#[cfg(feature = "disk_graph")]
+pub mod rdf_import_store_disk;
+#[cfg(feature = "ttl")]
+pub mod rdf_streaming;
 #[cfg(feature = "ttl")]
 pub mod triple_source;
 #[cfg(feature = "ttl")]
@@ -352,7 +360,7 @@ pub type NodeId = u64;
 
 static NEXT_NODE_ID: AtomicU64 = AtomicU64::new(1);
 
-fn new_node_id() -> NodeId {
+pub(crate) fn new_node_id() -> NodeId {
     NEXT_NODE_ID.fetch_add(1, Ordering::Relaxed)
 }
 
@@ -385,6 +393,86 @@ impl LinkMLInstance {
                 }
                 JsonValue::Object(map)
             }
+        }
+    }
+
+    /// Recursively clone the tree but allocate a fresh [`NodeId`] at every node.
+    ///
+    /// Use this when the same harvested subtree needs to be emitted multiple
+    /// times (e.g. a shared inlined subject denormalised across two parents).
+    /// Each emitted occurrence gets unique IDs so blame/diff tracking is
+    /// correct.
+    pub fn clone_with_fresh_node_ids(&self) -> Self {
+        match self {
+            LinkMLInstance::Scalar {
+                value,
+                slot,
+                class,
+                sv,
+                ..
+            } => LinkMLInstance::Scalar {
+                node_id: new_node_id(),
+                value: value.clone(),
+                slot: slot.clone(),
+                class: class.clone(),
+                sv: sv.clone(),
+            },
+            LinkMLInstance::Null {
+                slot, class, sv, ..
+            } => LinkMLInstance::Null {
+                node_id: new_node_id(),
+                slot: slot.clone(),
+                class: class.clone(),
+                sv: sv.clone(),
+            },
+            LinkMLInstance::List {
+                values,
+                slot,
+                class,
+                sv,
+                ..
+            } => LinkMLInstance::List {
+                node_id: new_node_id(),
+                values: values
+                    .iter()
+                    .map(|v| v.clone_with_fresh_node_ids())
+                    .collect(),
+                slot: slot.clone(),
+                class: class.clone(),
+                sv: sv.clone(),
+            },
+            LinkMLInstance::Mapping {
+                values,
+                slot,
+                class,
+                sv,
+                ..
+            } => LinkMLInstance::Mapping {
+                node_id: new_node_id(),
+                values: values
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone_with_fresh_node_ids()))
+                    .collect(),
+                slot: slot.clone(),
+                class: class.clone(),
+                sv: sv.clone(),
+            },
+            LinkMLInstance::Object {
+                values,
+                class,
+                sv,
+                unknown_fields,
+                ..
+            } => LinkMLInstance::Object {
+                node_id: new_node_id(),
+                values: values
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone_with_fresh_node_ids()))
+                    .collect(),
+                class: class.clone(),
+                sv: sv.clone(),
+                unknown_fields: unknown_fields.clone(),
+            },
         }
     }
 
