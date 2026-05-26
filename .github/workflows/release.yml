@@ -37,6 +37,9 @@ jobs:
           VER="${VER#v}"
           echo "Setting src/python/Cargo.toml version to ${VER}"
           sed -i -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Stage README for maturin
+        shell: bash
+        run: cp README.md src/python/README.md
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -77,6 +80,9 @@ jobs:
           VER="${VER#v}"
           echo "Setting src/python/Cargo.toml version to ${VER}"
           sed -i -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Stage README for maturin
+        shell: bash
+        run: cp README.md src/python/README.md
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -114,6 +120,9 @@ jobs:
           VER="${VER#v}"
           echo "Setting src/python/Cargo.toml version to ${VER}"
           sed -i -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Stage README for maturin
+        shell: bash
+        run: cp README.md src/python/README.md
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -147,6 +156,9 @@ jobs:
           VER="${VER#v}"
           echo "Setting src/python/Cargo.toml version to ${VER}"
           sed -i '' -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Stage README for maturin
+        shell: bash
+        run: cp README.md src/python/README.md
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -172,6 +184,9 @@ jobs:
           VER="${VER#v}"
           echo "Setting src/python/Cargo.toml version to ${VER}"
           sed -i -E "s/^version = \".*\"/version = \"${VER}\"/" src/python/Cargo.toml
+      - name: Stage README for maturin
+        shell: bash
+        run: cp README.md src/python/README.md
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:

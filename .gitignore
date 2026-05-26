@@ -21,6 +21,9 @@ src/main/Cargo.lock
 #.idea/
 venv
 
+# Copied in by the release workflow so maturin sdist can include it.
+src/python/README.md
+
 __pycache__
 *.so
 *~

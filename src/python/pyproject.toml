@@ -11,7 +11,7 @@ authors = [
     { name = "Jonny Saunders" },
 ]
 license = { text = "Apache-2.0" }
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["linkml", "rdf", "turtle", "schema", "validation"]
 classifiers = [
     "Programming Language :: Rust",
