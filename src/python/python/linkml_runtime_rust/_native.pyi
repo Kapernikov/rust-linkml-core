@@ -459,6 +459,8 @@ class AnonymousSlotExpression:
     @property
     def all_of(self) -> typing.Optional[builtins.list[AnonymousSlotExpression]]: ...
     @property
+    def array(self) -> typing.Optional[ArrayExpression]: ...
+    @property
     def extensions(self) -> typing.Optional[builtins.dict[builtins.str, Annotation]]: ...
     @property
     def annotations(self) -> typing.Optional[builtins.dict[builtins.str, Annotation]]: ...
@@ -586,6 +588,8 @@ class AnonymousSlotExpression:
     def any_of(self, value: typing.Optional[builtins.list[AnonymousSlotExpression]]) -> None: ...
     @all_of.setter
     def all_of(self, value: typing.Optional[builtins.list[AnonymousSlotExpression]]) -> None: ...
+    @array.setter
+    def array(self, value: typing.Optional[ArrayExpression]) -> None: ...
     @extensions.setter
     def extensions(self, value: typing.Optional[builtins.dict[builtins.str, Annotation]]) -> None: ...
     @annotations.setter
@@ -656,7 +660,7 @@ class AnonymousSlotExpression:
     def categories(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
     @keywords.setter
     def keywords(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
-    def __new__(cls, range:typing.Optional[builtins.str]=None, range_expression:typing.Optional[AnonymousClassExpression]=None, enum_range:typing.Optional[AnonymousEnumExpression | EnumDefinition]=None, bindings:typing.Optional[builtins.list[EnumBinding]]=None, required:typing.Optional[builtins.bool]=None, recommended:typing.Optional[builtins.bool]=None, multivalued:typing.Optional[builtins.bool]=None, inlined:typing.Optional[builtins.bool]=None, inlined_as_list:typing.Optional[builtins.bool]=None, minimum_value:typing.Optional[typing.Any]=None, maximum_value:typing.Optional[typing.Any]=None, pattern:typing.Optional[builtins.str]=None, structured_pattern:typing.Optional[PatternExpression]=None, unit:typing.Optional[UnitOfMeasure]=None, implicit_prefix:typing.Optional[builtins.str]=None, value_presence:typing.Optional[typing.Literal['UNCOMMITTED', 'PRESENT', 'ABSENT']]=None, equals_string:typing.Optional[builtins.str]=None, equals_string_in:typing.Optional[typing.Sequence[builtins.str]]=None, equals_number:typing.Optional[builtins.int]=None, equals_expression:typing.Optional[builtins.str]=None, exact_cardinality:typing.Optional[builtins.int]=None, minimum_cardinality:typing.Optional[builtins.int]=None, maximum_cardinality:typing.Optional[builtins.int]=None, has_member:typing.Optional[AnonymousSlotExpression]=None, all_members:typing.Optional[AnonymousSlotExpression]=None, none_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, any_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> AnonymousSlotExpression: ...
+    def __new__(cls, range:typing.Optional[builtins.str]=None, range_expression:typing.Optional[AnonymousClassExpression]=None, enum_range:typing.Optional[AnonymousEnumExpression | EnumDefinition]=None, bindings:typing.Optional[builtins.list[EnumBinding]]=None, required:typing.Optional[builtins.bool]=None, recommended:typing.Optional[builtins.bool]=None, multivalued:typing.Optional[builtins.bool]=None, inlined:typing.Optional[builtins.bool]=None, inlined_as_list:typing.Optional[builtins.bool]=None, minimum_value:typing.Optional[typing.Any]=None, maximum_value:typing.Optional[typing.Any]=None, pattern:typing.Optional[builtins.str]=None, structured_pattern:typing.Optional[PatternExpression]=None, unit:typing.Optional[UnitOfMeasure]=None, implicit_prefix:typing.Optional[builtins.str]=None, value_presence:typing.Optional[typing.Literal['UNCOMMITTED', 'PRESENT', 'ABSENT']]=None, equals_string:typing.Optional[builtins.str]=None, equals_string_in:typing.Optional[typing.Sequence[builtins.str]]=None, equals_number:typing.Optional[builtins.int]=None, equals_expression:typing.Optional[builtins.str]=None, exact_cardinality:typing.Optional[builtins.int]=None, minimum_cardinality:typing.Optional[builtins.int]=None, maximum_cardinality:typing.Optional[builtins.int]=None, has_member:typing.Optional[AnonymousSlotExpression]=None, all_members:typing.Optional[AnonymousSlotExpression]=None, none_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, any_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, array:typing.Optional[ArrayExpression]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> AnonymousSlotExpression: ...
 
 class AnonymousTypeExpression:
     @property
@@ -904,6 +908,10 @@ class ClassDefinition:
     @property
     def children_are_mutually_disjoint(self) -> typing.Optional[builtins.bool]: ...
     @property
+    def extra_slots(self) -> typing.Optional[ExtraSlotsExpression]: ...
+    @property
+    def alias(self) -> typing.Optional[builtins.str]: ...
+    @property
     def any_of(self) -> typing.Optional[builtins.list[AnonymousClassExpression]]: ...
     @property
     def exactly_one_of(self) -> typing.Optional[builtins.list[AnonymousClassExpression]]: ...
@@ -1043,6 +1051,10 @@ class ClassDefinition:
     def disjoint_with(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
     @children_are_mutually_disjoint.setter
     def children_are_mutually_disjoint(self, value: typing.Optional[builtins.bool]) -> None: ...
+    @extra_slots.setter
+    def extra_slots(self, value: typing.Optional[ExtraSlotsExpression]) -> None: ...
+    @alias.setter
+    def alias(self, value: typing.Optional[builtins.str]) -> None: ...
     @any_of.setter
     def any_of(self, value: typing.Optional[builtins.list[AnonymousClassExpression]]) -> None: ...
     @exactly_one_of.setter
@@ -1153,7 +1165,7 @@ class ClassDefinition:
     def categories(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
     @keywords.setter
     def keywords(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
-    def __new__(cls, name:builtins.str, slots:typing.Optional[typing.Sequence[builtins.str]]=None, slot_usage:typing.Optional[builtins.dict[builtins.str, SlotDefinition]]=None, attributes:typing.Optional[builtins.dict[builtins.str, SlotDefinition]]=None, class_uri:typing.Optional[builtins.str]=None, subclass_of:typing.Optional[builtins.str]=None, union_of:typing.Optional[typing.Sequence[builtins.str]]=None, defining_slots:typing.Optional[typing.Sequence[builtins.str]]=None, tree_root:typing.Optional[builtins.bool]=None, unique_keys:typing.Optional[builtins.dict[builtins.str, UniqueKey]]=None, rules:typing.Optional[builtins.list[ClassRule]]=None, classification_rules:typing.Optional[builtins.list[AnonymousClassExpression]]=None, slot_names_unique:typing.Optional[builtins.bool]=None, represents_relationship:typing.Optional[builtins.bool]=None, disjoint_with:typing.Optional[typing.Sequence[builtins.str]]=None, children_are_mutually_disjoint:typing.Optional[builtins.bool]=None, any_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, none_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, slot_conditions:typing.Optional[builtins.dict[builtins.str, SlotDefinition]]=None, is_a:typing.Optional[builtins.str]=None, abstract_:typing.Optional[builtins.bool]=None, mixin:typing.Optional[builtins.bool]=None, mixins:typing.Optional[typing.Sequence[builtins.str]]=None, apply_to:typing.Optional[typing.Sequence[builtins.str]]=None, values_from:typing.Optional[typing.Sequence[builtins.str]]=None, string_serialization:typing.Optional[builtins.str]=None, id_prefixes:typing.Optional[typing.Sequence[builtins.str]]=None, id_prefixes_are_closed:typing.Optional[builtins.bool]=None, definition_uri:typing.Optional[builtins.str]=None, local_names:typing.Optional[builtins.dict[builtins.str, LocalName]]=None, conforms_to:typing.Optional[builtins.str]=None, implements:typing.Optional[typing.Sequence[builtins.str]]=None, instantiates:typing.Optional[typing.Sequence[builtins.str]]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> ClassDefinition: ...
+    def __new__(cls, name:builtins.str, slots:typing.Optional[typing.Sequence[builtins.str]]=None, slot_usage:typing.Optional[builtins.dict[builtins.str, SlotDefinition]]=None, attributes:typing.Optional[builtins.dict[builtins.str, SlotDefinition]]=None, class_uri:typing.Optional[builtins.str]=None, subclass_of:typing.Optional[builtins.str]=None, union_of:typing.Optional[typing.Sequence[builtins.str]]=None, defining_slots:typing.Optional[typing.Sequence[builtins.str]]=None, tree_root:typing.Optional[builtins.bool]=None, unique_keys:typing.Optional[builtins.dict[builtins.str, UniqueKey]]=None, rules:typing.Optional[builtins.list[ClassRule]]=None, classification_rules:typing.Optional[builtins.list[AnonymousClassExpression]]=None, slot_names_unique:typing.Optional[builtins.bool]=None, represents_relationship:typing.Optional[builtins.bool]=None, disjoint_with:typing.Optional[typing.Sequence[builtins.str]]=None, children_are_mutually_disjoint:typing.Optional[builtins.bool]=None, extra_slots:typing.Optional[ExtraSlotsExpression]=None, alias:typing.Optional[builtins.str]=None, any_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, none_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousClassExpression]]=None, slot_conditions:typing.Optional[builtins.dict[builtins.str, SlotDefinition]]=None, is_a:typing.Optional[builtins.str]=None, abstract_:typing.Optional[builtins.bool]=None, mixin:typing.Optional[builtins.bool]=None, mixins:typing.Optional[typing.Sequence[builtins.str]]=None, apply_to:typing.Optional[typing.Sequence[builtins.str]]=None, values_from:typing.Optional[typing.Sequence[builtins.str]]=None, string_serialization:typing.Optional[builtins.str]=None, id_prefixes:typing.Optional[typing.Sequence[builtins.str]]=None, id_prefixes_are_closed:typing.Optional[builtins.bool]=None, definition_uri:typing.Optional[builtins.str]=None, local_names:typing.Optional[builtins.dict[builtins.str, LocalName]]=None, conforms_to:typing.Optional[builtins.str]=None, implements:typing.Optional[typing.Sequence[builtins.str]]=None, instantiates:typing.Optional[typing.Sequence[builtins.str]]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> ClassDefinition: ...
 
 class ClassExpression:
     @property
@@ -2581,6 +2593,17 @@ class Extension:
     def extensions(self, value: typing.Optional[builtins.dict[builtins.str, Annotation]]) -> None: ...
     def __new__(cls, extension_tag:builtins.str, extension_value:typing.Any, extensions:typing.Optional[builtins.dict[builtins.str, Annotation]]=None) -> Extension: ...
 
+class ExtraSlotsExpression:
+    @property
+    def allowed(self) -> typing.Optional[builtins.bool]: ...
+    @property
+    def range_expression(self) -> typing.Optional[AnonymousSlotExpression]: ...
+    @allowed.setter
+    def allowed(self, value: typing.Optional[builtins.bool]) -> None: ...
+    @range_expression.setter
+    def range_expression(self, value: typing.Optional[AnonymousSlotExpression]) -> None: ...
+    def __new__(cls, allowed:typing.Optional[builtins.bool]=None, range_expression:typing.Optional[AnonymousSlotExpression]=None) -> ExtraSlotsExpression: ...
+
 class ImportExpression:
     @property
     def import_from(self) -> builtins.str: ...
@@ -3326,6 +3349,15 @@ class Prefix:
     def prefix_reference(self, value: builtins.str) -> None: ...
     def __new__(cls, prefix_prefix:builtins.str, prefix_reference:builtins.str) -> Prefix: ...
 
+class RdfStream:
+    r"""
+    Streaming iterator over harvested LinkML instances.
+    
+    Yields `(class_name, LinkMLInstance)` tuples. Diagnostic warnings
+    accumulate as iteration proceeds; drain them with `pop_warnings()`.
+    """
+    ...
+
 class ReachabilityQuery:
     @property
     def source_ontology(self) -> typing.Optional[builtins.str]: ...
@@ -3716,13 +3748,19 @@ class SchemaView:
         r"""
         Returns all unique slots across every loaded schema.
         """
-    def slots_for_path(self, class_id:builtins.str, path:typing.Sequence[builtins.str]) -> builtins.list[SlotView]:
+    def slots_for_path(self, class_id:builtins.str, path:typing.Sequence[builtins.str], follow_references:builtins.bool=False) -> builtins.list[SlotView]:
         r"""
         Resolve a sequence of slot names starting from ``class_id``, walking
         through range classes at each step.
         
         Returns multiple ``SlotView``s when the path is ambiguous (e.g. a slot
         exists on several subclasses of an intermediate range class).
+        
+        By default, non-inlined (reference) slots are not traversed since they
+        only hold foreign keys. Set ``follow_references=True`` to follow those
+        references into the referenced class; this is union- and
+        subclass-fan-out-aware, so the terminal slots may live on an entirely
+        different class reached through a reference.
         """
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
@@ -3745,8 +3783,6 @@ class SlotDefinition:
     def domain(self) -> typing.Optional[builtins.str]: ...
     @property
     def slot_uri(self) -> typing.Optional[builtins.str]: ...
-    @property
-    def array(self) -> typing.Optional[ArrayExpression]: ...
     @property
     def inherited(self) -> typing.Optional[builtins.bool]: ...
     @property
@@ -3874,6 +3910,8 @@ class SlotDefinition:
     @property
     def all_of(self) -> typing.Optional[builtins.list[AnonymousSlotExpression]]: ...
     @property
+    def array(self) -> typing.Optional[ArrayExpression]: ...
+    @property
     def is_a(self) -> typing.Optional[builtins.str]: ...
     @property
     def abstract_(self) -> typing.Optional[builtins.bool]: ...
@@ -3979,8 +4017,6 @@ class SlotDefinition:
     def domain(self, value: typing.Optional[builtins.str]) -> None: ...
     @slot_uri.setter
     def slot_uri(self, value: typing.Optional[builtins.str]) -> None: ...
-    @array.setter
-    def array(self, value: typing.Optional[ArrayExpression]) -> None: ...
     @inherited.setter
     def inherited(self, value: typing.Optional[builtins.bool]) -> None: ...
     @readonly.setter
@@ -4107,6 +4143,8 @@ class SlotDefinition:
     def any_of(self, value: typing.Optional[builtins.list[AnonymousSlotExpression]]) -> None: ...
     @all_of.setter
     def all_of(self, value: typing.Optional[builtins.list[AnonymousSlotExpression]]) -> None: ...
+    @array.setter
+    def array(self, value: typing.Optional[ArrayExpression]) -> None: ...
     @is_a.setter
     def is_a(self, value: typing.Optional[builtins.str]) -> None: ...
     @abstract_.setter
@@ -4207,7 +4245,7 @@ class SlotDefinition:
     def categories(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
     @keywords.setter
     def keywords(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
-    def __new__(cls, name:builtins.str, singular_name:typing.Optional[builtins.str]=None, domain:typing.Optional[builtins.str]=None, slot_uri:typing.Optional[builtins.str]=None, array:typing.Optional[ArrayExpression]=None, inherited:typing.Optional[builtins.bool]=None, readonly:typing.Optional[builtins.str]=None, ifabsent:typing.Optional[builtins.str]=None, list_elements_unique:typing.Optional[builtins.bool]=None, list_elements_ordered:typing.Optional[builtins.bool]=None, shared:typing.Optional[builtins.bool]=None, key:typing.Optional[builtins.bool]=None, identifier:typing.Optional[builtins.bool]=None, designates_type:typing.Optional[builtins.bool]=None, alias:typing.Optional[builtins.str]=None, owner:typing.Optional[builtins.str]=None, domain_of:typing.Optional[typing.Sequence[builtins.str]]=None, subproperty_of:typing.Optional[builtins.str]=None, symmetric:typing.Optional[builtins.bool]=None, reflexive:typing.Optional[builtins.bool]=None, locally_reflexive:typing.Optional[builtins.bool]=None, irreflexive:typing.Optional[builtins.bool]=None, asymmetric:typing.Optional[builtins.bool]=None, transitive:typing.Optional[builtins.bool]=None, inverse:typing.Optional[builtins.str]=None, is_class_field:typing.Optional[builtins.bool]=None, transitive_form_of:typing.Optional[builtins.str]=None, reflexive_transitive_form_of:typing.Optional[builtins.str]=None, role:typing.Optional[builtins.str]=None, is_usage_slot:typing.Optional[builtins.bool]=None, usage_slot_name:typing.Optional[builtins.str]=None, relational_role:typing.Optional[typing.Literal['SUBJECT', 'OBJECT', 'PREDICATE', 'NODE', 'OTHER_ROLE']]=None, slot_group:typing.Optional[builtins.str]=None, is_grouping_slot:typing.Optional[builtins.bool]=None, path_rule:typing.Optional[PathExpression]=None, disjoint_with:typing.Optional[typing.Sequence[builtins.str]]=None, children_are_mutually_disjoint:typing.Optional[builtins.bool]=None, union_of:typing.Optional[typing.Sequence[builtins.str]]=None, type_mappings:typing.Optional[builtins.dict[builtins.str, TypeMapping]]=None, range:typing.Optional[builtins.str]=None, range_expression:typing.Optional[AnonymousClassExpression]=None, enum_range:typing.Optional[AnonymousEnumExpression | EnumDefinition]=None, bindings:typing.Optional[builtins.list[EnumBinding]]=None, required:typing.Optional[builtins.bool]=None, recommended:typing.Optional[builtins.bool]=None, multivalued:typing.Optional[builtins.bool]=None, inlined:typing.Optional[builtins.bool]=None, inlined_as_list:typing.Optional[builtins.bool]=None, minimum_value:typing.Optional[typing.Any]=None, maximum_value:typing.Optional[typing.Any]=None, pattern:typing.Optional[builtins.str]=None, structured_pattern:typing.Optional[PatternExpression]=None, unit:typing.Optional[UnitOfMeasure]=None, implicit_prefix:typing.Optional[builtins.str]=None, value_presence:typing.Optional[typing.Literal['UNCOMMITTED', 'PRESENT', 'ABSENT']]=None, equals_string:typing.Optional[builtins.str]=None, equals_string_in:typing.Optional[typing.Sequence[builtins.str]]=None, equals_number:typing.Optional[builtins.int]=None, equals_expression:typing.Optional[builtins.str]=None, exact_cardinality:typing.Optional[builtins.int]=None, minimum_cardinality:typing.Optional[builtins.int]=None, maximum_cardinality:typing.Optional[builtins.int]=None, has_member:typing.Optional[AnonymousSlotExpression]=None, all_members:typing.Optional[AnonymousSlotExpression]=None, none_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, any_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, is_a:typing.Optional[builtins.str]=None, abstract_:typing.Optional[builtins.bool]=None, mixin:typing.Optional[builtins.bool]=None, mixins:typing.Optional[typing.Sequence[builtins.str]]=None, apply_to:typing.Optional[typing.Sequence[builtins.str]]=None, values_from:typing.Optional[typing.Sequence[builtins.str]]=None, string_serialization:typing.Optional[builtins.str]=None, id_prefixes:typing.Optional[typing.Sequence[builtins.str]]=None, id_prefixes_are_closed:typing.Optional[builtins.bool]=None, definition_uri:typing.Optional[builtins.str]=None, local_names:typing.Optional[builtins.dict[builtins.str, LocalName]]=None, conforms_to:typing.Optional[builtins.str]=None, implements:typing.Optional[typing.Sequence[builtins.str]]=None, instantiates:typing.Optional[typing.Sequence[builtins.str]]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> SlotDefinition: ...
+    def __new__(cls, name:builtins.str, singular_name:typing.Optional[builtins.str]=None, domain:typing.Optional[builtins.str]=None, slot_uri:typing.Optional[builtins.str]=None, inherited:typing.Optional[builtins.bool]=None, readonly:typing.Optional[builtins.str]=None, ifabsent:typing.Optional[builtins.str]=None, list_elements_unique:typing.Optional[builtins.bool]=None, list_elements_ordered:typing.Optional[builtins.bool]=None, shared:typing.Optional[builtins.bool]=None, key:typing.Optional[builtins.bool]=None, identifier:typing.Optional[builtins.bool]=None, designates_type:typing.Optional[builtins.bool]=None, alias:typing.Optional[builtins.str]=None, owner:typing.Optional[builtins.str]=None, domain_of:typing.Optional[typing.Sequence[builtins.str]]=None, subproperty_of:typing.Optional[builtins.str]=None, symmetric:typing.Optional[builtins.bool]=None, reflexive:typing.Optional[builtins.bool]=None, locally_reflexive:typing.Optional[builtins.bool]=None, irreflexive:typing.Optional[builtins.bool]=None, asymmetric:typing.Optional[builtins.bool]=None, transitive:typing.Optional[builtins.bool]=None, inverse:typing.Optional[builtins.str]=None, is_class_field:typing.Optional[builtins.bool]=None, transitive_form_of:typing.Optional[builtins.str]=None, reflexive_transitive_form_of:typing.Optional[builtins.str]=None, role:typing.Optional[builtins.str]=None, is_usage_slot:typing.Optional[builtins.bool]=None, usage_slot_name:typing.Optional[builtins.str]=None, relational_role:typing.Optional[typing.Literal['SUBJECT', 'OBJECT', 'PREDICATE', 'NODE', 'OTHER_ROLE']]=None, slot_group:typing.Optional[builtins.str]=None, is_grouping_slot:typing.Optional[builtins.bool]=None, path_rule:typing.Optional[PathExpression]=None, disjoint_with:typing.Optional[typing.Sequence[builtins.str]]=None, children_are_mutually_disjoint:typing.Optional[builtins.bool]=None, union_of:typing.Optional[typing.Sequence[builtins.str]]=None, type_mappings:typing.Optional[builtins.dict[builtins.str, TypeMapping]]=None, range:typing.Optional[builtins.str]=None, range_expression:typing.Optional[AnonymousClassExpression]=None, enum_range:typing.Optional[AnonymousEnumExpression | EnumDefinition]=None, bindings:typing.Optional[builtins.list[EnumBinding]]=None, required:typing.Optional[builtins.bool]=None, recommended:typing.Optional[builtins.bool]=None, multivalued:typing.Optional[builtins.bool]=None, inlined:typing.Optional[builtins.bool]=None, inlined_as_list:typing.Optional[builtins.bool]=None, minimum_value:typing.Optional[typing.Any]=None, maximum_value:typing.Optional[typing.Any]=None, pattern:typing.Optional[builtins.str]=None, structured_pattern:typing.Optional[PatternExpression]=None, unit:typing.Optional[UnitOfMeasure]=None, implicit_prefix:typing.Optional[builtins.str]=None, value_presence:typing.Optional[typing.Literal['UNCOMMITTED', 'PRESENT', 'ABSENT']]=None, equals_string:typing.Optional[builtins.str]=None, equals_string_in:typing.Optional[typing.Sequence[builtins.str]]=None, equals_number:typing.Optional[builtins.int]=None, equals_expression:typing.Optional[builtins.str]=None, exact_cardinality:typing.Optional[builtins.int]=None, minimum_cardinality:typing.Optional[builtins.int]=None, maximum_cardinality:typing.Optional[builtins.int]=None, has_member:typing.Optional[AnonymousSlotExpression]=None, all_members:typing.Optional[AnonymousSlotExpression]=None, none_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, any_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, array:typing.Optional[ArrayExpression]=None, is_a:typing.Optional[builtins.str]=None, abstract_:typing.Optional[builtins.bool]=None, mixin:typing.Optional[builtins.bool]=None, mixins:typing.Optional[typing.Sequence[builtins.str]]=None, apply_to:typing.Optional[typing.Sequence[builtins.str]]=None, values_from:typing.Optional[typing.Sequence[builtins.str]]=None, string_serialization:typing.Optional[builtins.str]=None, id_prefixes:typing.Optional[typing.Sequence[builtins.str]]=None, id_prefixes_are_closed:typing.Optional[builtins.bool]=None, definition_uri:typing.Optional[builtins.str]=None, local_names:typing.Optional[builtins.dict[builtins.str, LocalName]]=None, conforms_to:typing.Optional[builtins.str]=None, implements:typing.Optional[typing.Sequence[builtins.str]]=None, instantiates:typing.Optional[typing.Sequence[builtins.str]]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> SlotDefinition: ...
 
 class SlotExpression:
     @property
@@ -4268,6 +4306,8 @@ class SlotExpression:
     def any_of(self) -> typing.Optional[builtins.list[AnonymousSlotExpression]]: ...
     @property
     def all_of(self) -> typing.Optional[builtins.list[AnonymousSlotExpression]]: ...
+    @property
+    def array(self) -> typing.Optional[ArrayExpression]: ...
     @range.setter
     def range(self, value: typing.Optional[builtins.str]) -> None: ...
     @range_expression.setter
@@ -4326,7 +4366,9 @@ class SlotExpression:
     def any_of(self, value: typing.Optional[builtins.list[AnonymousSlotExpression]]) -> None: ...
     @all_of.setter
     def all_of(self, value: typing.Optional[builtins.list[AnonymousSlotExpression]]) -> None: ...
-    def __new__(cls, range:typing.Optional[builtins.str]=None, range_expression:typing.Optional[AnonymousClassExpression]=None, enum_range:typing.Optional[AnonymousEnumExpression | EnumDefinition]=None, bindings:typing.Optional[builtins.list[EnumBinding]]=None, required:typing.Optional[builtins.bool]=None, recommended:typing.Optional[builtins.bool]=None, multivalued:typing.Optional[builtins.bool]=None, inlined:typing.Optional[builtins.bool]=None, inlined_as_list:typing.Optional[builtins.bool]=None, minimum_value:typing.Optional[typing.Any]=None, maximum_value:typing.Optional[typing.Any]=None, pattern:typing.Optional[builtins.str]=None, structured_pattern:typing.Optional[PatternExpression]=None, unit:typing.Optional[UnitOfMeasure]=None, implicit_prefix:typing.Optional[builtins.str]=None, value_presence:typing.Optional[typing.Literal['UNCOMMITTED', 'PRESENT', 'ABSENT']]=None, equals_string:typing.Optional[builtins.str]=None, equals_string_in:typing.Optional[typing.Sequence[builtins.str]]=None, equals_number:typing.Optional[builtins.int]=None, equals_expression:typing.Optional[builtins.str]=None, exact_cardinality:typing.Optional[builtins.int]=None, minimum_cardinality:typing.Optional[builtins.int]=None, maximum_cardinality:typing.Optional[builtins.int]=None, has_member:typing.Optional[AnonymousSlotExpression]=None, all_members:typing.Optional[AnonymousSlotExpression]=None, none_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, any_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None) -> SlotExpression: ...
+    @array.setter
+    def array(self, value: typing.Optional[ArrayExpression]) -> None: ...
+    def __new__(cls, range:typing.Optional[builtins.str]=None, range_expression:typing.Optional[AnonymousClassExpression]=None, enum_range:typing.Optional[AnonymousEnumExpression | EnumDefinition]=None, bindings:typing.Optional[builtins.list[EnumBinding]]=None, required:typing.Optional[builtins.bool]=None, recommended:typing.Optional[builtins.bool]=None, multivalued:typing.Optional[builtins.bool]=None, inlined:typing.Optional[builtins.bool]=None, inlined_as_list:typing.Optional[builtins.bool]=None, minimum_value:typing.Optional[typing.Any]=None, maximum_value:typing.Optional[typing.Any]=None, pattern:typing.Optional[builtins.str]=None, structured_pattern:typing.Optional[PatternExpression]=None, unit:typing.Optional[UnitOfMeasure]=None, implicit_prefix:typing.Optional[builtins.str]=None, value_presence:typing.Optional[typing.Literal['UNCOMMITTED', 'PRESENT', 'ABSENT']]=None, equals_string:typing.Optional[builtins.str]=None, equals_string_in:typing.Optional[typing.Sequence[builtins.str]]=None, equals_number:typing.Optional[builtins.int]=None, equals_expression:typing.Optional[builtins.str]=None, exact_cardinality:typing.Optional[builtins.int]=None, minimum_cardinality:typing.Optional[builtins.int]=None, maximum_cardinality:typing.Optional[builtins.int]=None, has_member:typing.Optional[AnonymousSlotExpression]=None, all_members:typing.Optional[AnonymousSlotExpression]=None, none_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, exactly_one_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, any_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, all_of:typing.Optional[builtins.list[AnonymousSlotExpression]]=None, array:typing.Optional[ArrayExpression]=None) -> SlotExpression: ...
 
 class SlotView:
     @property
@@ -5383,12 +5425,12 @@ class ValidationResult:
 def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:builtins.bool, treat_changed_identifier_as_new_object:builtins.bool=True) -> builtins.list[Delta]:
     r"""
     Compute deltas between two instances.
-
+    
     ``treat_missing_as_null`` is required — callers must decide explicitly
     whether absent entries mean "unchanged" or "removed", since the two
     interpretations produce materially different deltas and silent
     data-loss bugs have resulted from mis-set defaults.
-
+    
     When ``treat_missing_as_null`` is ``False``, object slots and mapping
     keys that are present in ``source`` but absent in ``target`` are
     silently ignored (partial-update semantics). List elements are always
@@ -5408,39 +5450,26 @@ def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:bui
     changes.
     """
 
-def from_turtle(turtle_str:builtins.str, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str]) -> builtins.dict[builtins.str, builtins.list[LinkMLInstance]]:
+def export_ntriples(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False) -> None:
     r"""
-    Import RDF/Turtle data into LinkML instances.
-    
-    Parses the given Turtle string and harvests instances of the specified
-    root classes from the RDF graph, guided by the loaded schema.
-    
-    Args:
-        turtle_str: RDF/Turtle content as a string.
-        schema_view: A SchemaView with the schema loaded.
-        root_classes: List of classes to extract (names, CURIEs, or full URIs).
-    
-    Returns:
-        A dict mapping class names to lists of LinkMLInstance objects.
+    Write LinkML instances as N-Triples into a Python file-like object.
     """
 
-def from_turtle_tracked(turtle_str:builtins.str, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str]) -> tuple[builtins.dict[builtins.str, builtins.list[LinkMLInstance]], builtins.list[builtins.str]]:
+def export_turtle(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False) -> None:
     r"""
-    Parse RDF/Turtle into LinkML instances with tracking of unconsumed subjects.
+    Write LinkML instances as Turtle into a Python file-like object.
     
-    Imports instances of the given root classes from the RDF graph, guided by the loaded schema.
-    Unlike `from_turtle`, this function also returns the list of subject IRIs that were
-    not consumed during the import, along with the number of triples each subject has.
-    
-    Args:
-        turtle_str: RDF/Turtle content as a string.
-        schema_view: A SchemaView with the schema loaded.
-        root_classes: List of classes to extract (names, CURIEs, or full URIs).
-    
-    Returns:
-        A tuple of (instances_dict, unconsumed_subjects) where instances_dict maps class
-        names to lists of LinkMLInstance objects, and unconsumed_subjects is a list of
-        subject IRIs that were not consumed during import.
+    `instances` may be a single LinkMLInstance or an iterable of them.
+    """
+
+def import_ntriples(reader:typing.Any, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str], *, disk_path:typing.Optional[builtins.str]=None, strict:builtins.bool=False) -> RdfStream:
+    r"""
+    Import RDF/N-Triples into a streaming iterator of LinkML instances.
+    """
+
+def import_turtle(reader:typing.Any, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str], *, disk_path:typing.Optional[builtins.str]=None, strict:builtins.bool=False) -> RdfStream:
+    r"""
+    Import RDF/Turtle into a streaming iterator of LinkML instances.
     """
 
 def load_json(source:typing.Any, sv:SchemaView, class_view:ClassView) -> tuple[typing.Optional[LinkMLInstance], builtins.list[ValidationResult]]: ...
@@ -5452,6 +5481,4 @@ def make_schema_view(source:typing.Optional[typing.Any]=None) -> SchemaView: ...
 def patch(source:LinkMLInstance, deltas:typing.Sequence[Delta], treat_missing_as_null:builtins.bool=True, ignore_no_ops:builtins.bool=True) -> PatchResult: ...
 
 def sum_as_string(a:builtins.int, b:builtins.int) -> builtins.str: ...
-
-def to_turtle(value:LinkMLInstance, skolem:typing.Optional[builtins.bool]=None) -> builtins.str: ...
 

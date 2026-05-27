@@ -101,3 +101,46 @@ classes:
         description: Inlined asset (embedded data)
         range: Asset
         inlined: true
+      owned_assets:
+        description: Multivalued non-inlined reference (list of foreign keys)
+        range: Asset
+        multivalued: true
+        inlined: false
+
+  # Reference-target hierarchy with an identifier, so inlined:false yields a
+  # true (non-inlined) reference rather than embedded data.
+  RefBase:
+    abstract: true
+    attributes:
+      ref_base_id:
+        identifier: true
+        range: string
+  RefSpot:
+    is_a: RefBase
+    attributes:
+      ref_coordinates:
+        range: string
+  RefArea:
+    is_a: RefBase
+    attributes:
+      ref_boundary:
+        range: string
+
+  # Class for testing follow_references fan-out across a reference whose
+  # range is an abstract class with multiple concrete subclasses
+  LocationHolder:
+    attributes:
+      location_ref:
+        description: Non-inlined reference to an abstract class with subclasses
+        range: RefBase
+        inlined: false
+
+  # Class for testing follow_references across a union (any_of) range reference
+  UnionHolder:
+    attributes:
+      ref_union:
+        description: Non-inlined reference with a union (any_of) range
+        inlined: false
+        any_of:
+          - range: RefSpot
+          - range: RefArea

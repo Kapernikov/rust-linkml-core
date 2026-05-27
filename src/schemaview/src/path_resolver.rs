@@ -19,11 +19,44 @@ impl SchemaView {
     /// result.
     ///
     /// Note: Non-inlined (reference) slots are not traversed since they only
-    /// contain foreign keys, not embedded data.
+    /// contain foreign keys, not embedded data. Use
+    /// [`SchemaView::slots_for_path_following_references`] to follow references
+    /// into the referenced class.
     pub fn slots_for_path<'a, I>(
         &self,
         class_id: &Identifier,
         path: I,
+    ) -> Result<Vec<SlotView>, SchemaViewError>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        self.slots_for_path_inner(class_id, path, false)
+    }
+
+    /// Like [`SchemaView::slots_for_path`], but also traverses non-inlined
+    /// (reference) slots, following foreign keys into the referenced class.
+    ///
+    /// Unlike [`SchemaView::slots_for_path`], where the terminal slots always
+    /// live inside `class_id`'s inlined tree, the terminal slots here may live
+    /// on an entirely different class reached through a reference. Reference
+    /// traversal is union- and subclass-fan-out-aware, exactly like the inlined
+    /// case.
+    pub fn slots_for_path_following_references<'a, I>(
+        &self,
+        class_id: &Identifier,
+        path: I,
+    ) -> Result<Vec<SlotView>, SchemaViewError>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        self.slots_for_path_inner(class_id, path, true)
+    }
+
+    fn slots_for_path_inner<'a, I>(
+        &self,
+        class_id: &Identifier,
+        path: I,
+        follow_references: bool,
     ) -> Result<Vec<SlotView>, SchemaViewError>
     where
         I: IntoIterator<Item = &'a str>,
@@ -46,7 +79,7 @@ impl SchemaView {
 
         while let Some(segment) = segments.next() {
             let (segment_matches, next_classes) =
-                Self::collect_segment_matches(&current_classes, segment);
+                Self::collect_segment_matches(&current_classes, segment, follow_references);
 
             if segment_matches.is_empty() {
                 // No slot matched - path invalid
@@ -72,8 +105,11 @@ impl SchemaView {
                 } else if requires_index {
                     // Consume the index/key segment - it's not a slot name
                     // First check if it could also be a valid slot name (ambiguity)
-                    let (potential_slot_matches, _) =
-                        Self::collect_segment_matches(&next_classes, next_segment);
+                    let (potential_slot_matches, _) = Self::collect_segment_matches(
+                        &next_classes,
+                        next_segment,
+                        follow_references,
+                    );
 
                     if potential_slot_matches.is_empty() {
                         // Not a slot name, must be an index/key - skip it
@@ -136,6 +172,7 @@ impl SchemaView {
     fn collect_segment_matches(
         classes: &[ClassView],
         segment: &str,
+        follow_references: bool,
     ) -> (Vec<SlotView>, Vec<ClassView>) {
         let mut matches = Vec::new();
         let mut next_classes = Vec::new();
@@ -150,9 +187,11 @@ impl SchemaView {
                 matches.push(slot.clone());
 
                 for ri in slot.get_range_info().iter() {
-                    // Skip non-inlined references - they're just foreign keys,
-                    // not embedded data that can be traversed
-                    if ri.slot_inline_mode == SlotInlineMode::Reference {
+                    // Non-inlined references are just foreign keys, not embedded
+                    // data. By default we don't traverse them; with
+                    // `follow_references` we treat them exactly like inlined
+                    // ranges (union- and subclass-fan-out-aware).
+                    if ri.slot_inline_mode == SlotInlineMode::Reference && !follow_references {
                         continue;
                     }
 

@@ -433,11 +433,28 @@ impl PySchemaView {
     ///
     /// Returns multiple ``SlotView``s when the path is ambiguous (e.g. a slot
     /// exists on several subclasses of an intermediate range class).
-    fn slots_for_path(&self, class_id: &str, path: Vec<String>) -> PyResult<Vec<PySlotView>> {
-        let slots = self
-            .inner
-            .slots_for_path(&Identifier::new(class_id), path.iter().map(|s| s.as_str()))
-            .map_err(|e| PyException::new_err(format!("{:?}", e)))?;
+    ///
+    /// By default, non-inlined (reference) slots are not traversed since they
+    /// only hold foreign keys. Set ``follow_references=True`` to follow those
+    /// references into the referenced class; this is union- and
+    /// subclass-fan-out-aware, so the terminal slots may live on an entirely
+    /// different class reached through a reference.
+    #[pyo3(signature = (class_id, path, follow_references=false))]
+    fn slots_for_path(
+        &self,
+        class_id: &str,
+        path: Vec<String>,
+        follow_references: bool,
+    ) -> PyResult<Vec<PySlotView>> {
+        let id = Identifier::new(class_id);
+        let segments = path.iter().map(|s| s.as_str());
+        let slots = if follow_references {
+            self.inner
+                .slots_for_path_following_references(&id, segments)
+        } else {
+            self.inner.slots_for_path(&id, segments)
+        }
+        .map_err(|e| PyException::new_err(format!("{:?}", e)))?;
         Ok(slots.into_iter().map(PySlotView::from).collect())
     }
 

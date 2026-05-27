@@ -418,3 +418,123 @@ fn traverses_inlined_to_subclass_slot() {
     );
     assert!(matches.iter().any(|s| s.name == "signallingpost_code"));
 }
+
+// ============================================================================
+// Tests for follow_references (traversing non-inlined references)
+// ============================================================================
+
+#[test]
+fn follow_references_off_does_not_cross_reference() {
+    let sv = load_indexed_schema();
+
+    // owned_asset is a non-inlined reference; without follow_references the
+    // terminal slot on the referenced class is unreachable.
+    let matches = sv
+        .slots_for_path(
+            &Identifier::new("AssetHolder"),
+            ["owned_asset", "asset_name"],
+        )
+        .unwrap();
+
+    assert!(
+        matches.is_empty(),
+        "default behavior must not traverse non-inlined references"
+    );
+}
+
+#[test]
+fn follow_references_crosses_reference_to_terminal_slot() {
+    let sv = load_indexed_schema();
+
+    // With follow_references the path crosses owned_asset into Asset.
+    let matches = sv
+        .slots_for_path_following_references(
+            &Identifier::new("AssetHolder"),
+            ["owned_asset", "asset_name"],
+        )
+        .unwrap();
+
+    assert!(
+        !matches.is_empty(),
+        "follow_references should traverse the reference"
+    );
+    assert!(matches.iter().any(|s| s.name == "asset_name"));
+}
+
+#[test]
+fn follow_references_through_multivalued_reference() {
+    let sv = load_indexed_schema();
+
+    // owned_assets is a multivalued non-inlined reference (list of foreign
+    // keys); the index segment must still be consumed, then the reference
+    // followed into Asset.
+    let matches = sv
+        .slots_for_path_following_references(
+            &Identifier::new("AssetHolder"),
+            ["owned_assets", "0", "asset_name"],
+        )
+        .unwrap();
+
+    assert!(
+        matches.iter().any(|s| s.name == "asset_name"),
+        "list-of-FK reference should index then follow into the referenced class"
+    );
+}
+
+#[test]
+fn follow_references_fans_out_to_subclass_slots() {
+    let sv = load_indexed_schema();
+
+    // location_ref is a non-inlined reference whose range BaseLocation has two
+    // concrete subclasses; the walk must fan out into each subclass.
+    let coords = sv
+        .slots_for_path_following_references(
+            &Identifier::new("LocationHolder"),
+            ["location_ref", "ref_coordinates"],
+        )
+        .unwrap();
+    let boundary = sv
+        .slots_for_path_following_references(
+            &Identifier::new("LocationHolder"),
+            ["location_ref", "ref_boundary"],
+        )
+        .unwrap();
+
+    assert!(
+        coords.iter().any(|s| s.name == "ref_coordinates"),
+        "should fan out across reference into RefSpot.ref_coordinates"
+    );
+    assert!(
+        boundary.iter().any(|s| s.name == "ref_boundary"),
+        "should fan out across reference into RefArea.ref_boundary"
+    );
+}
+
+#[test]
+fn follow_references_fans_out_across_union_range() {
+    let sv = load_indexed_schema();
+
+    // ref_union is a non-inlined reference with an any_of (union) range; each
+    // branch must be traversed.
+    let coords = sv
+        .slots_for_path_following_references(
+            &Identifier::new("UnionHolder"),
+            ["ref_union", "ref_coordinates"],
+        )
+        .unwrap();
+    let boundary = sv
+        .slots_for_path_following_references(
+            &Identifier::new("UnionHolder"),
+            ["ref_union", "ref_boundary"],
+        )
+        .unwrap();
+
+    assert!(
+        coords.iter().any(|s| s.name == "ref_coordinates"),
+        "should traverse RefSpot branch of union reference"
+    );
+    assert!(
+        boundary.iter().any(|s| s.name == "ref_boundary"),
+        "should traverse RefArea branch of union reference"
+    );
+}

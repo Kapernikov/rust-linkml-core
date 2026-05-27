@@ -47,6 +47,20 @@ fn path_traversal_path() -> PathBuf {
     panic!("path_traversal.yaml not found in known locations relative to python crate");
 }
 
+fn indexed_paths_path() -> PathBuf {
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let candidates = [
+        base.join("../schemaview/tests/data/indexed_paths.yaml"),
+        base.join("tests/data/indexed_paths.yaml"),
+    ];
+    for c in candidates {
+        if c.exists() {
+            return c;
+        }
+    }
+    panic!("indexed_paths.yaml not found in known locations relative to python crate");
+}
+
 #[test]
 fn construct_via_python() {
     pyo3::prepare_freethreaded_python();
@@ -304,6 +318,85 @@ results = {
             .extract()
             .expect("after_scalar wrong type");
         assert_eq!(after_scalar, 0);
+    });
+}
+
+#[test]
+fn slots_for_path_follow_references_exposed() {
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let module = PyModule::new(py, "linkml_runtime").unwrap();
+        runtime_module(&module).unwrap();
+        let sys = py.import("sys").unwrap();
+        let modules = sys.getattr("modules").unwrap();
+        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        sys_modules.set_item("linkml_runtime", module).unwrap();
+
+        let locals = PyDict::new(py);
+        locals
+            .set_item(
+                "indexed_schema",
+                indexed_paths_path().to_str().expect("unicode path"),
+            )
+            .unwrap();
+        // owned_asset is a non-inlined reference: not traversed by default, but
+        // followed (into Asset.asset_name) when follow_references=True.
+        let script = CString::new(
+            r#"
+import linkml_runtime as lr
+sv = lr.make_schema_view(indexed_schema)
+default = sv.slots_for_path("AssetHolder", ["owned_asset", "asset_name"])
+followed = sv.slots_for_path(
+    "AssetHolder",
+    ["owned_asset", "asset_name"],
+    follow_references=True,
+)
+results = {
+    "default_count": len(default),
+    "followed_names": sorted(slot.name for slot in followed),
+}
+"#,
+        )
+        .unwrap();
+        if let Err(err) = py.run(script.as_c_str(), None, Some(&locals)) {
+            let value = err.value(py);
+            let message = match value.str() {
+                Ok(s) => s.to_string_lossy().into_owned(),
+                Err(_) => "<no message>".to_string(),
+            };
+            panic!("python script execution failed: {}", message);
+        }
+
+        let results_value = locals
+            .get_item("results")
+            .expect("results lookup failed")
+            .expect("results missing");
+        let results = results_value
+            .downcast::<PyDict>()
+            .expect("results not a dict");
+
+        let default_count: usize = results
+            .get_item("default_count")
+            .expect("default_count lookup failed")
+            .expect("default_count missing")
+            .extract()
+            .expect("default_count wrong type");
+        assert_eq!(
+            default_count, 0,
+            "reference must not be traversed by default"
+        );
+
+        let followed_names_value = results
+            .get_item("followed_names")
+            .expect("followed_names lookup failed")
+            .expect("followed_names missing");
+        let followed_names: Vec<String> = followed_names_value
+            .extract()
+            .expect("followed_names wrong type");
+        assert!(
+            followed_names.iter().any(|name| name == "asset_name"),
+            "follow_references=True should resolve across the reference"
+        );
     });
 }
 
