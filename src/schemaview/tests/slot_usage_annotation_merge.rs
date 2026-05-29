@@ -1,6 +1,7 @@
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
+use linkml_schemaview::slotview::SlotView;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -19,11 +20,17 @@ fn fixture_schema_view() -> SchemaView {
     sv
 }
 
+/// Resolve the effective `slot` of `class` through the new `ClassView::slot`
+/// API. Single-schema fixture, so the primary converter is unambiguous.
+fn merged_slot(sv: &SchemaView, class: &str, slot: &str) -> Option<SlotView> {
+    let conv = sv.converter();
+    let cv = sv.get_class(&Identifier::new(class), &conv).unwrap()?;
+    cv.slot(&Identifier::new(slot))
+}
+
 fn annotation_keys(sv: &SchemaView, class: &str) -> Vec<String> {
-    let slot = sv
-        .induced_slot(&Identifier::new(class), "hasName")
-        .unwrap()
-        .unwrap_or_else(|| panic!("hasName not found on {class}"));
+    let slot =
+        merged_slot(sv, class, "hasName").unwrap_or_else(|| panic!("hasName not found on {class}"));
     let mut keys: Vec<String> = slot
         .definition()
         .annotations
@@ -35,10 +42,8 @@ fn annotation_keys(sv: &SchemaView, class: &str) -> Vec<String> {
 }
 
 fn annotation_value(sv: &SchemaView, class: &str, key: &str) -> Option<String> {
-    let slot = sv
-        .induced_slot(&Identifier::new(class), "hasName")
-        .unwrap()
-        .unwrap_or_else(|| panic!("hasName not found on {class}"));
+    let slot =
+        merged_slot(sv, class, "hasName").unwrap_or_else(|| panic!("hasName not found on {class}"));
     let ann = slot.definition().annotations.clone()?;
     let entry = ann.get(key)?;
     if let serde_value::Value::String(s) = &entry.extension_value.0 {
@@ -132,10 +137,7 @@ fn extensions_merge_per_key_through_chain() {
     let sv = fixture_schema_view();
 
     fn extension_keys(sv: &SchemaView, class: &str) -> Vec<String> {
-        let slot = sv
-            .induced_slot(&Identifier::new(class), "hasName")
-            .unwrap()
-            .unwrap();
+        let slot = merged_slot(sv, class, "hasName").unwrap();
         let mut keys: Vec<String> = slot
             .definition()
             .extensions
@@ -162,10 +164,7 @@ fn local_names_merge_per_key_through_chain() {
     let sv = fixture_schema_view();
 
     fn local_name_map(sv: &SchemaView, class: &str) -> HashMap<String, String> {
-        let slot = sv
-            .induced_slot(&Identifier::new(class), "hasName")
-            .unwrap()
-            .unwrap();
+        let slot = merged_slot(sv, class, "hasName").unwrap();
         slot.definition()
             .local_names
             .as_ref()
@@ -197,20 +196,14 @@ fn local_names_merge_per_key_through_chain() {
 }
 
 #[test]
-fn induced_slot_returns_none_for_unknown_class_or_slot() {
+fn slot_returns_none_for_unknown_class_or_slot() {
     let sv = fixture_schema_view();
-    assert!(sv
-        .induced_slot(&Identifier::new("NoSuchClass"), "hasName")
-        .unwrap()
-        .is_none());
-    assert!(sv
-        .induced_slot(&Identifier::new("Parent"), "noSuchSlot")
-        .unwrap()
-        .is_none());
+    assert!(merged_slot(&sv, "NoSuchClass", "hasName").is_none());
+    assert!(merged_slot(&sv, "Parent", "noSuchSlot").is_none());
 }
 
 #[test]
-fn induced_slot_matches_classview_slots_lookup() {
+fn slot_matches_classview_slots_lookup() {
     let sv = fixture_schema_view();
     let conv = sv.converter();
     let cv = sv
@@ -223,12 +216,30 @@ fn induced_slot_matches_classview_slots_lookup() {
         .find(|s| s.name == "hasName")
         .cloned()
         .unwrap();
-    let from_induced = sv
-        .induced_slot(&Identifier::new("Grandchild"), "hasName")
-        .unwrap()
-        .unwrap();
+    let from_lookup = cv.slot(&Identifier::new("hasName")).unwrap();
     assert_eq!(
         from_class_slots.definition().annotations,
-        from_induced.definition().annotations,
+        from_lookup.definition().annotations,
+    );
+}
+
+#[test]
+fn slot_lookup_by_uri_matches_by_name() {
+    let sv = fixture_schema_view();
+    let conv = sv.converter();
+    let cv = sv
+        .get_class(&Identifier::new("Grandchild"), &conv)
+        .unwrap()
+        .unwrap();
+    let by_name = cv.slot(&Identifier::new("hasName")).unwrap();
+    // Resolving by the slot's own canonical URI must find the same slot.
+    let uri = by_name.canonical_uri();
+    let by_uri = cv
+        .slot(&uri)
+        .expect("lookup by canonical URI should resolve");
+    assert_eq!(by_name.name, by_uri.name);
+    assert_eq!(
+        by_name.definition().annotations,
+        by_uri.definition().annotations,
     );
 }

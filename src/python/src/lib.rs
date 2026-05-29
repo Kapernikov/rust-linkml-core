@@ -458,17 +458,6 @@ impl PySchemaView {
         Ok(slots.into_iter().map(PySlotView::from).collect())
     }
 
-    /// Return the fully-merged ``SlotView`` for ``(class_id, slot_name)``,
-    /// walking ``is_a``/mixins and folding in ``attributes`` + ``slot_usage``.
-    /// Returns ``None`` when the class or slot is unknown.
-    fn induced_slot(&self, class_id: &str, slot_name: &str) -> PyResult<Option<PySlotView>> {
-        let id = Identifier::new(class_id);
-        self.inner
-            .induced_slot(&id, slot_name)
-            .map(|opt| opt.map(PySlotView::from))
-            .map_err(|e| PyException::new_err(format!("{:?}", e)))
-    }
-
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "SchemaView(n_schemas={}, n_classes={}, n_slots={})",
@@ -525,6 +514,15 @@ impl PyClassView {
             .cloned()
             .map(|s| PySlotView { inner: s })
             .collect())
+    }
+
+    /// Returns the effective ``SlotView`` for ``id`` within this class, or
+    /// ``None``. ``id`` may be a slot name, CURIE, or URI; CURIEs/URIs are
+    /// resolved with this class's own schema converter.
+    fn slot(&self, id: &str) -> Option<PySlotView> {
+        self.inner
+            .slot(&Identifier::new(id))
+            .map(|s| PySlotView { inner: s })
     }
 
     /// Returns the ``is_a`` parent class, or ``None`` for a root class.

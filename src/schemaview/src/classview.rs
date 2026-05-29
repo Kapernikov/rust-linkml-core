@@ -10,12 +10,21 @@ use crate::slotview::SlotView;
 
 type DescendantsIndex = HashMap<(bool, bool), OnceLock<Vec<(String, String)>>>;
 
+/// Name- and URI-keyed lookup over a class's effective slots, mirroring the
+/// `class_name_index`/`class_uri_index` strategy used by `SchemaView::get_class`.
+/// Values are indices into `ClassViewData::slots`. Built lazily on first use.
+struct SlotLookup {
+    by_name: HashMap<String, usize>,
+    by_uri: HashMap<String, usize>,
+}
+
 pub struct ClassViewData {
     pub class: ClassDefinition,
     pub slots: Vec<SlotView>,
     pub schema_uri: String,
     pub sv: SchemaView,
     descendants_index: DescendantsIndex,
+    slot_lookup: OnceLock<SlotLookup>,
 }
 
 // NOTE: `class` and `slots` are cloned snapshots taken at construction time.
@@ -35,6 +44,7 @@ impl ClassViewData {
             sv: sv.clone(),
             schema_uri: schema_uri.to_string(),
             descendants_index: HashMap::new(),
+            slot_lookup: OnceLock::new(),
         }
     }
 }
@@ -172,6 +182,7 @@ impl ClassView {
                 schema_uri: schema_uri.to_owned(),
                 sv: sv.clone(),
                 descendants_index: hm,
+                slot_lookup: OnceLock::new(),
             }),
         })
     }
@@ -180,6 +191,57 @@ impl ClassView {
     /// from `is_a` parents and mixins, with `slot_usage` overrides applied.
     pub fn slots(&self) -> &[SlotView] {
         &self.data.slots
+    }
+
+    /// Returns the effective [`SlotView`] for `id` within this class, or `None`.
+    ///
+    /// `id` may be a slot name, CURIE, or URI. CURIEs and URIs are resolved with
+    /// this class's own schema converter — prefix maps can conflict across
+    /// schemas, so there is no sound "global" converter to resolve against.
+    /// Like every [`SlotView`], the result is the fully-merged slot; pairs with
+    /// [`slots`](Self::slots).
+    ///
+    /// Lookup mirrors [`SchemaView::get_class`]: an O(1) name/URI index (built
+    /// once per `ClassView`, which is itself cached) rather than a scan.
+    pub fn slot(&self, id: &Identifier) -> Option<SlotView> {
+        let lookup = self
+            .data
+            .slot_lookup
+            .get_or_init(|| self.build_slot_lookup());
+        let idx = match id {
+            Identifier::Name(name) => lookup.by_name.get(name).copied(),
+            Identifier::Curie(_) | Identifier::Uri(_) => {
+                let conv = self.data.sv.converter_for_schema(&self.data.schema_uri)?;
+                let target = id.to_uri(&conv).ok()?;
+                lookup.by_uri.get(&target.0).copied()
+            }
+        }?;
+        self.data.slots.get(idx).cloned()
+    }
+
+    fn build_slot_lookup(&self) -> SlotLookup {
+        let mut by_name = HashMap::with_capacity(self.data.slots.len());
+        let mut by_uri = HashMap::with_capacity(self.data.slots.len());
+        for (i, s) in self.data.slots.iter().enumerate() {
+            // First definition wins on collision, matching `get_class`'s
+            // `or_insert_with` indexes.
+            by_name.entry(s.name.clone()).or_insert(i);
+            // Resolve each slot's canonical URI with its *own* schema converter
+            // (slots may be inherited from a parent class in another schema).
+            let canonical = match s.canonical_uri() {
+                Identifier::Uri(u) => Some(u.0),
+                other => self
+                    .data
+                    .sv
+                    .converter_for_schema(&s.schema_uri)
+                    .and_then(|conv| other.to_uri(&conv).ok())
+                    .map(|u| u.0),
+            };
+            if let Some(uri) = canonical {
+                by_uri.entry(uri).or_insert(i);
+            }
+        }
+        SlotLookup { by_name, by_uri }
     }
 
     /// Returns the raw [`ClassDefinition`] for this class (without inheritance).
