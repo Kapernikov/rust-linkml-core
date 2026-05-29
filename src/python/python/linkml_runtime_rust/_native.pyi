@@ -1372,6 +1372,12 @@ class ClassView:
         Returns the effective slots for this class, including inherited slots
         from ``is_a`` parents and mixins, with ``slot_usage`` overrides applied.
         """
+    def slot(self, id:builtins.str) -> typing.Optional[SlotView]:
+        r"""
+        Returns the effective ``SlotView`` for ``id`` within this class, or
+        ``None``. ``id`` may be a slot name, CURIE, or URI; CURIEs/URIs are
+        resolved with this class's own schema converter.
+        """
     def parent_class(self) -> typing.Optional[ClassView]:
         r"""
         Returns the ``is_a`` parent class, or ``None`` for a root class.
@@ -3761,12 +3767,6 @@ class SchemaView:
         references into the referenced class; this is union- and
         subclass-fan-out-aware, so the terminal slots may live on an entirely
         different class reached through a reference.
-        """
-    def induced_slot(self, class_id:builtins.str, slot_name:builtins.str) -> typing.Optional[SlotView]:
-        r"""
-        Return the fully-merged ``SlotView`` for ``(class_id, slot_name)``,
-        walking ``is_a``/mixins and folding in ``attributes`` + ``slot_usage``.
-        Returns ``None`` when the class or slot is unknown.
         """
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
