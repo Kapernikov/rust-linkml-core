@@ -2024,6 +2024,7 @@ dependencies = [
  "linkml_meta",
  "reqwest",
  "serde",
+ "serde-value",
  "serde_path_to_error",
  "serde_yml",
  "thiserror 1.0.69",

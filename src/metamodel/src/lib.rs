@@ -680,6 +680,7 @@ pub struct Extension {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, Box<ExtensionOrSubtype>>>,
 }
 #[cfg(feature = "pyo3")]
@@ -891,6 +892,7 @@ pub struct Extensible {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
 }
 #[cfg(feature = "pyo3")]
@@ -1276,6 +1278,7 @@ pub struct Annotatable {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
 }
 #[cfg(feature = "pyo3")]
@@ -1676,6 +1679,7 @@ pub struct Annotation {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Box<Annotation>>>,
     #[cfg_attr(feature = "serde", serde(alias = "tag"))]
     pub extension_tag: uriorcurie,
@@ -1689,6 +1693,7 @@ pub struct Annotation {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
 }
 #[cfg(feature = "pyo3")]
@@ -1807,10 +1812,13 @@ impl serde_utils::InlinedPair for Annotation {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct UnitOfMeasure {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub symbol: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abbreviation: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub descriptive_name: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -1820,14 +1828,19 @@ pub struct UnitOfMeasure {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub ucum_code: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub derivation: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub has_quantity_kind: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub iec61360code: Option<String>,
 }
 #[cfg(feature = "pyo3")]
@@ -2056,6 +2069,7 @@ impl std::fmt::Debug for Anything {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct CommonMetadata {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -2065,10 +2079,13 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -2078,6 +2095,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -2087,6 +2105,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -2096,18 +2115,25 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -2117,10 +2143,13 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -2130,8 +2159,10 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -2141,6 +2172,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2150,6 +2182,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2159,6 +2192,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2168,6 +2202,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2177,6 +2212,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2186,8 +2222,10 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -2197,16 +2235,22 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -2216,6 +2260,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2225,6 +2270,7 @@ pub struct CommonMetadata {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -2753,10 +2799,13 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -2766,8 +2815,10 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -2777,6 +2828,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2786,6 +2838,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2795,6 +2848,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -2804,8 +2858,10 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -2815,10 +2871,13 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -2828,6 +2887,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -2837,6 +2897,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -2846,18 +2907,25 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -2867,10 +2935,13 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -2880,8 +2951,10 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -2891,6 +2964,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2900,6 +2974,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2909,6 +2984,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2918,6 +2994,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2927,6 +3004,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2936,8 +3014,10 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -2947,16 +3027,22 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -2966,6 +3052,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -2975,6 +3062,7 @@ pub struct Element {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -3380,6 +3468,7 @@ impl serde_utils::InlinedPair for ElementOrSubtype {
 pub struct SchemaDefinition {
     pub id: uri,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub version: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3389,8 +3478,10 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imports: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub license: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3400,6 +3491,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub prefixes: Option<HashMap<String, Prefix>>,
     #[cfg_attr(
         feature = "serde",
@@ -3409,6 +3501,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub emit_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(
         feature = "serde",
@@ -3418,10 +3511,13 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub default_curi_maps: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub default_prefix: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub default_range: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3431,6 +3527,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub subsets: Option<HashMap<String, SubsetDefinition>>,
     #[cfg_attr(
         feature = "serde",
@@ -3440,6 +3537,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub types: Option<HashMap<String, TypeDefinition>>,
     #[cfg_attr(
         feature = "serde",
@@ -3449,6 +3547,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub enums: Option<HashMap<String, EnumDefinition>>,
     #[cfg_attr(
         feature = "serde",
@@ -3459,6 +3558,7 @@ pub struct SchemaDefinition {
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "slots"))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_definitions: Option<HashMap<String, SlotDefinition>>,
     #[cfg_attr(
         feature = "serde",
@@ -3468,18 +3568,25 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub classes: Option<HashMap<String, ClassDefinition>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub metamodel_version: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source_file: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source_file_date: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source_file_size: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub generation_date: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_names_unique: Option<bool>,
     #[cfg_attr(
         feature = "serde",
@@ -3489,8 +3596,10 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub settings: Option<HashMap<String, Setting>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub bindings: Option<Vec<EnumBinding>>,
     pub name: ncname,
     #[cfg_attr(
@@ -3501,10 +3610,13 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -3514,8 +3626,10 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3525,6 +3639,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3534,6 +3649,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3543,6 +3659,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -3552,8 +3669,10 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3563,10 +3682,13 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3576,6 +3698,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -3585,6 +3708,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -3594,18 +3718,25 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3615,10 +3746,13 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -3628,8 +3762,10 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -3639,6 +3775,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3648,6 +3785,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3657,6 +3795,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3666,6 +3805,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3675,6 +3815,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3684,8 +3825,10 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -3695,16 +3838,22 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -3714,6 +3863,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -3723,6 +3873,7 @@ pub struct SchemaDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -3973,14 +4124,19 @@ impl serde_utils::InlinedPair for SchemaDefinition {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct AnonymousTypeExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pattern: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_pattern: Option<PatternExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unit: Option<UnitOfMeasure>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implicit_prefix: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -3990,20 +4146,28 @@ pub struct AnonymousTypeExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string_in: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_number: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<Box<AnonymousTypeExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<Box<AnonymousTypeExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<Box<AnonymousTypeExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<Box<AnonymousTypeExpression>>>,
 }
 #[cfg(feature = "pyo3")]
@@ -4081,25 +4245,35 @@ impl<'py> FromPyObject<'py> for Box<AnonymousTypeExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct TypeDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub typeof_: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub base: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "uri"))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub type_uri: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub repr: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub union_of: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pattern: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_pattern: Option<PatternExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unit: Option<UnitOfMeasure>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implicit_prefix: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4109,20 +4283,28 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string_in: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_number: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<AnonymousTypeExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<AnonymousTypeExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<AnonymousTypeExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<AnonymousTypeExpression>>,
     pub name: String,
     #[cfg_attr(
@@ -4133,10 +4315,13 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -4146,8 +4331,10 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4157,6 +4344,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4166,6 +4354,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4175,6 +4364,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -4184,8 +4374,10 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4195,10 +4387,13 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4208,6 +4403,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -4217,6 +4413,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -4226,18 +4423,25 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4247,10 +4451,13 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -4260,8 +4467,10 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -4271,6 +4480,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4280,6 +4490,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4289,6 +4500,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4298,6 +4510,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4307,6 +4520,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4316,8 +4530,10 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -4327,16 +4543,22 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -4346,6 +4568,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4355,6 +4578,7 @@ pub struct TypeDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -4600,10 +4824,13 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -4613,8 +4840,10 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4624,6 +4853,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4633,6 +4863,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4642,6 +4873,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -4651,8 +4883,10 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4662,10 +4896,13 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4675,6 +4912,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -4684,6 +4922,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -4693,18 +4932,25 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -4714,10 +4960,13 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -4727,8 +4976,10 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<Box<StructuredAlias>>>,
     #[cfg_attr(
         feature = "serde",
@@ -4738,6 +4989,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4747,6 +4999,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4756,6 +5009,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4765,6 +5019,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4774,6 +5029,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4783,8 +5039,10 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -4794,16 +5052,22 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -4813,6 +5077,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -4822,6 +5087,7 @@ pub struct SubsetDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -5234,14 +5500,19 @@ pub mod definition_utl {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct Definition {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixin: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixins: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub apply_to: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -5251,8 +5522,10 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub values_from: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub string_serialization: Option<String>,
     pub name: String,
     #[cfg_attr(
@@ -5263,10 +5536,13 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -5276,8 +5552,10 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -5287,6 +5565,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5296,6 +5575,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5305,6 +5585,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -5314,8 +5595,10 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -5325,10 +5608,13 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -5338,6 +5624,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -5347,6 +5634,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -5356,18 +5644,25 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -5377,10 +5672,13 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -5390,8 +5688,10 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -5401,6 +5701,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5410,6 +5711,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5419,6 +5721,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5428,6 +5731,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5437,6 +5741,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5446,8 +5751,10 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -5457,16 +5764,22 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -5476,6 +5789,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -5485,6 +5799,7 @@ pub struct Definition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -5823,12 +6138,16 @@ impl serde_utils::InlinedPair for DefinitionOrSubtype {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct AnonymousEnumExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set_tag: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set_version: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
@@ -5838,16 +6157,22 @@ pub struct AnonymousEnumExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub permissible_values: Option<HashMap<String, PermissibleValue>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub include: Option<Vec<Box<AnonymousEnumExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minus: Option<Vec<Box<AnonymousEnumExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inherits: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub reachable_from: Option<ReachabilityQuery>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub matches: Option<MatchQuery>,
     #[cfg_attr(
         feature = "serde",
@@ -5857,6 +6182,7 @@ pub struct AnonymousEnumExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub concepts: Option<Vec<uriorcurie>>,
 }
 #[cfg(feature = "pyo3")]
@@ -5927,14 +6253,19 @@ impl<'py> FromPyObject<'py> for Box<AnonymousEnumExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct EnumDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub enum_uri: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set_tag: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set_version: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
@@ -5944,16 +6275,22 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub permissible_values: Option<HashMap<String, PermissibleValue>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub include: Option<Vec<Box<AnonymousEnumExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minus: Option<Vec<Box<AnonymousEnumExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inherits: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub reachable_from: Option<ReachabilityQuery>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub matches: Option<MatchQuery>,
     #[cfg_attr(
         feature = "serde",
@@ -5963,16 +6300,22 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub concepts: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixin: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixins: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub apply_to: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -5982,8 +6325,10 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub values_from: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub string_serialization: Option<String>,
     pub name: String,
     #[cfg_attr(
@@ -5994,10 +6339,13 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -6007,8 +6355,10 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6018,6 +6368,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6027,6 +6378,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6036,6 +6388,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -6045,8 +6398,10 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6056,10 +6411,13 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6069,6 +6427,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -6078,6 +6437,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -6087,18 +6447,25 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6108,10 +6475,13 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -6121,8 +6491,10 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -6132,6 +6504,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6141,6 +6514,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6150,6 +6524,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6159,6 +6534,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6168,6 +6544,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6177,8 +6554,10 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -6188,16 +6567,22 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -6207,6 +6592,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6216,6 +6602,7 @@ pub struct EnumDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -6452,12 +6839,16 @@ impl serde_utils::InlinedPair for EnumDefinition {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct EnumBinding {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub obligation_level: Option<ObligationLevelEnum>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub binds_value_of: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
@@ -6467,6 +6858,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -6476,8 +6868,10 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6487,10 +6881,13 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6500,6 +6897,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -6509,6 +6907,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -6518,18 +6917,25 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6539,10 +6945,13 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -6552,8 +6961,10 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -6563,6 +6974,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6572,6 +6984,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6581,6 +6994,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6590,6 +7004,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6599,6 +7014,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6608,8 +7024,10 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -6619,16 +7037,22 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -6638,6 +7062,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6647,6 +7072,7 @@ pub struct EnumBinding {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -6773,8 +7199,10 @@ impl<'py> FromPyObject<'py> for Box<EnumBinding> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct MatchQuery {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub identifier_pattern: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source_ontology: Option<uriorcurie>,
 }
 #[cfg(feature = "pyo3")]
@@ -6819,6 +7247,7 @@ impl<'py> FromPyObject<'py> for Box<MatchQuery> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct ReachabilityQuery {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source_ontology: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -6828,6 +7257,7 @@ pub struct ReachabilityQuery {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source_nodes: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6837,12 +7267,16 @@ pub struct ReachabilityQuery {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub relationship_types: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_direct: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub include_self: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub traverse_up: Option<bool>,
 }
 #[cfg(feature = "pyo3")]
@@ -6900,6 +7334,7 @@ pub struct StructuredAlias {
     pub literal_form: String,
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "predicate"))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alias_predicate: Option<AliasPredicateEnum>,
     #[cfg_attr(
         feature = "serde",
@@ -6909,6 +7344,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -6919,6 +7355,7 @@ pub struct StructuredAlias {
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "contexts"))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alias_contexts: Option<Vec<uri>>,
     #[cfg_attr(
         feature = "serde",
@@ -6928,6 +7365,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -6937,8 +7375,10 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6948,10 +7388,13 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -6961,6 +7404,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -6970,6 +7414,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -6979,18 +7424,25 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -7000,10 +7452,13 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -7013,8 +7468,10 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<Box<StructuredAlias>>>,
     #[cfg_attr(
         feature = "serde",
@@ -7024,6 +7481,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7033,6 +7491,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7042,6 +7501,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7051,6 +7511,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7060,6 +7521,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7069,8 +7531,10 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -7080,16 +7544,22 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -7099,6 +7569,7 @@ pub struct StructuredAlias {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -7464,14 +7935,19 @@ impl<'py> FromPyObject<'py> for Box<ExpressionOrSubtype> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct TypeExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pattern: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_pattern: Option<PatternExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unit: Option<UnitOfMeasure>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implicit_prefix: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -7481,20 +7957,28 @@ pub struct TypeExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string_in: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_number: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<AnonymousTypeExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<AnonymousTypeExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<AnonymousTypeExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<AnonymousTypeExpression>>,
 }
 #[cfg(feature = "pyo3")]
@@ -7651,12 +8135,16 @@ impl<'py> FromPyObject<'py> for Box<TypeExpressionOrSubtype> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct EnumExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set_tag: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub code_set_version: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pv_formula: Option<PvFormulaOptions>,
     #[cfg_attr(
         feature = "serde",
@@ -7666,16 +8154,22 @@ pub struct EnumExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub permissible_values: Option<HashMap<String, PermissibleValue>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub include: Option<Vec<AnonymousEnumExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minus: Option<Vec<AnonymousEnumExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inherits: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub reachable_from: Option<ReachabilityQuery>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub matches: Option<MatchQuery>,
     #[cfg_attr(
         feature = "serde",
@@ -7685,6 +8179,7 @@ pub struct EnumExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub concepts: Option<Vec<uriorcurie>>,
 }
 #[cfg(feature = "pyo3")]
@@ -7841,6 +8336,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -7850,8 +8346,10 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -7861,10 +8359,13 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -7874,6 +8375,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -7883,6 +8385,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -7892,18 +8395,25 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -7913,10 +8423,13 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -7926,8 +8439,10 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -7937,6 +8452,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7946,6 +8462,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7955,6 +8472,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7964,6 +8482,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7973,6 +8492,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -7982,8 +8502,10 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -7993,16 +8515,22 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -8012,6 +8540,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -8021,6 +8550,7 @@ pub struct AnonymousExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -8218,20 +8748,28 @@ impl<'py> FromPyObject<'py> for Box<AnonymousExpressionOrSubtype> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct PathExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub followed_by: Option<Box<PathExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<Box<PathExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<Box<PathExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<Box<PathExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<Box<PathExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub reversed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub traverse: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range_expression: Option<Box<AnonymousClassExpression>>,
     #[cfg_attr(
         feature = "serde",
@@ -8241,6 +8779,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -8250,8 +8789,10 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8261,10 +8802,13 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8274,6 +8818,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -8283,6 +8828,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -8292,18 +8838,25 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8313,10 +8866,13 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -8326,8 +8882,10 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -8337,6 +8895,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -8346,6 +8905,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -8355,6 +8915,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -8364,6 +8925,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -8373,6 +8935,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -8382,8 +8945,10 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -8393,16 +8958,22 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -8412,6 +8983,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -8421,6 +8993,7 @@ pub struct PathExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -8561,38 +9134,55 @@ impl<'py> FromPyObject<'py> for Box<PathExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct SlotExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range_expression: Option<AnonymousClassExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub enum_range: Option<EnumExpressionOrSubtype>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub bindings: Option<Vec<EnumBinding>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub required: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub recommended: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub multivalued: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inlined: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inlined_as_list: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pattern: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_pattern: Option<PatternExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unit: Option<UnitOfMeasure>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implicit_prefix: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub value_presence: Option<PresenceEnum>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8602,30 +9192,43 @@ pub struct SlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string_in: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_number: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_expression: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub has_member: Option<AnonymousSlotExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_members: Option<AnonymousSlotExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<AnonymousSlotExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<AnonymousSlotExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<AnonymousSlotExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<AnonymousSlotExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub array: Option<ArrayExpression>,
 }
 #[cfg(feature = "pyo3")]
@@ -8822,38 +9425,55 @@ impl<'py> FromPyObject<'py> for Box<SlotExpressionOrSubtype> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct AnonymousSlotExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range_expression: Option<Box<AnonymousClassExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub enum_range: Option<EnumExpressionOrSubtype>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub bindings: Option<Vec<EnumBinding>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub required: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub recommended: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub multivalued: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inlined: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inlined_as_list: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_value: Option<Anything>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pattern: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_pattern: Option<PatternExpression>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unit: Option<UnitOfMeasure>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implicit_prefix: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub value_presence: Option<PresenceEnum>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8863,30 +9483,43 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string_in: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_number: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_expression: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub has_member: Option<Box<AnonymousSlotExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_members: Option<Box<AnonymousSlotExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub array: Option<ArrayExpression>,
     #[cfg_attr(
         feature = "serde",
@@ -8896,6 +9529,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -8905,8 +9539,10 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8916,10 +9552,13 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8929,6 +9568,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -8938,6 +9578,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -8947,18 +9588,25 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -8968,10 +9616,13 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -8981,8 +9632,10 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -8992,6 +9645,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -9001,6 +9655,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -9010,6 +9665,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -9019,6 +9675,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -9028,6 +9685,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -9037,8 +9695,10 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -9048,16 +9708,22 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -9067,6 +9733,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -9076,6 +9743,7 @@ pub struct AnonymousSlotExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -9270,113 +9938,149 @@ impl<'py> FromPyObject<'py> for Box<AnonymousSlotExpression> {
 pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub singular_name: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub domain: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_uri: Option<uriorcurie>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inherited: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub readonly: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub ifabsent: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub list_elements_unique: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub list_elements_ordered: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub shared: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub key: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub identifier: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub designates_type: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alias: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub owner: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub domain_of: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub subproperty_of: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub symmetric: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub reflexive: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub locally_reflexive: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub irreflexive: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub asymmetric: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub transitive: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inverse: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_class_field: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub transitive_form_of: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub reflexive_transitive_form_of: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub role: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_usage_slot: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub usage_slot_name: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub relational_role: Option<RelationalRoleEnum>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_group: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_grouping_slot: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub path_rule: Option<Box<PathExpression>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub disjoint_with: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub children_are_mutually_disjoint: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub union_of: Option<Vec<String>>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9385,57 +10089,75 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub type_mappings: Option<HashMap<String, TypeMapping>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range_expression: Option<Box<AnonymousClassExpression>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub enum_range: Option<EnumExpressionOrSubtype>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub bindings: Option<Vec<EnumBinding>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub required: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub recommended: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub multivalued: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inlined: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub inlined_as_list: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_value: Option<Anything>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_value: Option<Anything>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub pattern: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_pattern: Option<PatternExpression>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unit: Option<UnitOfMeasure>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implicit_prefix: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub value_presence: Option<PresenceEnum>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9446,57 +10168,75 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_string_in: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_number: Option<isize>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub equals_expression: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_cardinality: Option<isize>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_cardinality: Option<isize>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_cardinality: Option<isize>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub has_member: Option<Box<AnonymousSlotExpression>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_members: Option<Box<AnonymousSlotExpression>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<Box<AnonymousSlotExpression>>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub array: Option<ArrayExpression>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixin: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixins: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub apply_to: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9507,9 +10247,11 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub values_from: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub string_serialization: Option<String>,
     #[merge(skip)]
     pub name: String,
@@ -9522,14 +10264,17 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9538,9 +10283,11 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9551,6 +10298,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9561,8 +10309,9 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9571,8 +10320,9 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9581,11 +10331,13 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9594,12 +10346,15 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9610,6 +10365,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9620,6 +10376,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9630,24 +10387,31 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9658,12 +10422,15 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9674,9 +10441,11 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9687,6 +10456,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9697,6 +10467,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9707,6 +10478,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9717,6 +10489,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9727,6 +10500,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9737,9 +10511,11 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9750,21 +10526,27 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9775,6 +10557,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(
@@ -9785,6 +10568,7 @@ pub struct SlotDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -10148,12 +10932,16 @@ impl serde_utils::InlinedPair for SlotDefinition {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct ClassExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<AnonymousClassExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<AnonymousClassExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<AnonymousClassExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<AnonymousClassExpression>>,
     #[cfg_attr(
         feature = "serde",
@@ -10163,6 +10951,7 @@ pub struct ClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_conditions: Option<HashMap<String, SlotDefinition>>,
 }
 #[cfg(feature = "pyo3")]
@@ -10300,14 +11089,19 @@ impl<'py> FromPyObject<'py> for Box<ClassExpressionOrSubtype> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct AnonymousClassExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(
         feature = "serde",
@@ -10317,6 +11111,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_conditions: Option<HashMap<String, Box<SlotDefinition>>>,
     #[cfg_attr(
         feature = "serde",
@@ -10326,6 +11121,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -10335,8 +11131,10 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -10346,10 +11144,13 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -10359,6 +11160,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -10368,6 +11170,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -10377,18 +11180,25 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -10398,10 +11208,13 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -10411,8 +11224,10 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -10422,6 +11237,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10431,6 +11247,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10440,6 +11257,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10449,6 +11267,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10458,6 +11277,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10467,8 +11287,10 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -10478,16 +11300,22 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -10497,6 +11325,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10506,6 +11335,7 @@ pub struct AnonymousClassExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -10641,6 +11471,7 @@ impl<'py> FromPyObject<'py> for Box<AnonymousClassExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct ClassDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slots: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -10650,6 +11481,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_usage: Option<HashMap<String, Box<SlotDefinition>>>,
     #[cfg_attr(
         feature = "serde",
@@ -10659,16 +11491,22 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub attributes: Option<HashMap<String, Box<SlotDefinition>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub class_uri: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub subclass_of: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub union_of: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub defining_slots: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub tree_root: Option<bool>,
     #[cfg_attr(
         feature = "serde",
@@ -10678,30 +11516,43 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unique_keys: Option<HashMap<String, Box<UniqueKey>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rules: Option<Vec<Box<ClassRule>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub classification_rules: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_names_unique: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub represents_relationship: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub disjoint_with: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub children_are_mutually_disjoint: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extra_slots: Option<Box<ExtraSlotsExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alias: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub any_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exactly_one_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub none_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub all_of: Option<Vec<Box<AnonymousClassExpression>>>,
     #[cfg_attr(
         feature = "serde",
@@ -10711,16 +11562,22 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub slot_conditions: Option<HashMap<String, Box<SlotDefinition>>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixin: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixins: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub apply_to: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -10730,8 +11587,10 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub values_from: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub string_serialization: Option<String>,
     pub name: String,
     #[cfg_attr(
@@ -10742,10 +11601,13 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes: Option<Vec<ncname>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub id_prefixes_are_closed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub definition_uri: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -10755,8 +11617,10 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub local_names: Option<HashMap<String, LocalName>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub conforms_to: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -10766,6 +11630,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10775,6 +11640,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10784,6 +11650,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -10793,8 +11660,10 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -10804,10 +11673,13 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -10817,6 +11689,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -10826,6 +11699,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -10835,18 +11709,25 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -10856,10 +11737,13 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -10869,8 +11753,10 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -10880,6 +11766,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10889,6 +11776,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10898,6 +11786,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10907,6 +11796,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10916,6 +11806,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10925,8 +11816,10 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -10936,16 +11829,22 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -10955,6 +11854,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -10964,6 +11864,7 @@ pub struct ClassDefinition {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -11296,18 +12197,25 @@ impl<'py> FromPyObject<'py> for Box<ClassLevelRuleOrSubtype> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct ClassRule {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub preconditions: Option<Box<AnonymousClassExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub postconditions: Option<Box<AnonymousClassExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub elseconditions: Option<Box<AnonymousClassExpression>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub bidirectional: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub open_world: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deactivated: Option<bool>,
     #[cfg_attr(
         feature = "serde",
@@ -11317,6 +12225,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -11326,8 +12235,10 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -11337,10 +12248,13 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -11350,6 +12264,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -11359,6 +12274,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -11368,18 +12284,25 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -11389,10 +12312,13 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -11402,8 +12328,10 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -11413,6 +12341,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11422,6 +12351,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11431,6 +12361,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11440,6 +12371,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11449,6 +12381,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11458,8 +12391,10 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -11469,14 +12404,19 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -11486,6 +12426,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11495,6 +12436,7 @@ pub struct ClassRule {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -11703,12 +12645,16 @@ pub mod array_expression_utl {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct ArrayExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_number_dimensions: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_number_dimensions: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_number_dimensions: Option<array_expression_utl::maximum_number_dimensions_range>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub dimensions: Option<Vec<DimensionExpression>>,
     #[cfg_attr(
         feature = "serde",
@@ -11718,6 +12664,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -11727,8 +12674,10 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -11738,10 +12687,13 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -11751,6 +12703,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -11760,6 +12713,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -11769,18 +12723,25 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -11790,10 +12751,13 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -11803,8 +12767,10 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -11814,6 +12780,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11823,6 +12790,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11832,6 +12800,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11841,6 +12810,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11850,6 +12820,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11859,8 +12830,10 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -11870,16 +12843,22 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -11889,6 +12868,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -11898,6 +12878,7 @@ pub struct ArrayExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -12025,12 +13006,16 @@ impl<'py> FromPyObject<'py> for Box<ArrayExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct DimensionExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alias: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub maximum_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub minimum_cardinality: Option<isize>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_cardinality: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -12040,6 +13025,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -12049,8 +13035,10 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12060,10 +13048,13 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12073,6 +13064,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -12082,6 +13074,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -12091,18 +13084,25 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12112,10 +13112,13 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -12125,8 +13128,10 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -12136,6 +13141,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12145,6 +13151,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12154,6 +13161,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12163,6 +13171,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12172,6 +13181,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12181,8 +13191,10 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -12192,16 +13204,22 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -12211,6 +13229,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12220,6 +13239,7 @@ pub struct DimensionExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -12346,10 +13366,13 @@ impl<'py> FromPyObject<'py> for Box<DimensionExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct PatternExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub syntax: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub interpolated: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub partial_match: Option<bool>,
     #[cfg_attr(
         feature = "serde",
@@ -12359,6 +13382,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -12368,8 +13392,10 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12379,10 +13405,13 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12392,6 +13421,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -12401,6 +13431,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -12410,18 +13441,25 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12431,10 +13469,13 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -12444,8 +13485,10 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -12455,6 +13498,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12464,6 +13508,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12473,6 +13518,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12482,6 +13528,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12491,6 +13538,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12500,8 +13548,10 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -12511,16 +13561,22 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -12530,6 +13586,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12539,6 +13596,7 @@ pub struct PatternExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -12664,6 +13722,7 @@ impl<'py> FromPyObject<'py> for Box<PatternExpression> {
 pub struct ImportExpression {
     pub import_from: uriorcurie,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub import_as: Option<ncname>,
     #[cfg_attr(
         feature = "serde",
@@ -12673,6 +13732,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub import_map: Option<HashMap<String, Setting>>,
     #[cfg_attr(
         feature = "serde",
@@ -12682,6 +13742,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -12691,8 +13752,10 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12702,10 +13765,13 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12715,6 +13781,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -12724,6 +13791,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -12733,18 +13801,25 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -12754,10 +13829,13 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -12767,8 +13845,10 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -12778,6 +13858,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12787,6 +13868,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12796,6 +13878,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12805,6 +13888,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12814,6 +13898,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12823,8 +13908,10 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -12834,16 +13921,22 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -12853,6 +13946,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -12862,6 +13956,7 @@ pub struct ImportExpression {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -13308,12 +14403,15 @@ impl serde_utils::InlinedPair for LocalName {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct Example {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub value: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "description"))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub value_description: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "object"))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub value_object: Option<Anything>,
 }
 #[cfg(feature = "pyo3")]
@@ -13475,10 +14573,13 @@ impl serde_utils::InlinedPair for AltDescription {
 pub struct PermissibleValue {
     pub text: String,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub meaning: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub unit: Option<UnitOfMeasure>,
     #[cfg_attr(
         feature = "serde",
@@ -13488,6 +14589,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub instantiates: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13497,10 +14599,13 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub implements: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mixins: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -13510,6 +14615,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -13519,6 +14625,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(
         feature = "serde",
@@ -13528,10 +14635,13 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -13541,6 +14651,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -13550,6 +14661,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -13559,18 +14671,25 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -13580,10 +14699,13 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -13593,8 +14715,10 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -13604,6 +14728,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13613,6 +14738,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13622,6 +14748,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13631,6 +14758,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13640,6 +14768,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13649,8 +14778,10 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -13660,16 +14791,22 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -13679,6 +14816,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13688,6 +14826,7 @@ pub struct PermissibleValue {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -13880,8 +15019,10 @@ impl serde_utils::InlinedPair for PermissibleValue {
 pub struct UniqueKey {
     pub unique_key_name: String,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Vec::is_empty"))]
     pub unique_key_slots: Vec<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub consider_nulls_inequal: Option<bool>,
     #[cfg_attr(
         feature = "serde",
@@ -13891,6 +15032,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -13900,8 +15042,10 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -13911,10 +15055,13 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -13924,6 +15071,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -13933,6 +15081,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -13942,18 +15091,25 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -13963,10 +15119,13 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -13976,8 +15135,10 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -13987,6 +15148,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -13996,6 +15158,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14005,6 +15168,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14014,6 +15178,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14023,6 +15188,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14032,8 +15198,10 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -14043,16 +15211,22 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -14062,6 +15236,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14071,6 +15246,7 @@ pub struct UniqueKey {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -14256,8 +15432,10 @@ pub struct TypeMapping {
     pub framework_key: String,
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(alias = "type"))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mapped_type: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub string_serialization: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -14267,6 +15445,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
     #[cfg_attr(
         feature = "serde",
@@ -14276,8 +15455,10 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub annotations: Option<HashMap<String, Annotation>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub description: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -14287,10 +15468,13 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub alt_descriptions: Option<HashMap<String, AltDescription>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub title: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -14300,6 +15484,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub todos: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -14309,6 +15494,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub notes: Option<Vec<String>>,
     #[cfg_attr(
         feature = "serde",
@@ -14318,18 +15504,25 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub comments: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub examples: Option<Vec<Example>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_subset: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub from_schema: Option<uri>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub imported_from: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub source: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub in_language: Option<String>,
     #[cfg_attr(
         feature = "serde",
@@ -14339,10 +15532,13 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub see_also: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_exact_replacement: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub deprecated_element_has_possible_replacement: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -14352,8 +15548,10 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub aliases: Option<Vec<String>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub structured_aliases: Option<Vec<StructuredAlias>>,
     #[cfg_attr(
         feature = "serde",
@@ -14363,6 +15561,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14372,6 +15571,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub exact_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14381,6 +15581,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub close_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14390,6 +15591,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub related_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14399,6 +15601,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub narrow_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14408,8 +15611,10 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub broad_mappings: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_by: Option<uriorcurie>,
     #[cfg_attr(
         feature = "serde",
@@ -14419,16 +15624,22 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub contributors: Option<Vec<uriorcurie>>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub created_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub last_updated_on: Option<NaiveDateTime>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub modified_by: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub status: Option<uriorcurie>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub rank: Option<isize>,
     #[cfg_attr(
         feature = "serde",
@@ -14438,6 +15649,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub categories: Option<Vec<uriorcurie>>,
     #[cfg_attr(
         feature = "serde",
@@ -14447,6 +15659,7 @@ pub struct TypeMapping {
         )
     )]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub keywords: Option<Vec<String>>,
 }
 #[cfg(feature = "pyo3")]
@@ -14630,8 +15843,10 @@ impl serde_utils::InlinedPair for TypeMapping {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct ExtraSlotsExpression {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub allowed: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub range_expression: Option<Box<AnonymousSlotExpression>>,
 }
 #[cfg(feature = "pyo3")]
@@ -14678,6 +15893,19 @@ impl<'py> FromPyObject<'py> for Box<ExtraSlotsExpression> {
 fn overwrite_except_none<T>(left: &mut Option<T>, right: Option<T>) {
     if right.is_some() {
         *left = right;
+    }
+}
+
+/// Merge two `Option<HashMap<K, V>>`s per-key: `right` wins on a key conflict,
+/// keys only present on `left` are preserved, and `None` on `right` is a no-op.
+fn option_map_overwrite<K: std::cmp::Eq + std::hash::Hash, V>(
+    left: &mut Option<std::collections::HashMap<K, V>>,
+    right: Option<std::collections::HashMap<K, V>>,
+) {
+    match (left.as_mut(), right) {
+        (Some(l), Some(r)) => l.extend(r),
+        (None, r @ Some(_)) => *left = r,
+        _ => {}
     }
 }
 
