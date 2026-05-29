@@ -1,5 +1,6 @@
 #![allow(non_camel_case_types)]
 
+pub mod merge_strategies;
 pub mod poly;
 pub mod poly_containers;
 #[cfg(feature = "serde")]
@@ -9376,7 +9377,7 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
     pub union_of: Option<Vec<String>>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = crate::merge_strategies::option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9529,7 +9530,7 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
     pub definition_uri: Option<uriorcurie>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = crate::merge_strategies::option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9562,7 +9563,7 @@ pub struct SlotDefinition {
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub instantiates: Option<Vec<uriorcurie>>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = crate::merge_strategies::option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9572,7 +9573,7 @@ pub struct SlotDefinition {
     )]
     #[cfg_attr(feature = "serde", serde(default))]
     pub extensions: Option<HashMap<String, ExtensionOrSubtype>>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = crate::merge_strategies::option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -9585,7 +9586,7 @@ pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
     pub description: Option<String>,
-    #[merge(strategy = overwrite_except_none)]
+    #[merge(strategy = crate::merge_strategies::option_map_overwrite)]
     #[cfg_attr(
         feature = "serde",
         serde(
