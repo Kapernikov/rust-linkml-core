@@ -1,0 +1,72 @@
+id: https://example.org/slot-usage-annotation-merge
+name: slot_usage_annotation_merge
+
+prefixes:
+  ex:
+    prefix_prefix: ex
+    prefix_reference: https://example.org/
+  linkml: https://w3id.org/linkml/
+
+default_prefix: ex
+default_range: string
+
+imports:
+  - linkml:types
+
+classes:
+  Parent:
+    description: Root of an is_a chain; carries multiple annotations + extensions + local_names on its attribute.
+    attributes:
+      hasName:
+        annotations:
+          ex:label_en: Name
+          ex:label_fr: Nom
+          ex:label_nl: Naam
+        extensions:
+          ex:ext_a: alpha
+          ex:ext_b: beta
+        local_names:
+          en:
+            local_name_source: english
+            local_name_value: Name
+          fr:
+            local_name_source: french
+            local_name_value: Nom
+
+  Child:
+    is_a: Parent
+    description: slot_usage adds a new annotation key — none of the parent's keys should be lost.
+    slot_usage:
+      hasName:
+        annotations:
+          ex:rbac_scope: GI
+        extensions:
+          ex:ext_c: gamma
+        local_names:
+          nl:
+            local_name_source: dutch
+            local_name_value: Naam
+
+  Grandchild:
+    is_a: Child
+    description: slot_usage overrides one parent annotation key (label_fr) while adding a new one.
+    slot_usage:
+      hasName:
+        annotations:
+          ex:label_fr: Nom (FR-BE)
+          ex:audit_only: true
+        extensions:
+          ex:ext_a: alpha-overridden
+          ex:ext_d: delta
+        local_names:
+          fr:
+            local_name_source: french-be
+            local_name_value: Nom (FR-BE)
+
+  SiblingAttribute:
+    description: Redeclares the attribute via `attributes` (not `slot_usage`) — child's attribute fully replaces (control for full replacement).
+    is_a: Parent
+    attributes:
+      hasName:
+        annotations:
+          ex:rbac_scope: SIB

@@ -1518,6 +1518,22 @@ impl SchemaView {
         Ok(self.index().slot_entries.values().cloned().collect())
     }
 
+    /// Return the fully-merged [`SlotView`] for `(class_id, slot_name)`, walking
+    /// `is_a`/mixins and folding in `attributes` + `slot_usage`. Returns `None`
+    /// when the class or slot is unknown.
+    pub fn induced_slot(
+        &self,
+        class_id: &Identifier,
+        slot_name: &str,
+    ) -> Result<Option<SlotView>, SchemaViewError> {
+        let conv = self.converter();
+        let cv = match self.get_class(class_id, &conv)? {
+            Some(cv) => cv,
+            None => return Ok(None),
+        };
+        Ok(cv.slots().iter().find(|s| s.name == slot_name).cloned())
+    }
+
     /// Looks up a top-level slot by name, CURIE, or URI.
     pub fn get_slot(
         &self,
