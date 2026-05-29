@@ -516,35 +516,66 @@ impl SchemaView {
             });
         }
         let mut view = SchemaView::new();
-        let mut entries = snapshot.schemas;
 
-        if let Some(primary) = snapshot.primary_schema.clone() {
-            if let Some(idx) = entries.iter().position(|entry| entry.schema_id == primary) {
-                let primary_entry = entries.remove(idx);
-                view.add_schema(primary_entry.definition)
-                    .map_err(SchemaViewError::AddSchemaError)?;
+        // Order entries primary-first so the index "first wins" tie-breaking
+        // (class/enum name and uri indexes use `or_insert_with`) matches the
+        // incremental `add_schema` path exactly.
+        let mut entries = snapshot.schemas;
+        let mut ordered: Vec<SchemaEntry> = Vec::with_capacity(entries.len());
+        if let Some(primary) = &snapshot.primary_schema {
+            if let Some(idx) = entries.iter().position(|entry| &entry.schema_id == primary) {
+                ordered.push(entries.remove(idx));
             }
         }
+        ordered.extend(entries);
+        let ordered_ids: Vec<String> = ordered.iter().map(|e| e.schema_id.clone()).collect();
 
-        for entry in entries.into_iter() {
-            view.add_schema(entry.definition)
-                .map_err(SchemaViewError::AddSchemaError)?;
+        // Build the entire `SchemaViewData` in a single pass and store it once.
+        // Going through `add_schema` per entry would deep-clone the growing
+        // `schema_definitions` map on every insert (O(n^2) over the schema set).
+        let mut data = SchemaViewData::new();
+        for entry in &ordered {
+            let conv = converter_from_schema(&entry.definition);
+            data.converters
+                .insert(entry.schema_id.clone(), Arc::new(conv));
         }
+        data.primary_schema = snapshot.primary_schema;
+        data.resolved_schema_imports = snapshot
+            .resolved_imports
+            .into_iter()
+            .map(|ri| {
+                (
+                    (ri.importer_schema_id, ri.import_reference),
+                    ri.resolved_schema_id,
+                )
+            })
+            .collect();
+        for entry in ordered {
+            data.schema_definitions
+                .insert(entry.schema_id.clone(), entry.definition);
+        }
+        view.data.store(Arc::new(data));
 
-        let primary_schema = snapshot.primary_schema;
-        let imports = snapshot.resolved_imports;
-        view.update_data(move |data| {
-            data.primary_schema = primary_schema;
-            data.resolved_schema_imports = imports
-                .into_iter()
-                .map(|ri| {
-                    (
-                        (ri.importer_schema_id, ri.import_reference),
-                        ri.resolved_schema_id,
-                    )
-                })
-                .collect();
-        });
+        // Index every schema. Indexing only reads the per-schema converter and
+        // definition (kept alive by the `Arc` we just stored), so it borrows
+        // `&mut view` without touching `view.data` again.
+        let stored = view.data.load_full();
+        for schema_uri in &ordered_ids {
+            let def = stored
+                .schema_definitions
+                .get(schema_uri)
+                .expect("definition was just inserted");
+            let conv = stored
+                .converters
+                .get(schema_uri)
+                .expect("converter was just inserted");
+            view.index_schema_classes(schema_uri, def, conv)
+                .map_err(|e| SchemaViewError::AddSchemaError(format!("{:?}", e)))?;
+            view.index_schema_slots(schema_uri, def, conv)
+                .map_err(|e| SchemaViewError::AddSchemaError(format!("{:?}", e)))?;
+            view.index_schema_enums(schema_uri, def, conv)
+                .map_err(|e| SchemaViewError::AddSchemaError(format!("{:?}", e)))?;
+        }
 
         Ok(view)
     }
@@ -732,20 +763,25 @@ impl SchemaView {
     ) -> Result<bool, String> {
         let schema_uri = schema.id.clone();
         let conv = converter_from_schema(&schema);
-        let conv_arc = Arc::new(conv.clone());
-        let schema_uri_for_converter = schema_uri.clone();
-        self.update_data(move |d| {
-            d.converters.insert(schema_uri_for_converter, conv_arc);
-        });
+
+        // Indexing consumes only the passed converter and the schema itself
+        // (SlotView/ClassView capture the live view lazily via a cheap clone), so
+        // it is independent of what is currently stored in `data`. Running it
+        // before the single copy-on-write store below lets us fold the converter,
+        // import, and definition inserts into one `update_data` call instead of two
+        // — each call deep-clones the whole `SchemaViewData`.
         self.index_schema_classes(&schema_uri, &schema, &conv)
             .map_err(|e| format!("{:?}", e))?;
         self.index_schema_slots(&schema_uri, &schema, &conv)
             .map_err(|e| format!("{:?}", e))?;
         self.index_schema_enums(&schema_uri, &schema, &conv)
             .map_err(|e| format!("{:?}", e))?;
+        let conv_arc = Arc::new(conv);
+        let schema_uri_for_converter = schema_uri.clone();
         let schema_uri_for_import = schema_uri.clone();
         let mut schema_opt = Some(schema);
         let added = self.update_data(move |d| {
+            d.converters.insert(schema_uri_for_converter, conv_arc);
             if let Some((schema_id, import_ref)) = import_reference.as_ref() {
                 d.resolved_schema_imports.insert(
                     (schema_id.clone(), import_ref.clone()),
