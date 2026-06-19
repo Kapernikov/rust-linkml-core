@@ -549,3 +549,109 @@ fn diff_and_patch_multiple_removes_from_scalar_list() {
         "patched source should equal target after multi-remove"
     );
 }
+
+/// Regression (WI193): lists of inlined objects with **no** key/identifier
+/// slot (e.g. config-driven repeat tables) must be diffed as a sequence, not
+/// positionally. Deleting the first row used to shift every later row into a
+/// false `Update` and remove the wrong one. An LCS keeps untouched rows quiet,
+/// handles duplicate rows by multiplicity, and still reports an in-place edit
+/// as a single field-level `Update` rather than a remove+add. All three cases
+/// must also round-trip through `patch`.
+#[test]
+fn diff_and_patch_keyless_object_list_shifts() {
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let person = class_in_schema(&sv, &schema, "Person");
+
+    // MedicalEvent has no key/identifier slot, so `has_medical_history` is a
+    // keyless inlined-object list. Rows are distinguished by `started_at_time`.
+    let e1 = r#"{"started_at_time":"2020-01-01","duration":1.0}"#;
+    let e2 = r#"{"started_at_time":"2021-02-02","duration":2.0}"#;
+    let e2_edited = r#"{"started_at_time":"2021-02-02","duration":9.0}"#;
+    let person_with = |events: &str| -> String {
+        format!(r#"{{"id":"P:001","name":"fred","has_medical_history":[{events}]}}"#)
+    };
+    let load = |json: &str| load_json_instance(json, &sv, &person, &conv);
+
+    let roundtrip = |src: &LinkMLInstance, tgt: &LinkMLInstance| {
+        let deltas = diff(src, tgt, DiffOptions::new(false));
+        let (patched, trace) = patch(
+            src,
+            &deltas,
+            linkml_runtime::diff::PatchOptions {
+                ignore_no_ops: true,
+                treat_missing_as_null: false,
+            },
+        )
+        .unwrap();
+        assert!(
+            trace.failed.is_empty(),
+            "no delta should fail to apply, got failed: {:?}",
+            trace.failed
+        );
+        assert_eq!(
+            patched.to_json(),
+            tgt.to_json(),
+            "patched source must equal target"
+        );
+        deltas
+    };
+
+    // Case 1: delete the first row [E1, E2] -> [E2]. Exactly one Remove, no
+    // Update — the surviving row E2 must NOT be flagged as edited.
+    let src = load(&person_with(&format!("{e1},{e2}")));
+    let tgt = load(&person_with(e2));
+    let deltas = roundtrip(&src, &tgt);
+    assert_eq!(
+        deltas.iter().filter(|d| d.op == DeltaOp::Remove).count(),
+        1,
+        "delete-first-row: expected exactly one Remove, got: {deltas:?}"
+    );
+    assert!(
+        deltas.iter().all(|d| d.op == DeltaOp::Remove),
+        "delete-first-row: only a Remove is allowed, got: {deltas:?}"
+    );
+
+    // Case 2: duplicate rows [E1, E1, E2] -> [E1, E2]. One copy of E1 is gone;
+    // multiplicity-aware diff must emit exactly one Remove and nothing else.
+    let src = load(&person_with(&format!("{e1},{e1},{e2}")));
+    let tgt = load(&person_with(&format!("{e1},{e2}")));
+    let deltas = roundtrip(&src, &tgt);
+    assert_eq!(
+        deltas.len(),
+        1,
+        "duplicate-row: expected a single delta, got: {deltas:?}"
+    );
+    assert_eq!(
+        deltas[0].op,
+        DeltaOp::Remove,
+        "duplicate-row: the single delta must be a Remove, got: {deltas:?}"
+    );
+
+    // Case 3: in-place edit [E1, E2] -> [E1, E2'] (duration changed). Must be a
+    // single field-level Update, not a remove+add of the whole row.
+    let src = load(&person_with(&format!("{e1},{e2}")));
+    let tgt = load(&person_with(&format!("{e1},{e2_edited}")));
+    let deltas = roundtrip(&src, &tgt);
+    assert_eq!(
+        deltas.len(),
+        1,
+        "in-place-edit: expected a single delta, got: {deltas:?}"
+    );
+    assert_eq!(
+        deltas[0].op,
+        DeltaOp::Update,
+        "in-place-edit: the single delta must be an Update, got: {deltas:?}"
+    );
+    assert_eq!(
+        deltas[0].path,
+        vec![
+            "has_medical_history".to_string(),
+            "1".to_string(),
+            "duration".to_string()
+        ],
+        "in-place-edit: Update must address the changed field of the edited row, got: {deltas:?}"
+    );
+}
