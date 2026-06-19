@@ -20,6 +20,36 @@ fn slot_is_ignored(slot: &SlotView) -> bool {
         .unwrap_or(false)
 }
 
+/// Heuristic: are two keyless-list rows the *same row edited* (so a diff should
+/// pair them as a field-level update) or *different rows* (a delete + add)?
+///
+/// Keyless rows have no identifier, so we judge by content: two objects are
+/// "the same edited row" when at least half of their fields are unchanged. A
+/// genuine field edit keeps most fields; a freshly added row that displaced a
+/// deleted one typically shares almost nothing. Non-objects (e.g. scalars) are
+/// always treated as edits — a scalar value change is an update in place.
+fn rows_similar(s: &LinkMLInstance, t: &LinkMLInstance, treat_missing_as_null: bool) -> bool {
+    match (s, t) {
+        (LinkMLInstance::Object { values: sm, .. }, LinkMLInstance::Object { values: tm, .. }) => {
+            let mut keys: std::collections::HashSet<&String> = sm.keys().collect();
+            keys.extend(tm.keys());
+            if keys.is_empty() {
+                return true;
+            }
+            let mut equal = 0usize;
+            for k in &keys {
+                match (sm.get(*k), tm.get(*k)) {
+                    (Some(a), Some(b)) if a.equals(b, treat_missing_as_null) => equal += 1,
+                    (None, None) => equal += 1,
+                    _ => {}
+                }
+            }
+            equal * 2 >= keys.len()
+        }
+        _ => true,
+    }
+}
+
 /// Operation applied by a [`Delta`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -323,43 +353,66 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                     }
                     gaps.push((ps, n, pt, m)); // trailing gap
 
-                    // An insert round-trips only if it appends, i.e. no gap other
-                    // than the last carries excess target rows.
+                    // Within each gap, a paired position is a *replace* only when
+                    // the two rows are similar (a field edit); dissimilar rows are
+                    // a delete + add. A gap emits an Add when it has excess target
+                    // rows or a dissimilar pair. Such an Add only round-trips if it
+                    // appends, so it must be confined to the trailing gap;
+                    // otherwise fall back to the positional encoding.
                     let last_gap = gaps.len() - 1;
-                    let insert_is_suffix =
-                        gaps.iter().enumerate().all(|(g, &(slo, shi, tlo, thi))| {
-                            g == last_gap || (thi - tlo) <= (shi - slo)
-                        });
+                    let gap_emits_add = |slo: usize, shi: usize, tlo: usize, thi: usize| {
+                        let paired = (shi - slo).min(thi - tlo);
+                        (thi - tlo) > (shi - slo)
+                            || (0..paired).any(|k| {
+                                !rows_similar(
+                                    &sl[slo + k],
+                                    &tl[tlo + k],
+                                    opts.treat_missing_as_null,
+                                )
+                            })
+                    };
+                    let clean_safe = gaps.iter().enumerate().all(|(g, &(slo, shi, tlo, thi))| {
+                        g == last_gap || !gap_emits_add(slo, shi, tlo, thi)
+                    });
 
-                    if insert_is_suffix {
-                        // Per gap: pair rows positionally as replaces (recurse for
-                        // field-level Updates), excess source rows are Removes,
-                        // excess target rows are Adds. Emit replaces + adds first
-                        // and removes last so every index is still valid when the
-                        // patcher applies it (removes go in descending order).
+                    if clean_safe {
+                        // Emit replaces + adds first and removes last so every index
+                        // is still valid when the patcher applies it (removes go in
+                        // descending order, adds append).
                         let mut pending_removes: Vec<(usize, JsonValue)> = Vec::new();
                         let mut add_idx = n;
-                        for &(slo, shi, tlo, thi) in &gaps {
-                            let paired = (shi - slo).min(thi - tlo);
-                            for k in 0..paired {
-                                let si = slo + k;
-                                path.push(si.to_string());
-                                inner(path, None, &sl[si], &tl[tlo + k], opts, out);
-                                path.pop();
-                            }
-                            for (si, sv) in sl.iter().enumerate().take(shi).skip(slo + paired) {
-                                pending_removes.push((si, sv.to_json()));
-                            }
-                            for tv in tl.iter().take(thi).skip(tlo + paired) {
+                        let mut emit_add =
+                            |path: &mut Vec<String>, out: &mut Vec<Delta>, v: JsonValue| {
                                 path.push(add_idx.to_string());
                                 out.push(Delta {
                                     path: path.clone(),
                                     op: DeltaOp::Add,
                                     old: None,
-                                    new: Some(tv.to_json()),
+                                    new: Some(v),
                                 });
                                 path.pop();
                                 add_idx += 1;
+                            };
+                        for &(slo, shi, tlo, thi) in &gaps {
+                            let paired = (shi - slo).min(thi - tlo);
+                            for k in 0..paired {
+                                let si = slo + k;
+                                let tj = tlo + k;
+                                if rows_similar(&sl[si], &tl[tj], opts.treat_missing_as_null) {
+                                    path.push(si.to_string());
+                                    inner(path, None, &sl[si], &tl[tj], opts, out);
+                                    path.pop();
+                                } else {
+                                    // Different rows: delete the source, add the target.
+                                    pending_removes.push((si, sl[si].to_json()));
+                                    emit_add(path, out, tl[tj].to_json());
+                                }
+                            }
+                            for (si, sv) in sl.iter().enumerate().take(shi).skip(slo + paired) {
+                                pending_removes.push((si, sv.to_json()));
+                            }
+                            for tv in tl.iter().take(thi).skip(tlo + paired) {
+                                emit_add(path, out, tv.to_json());
                             }
                         }
                         for (si, old) in pending_removes {
