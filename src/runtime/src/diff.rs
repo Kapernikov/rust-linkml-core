@@ -265,24 +265,22 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                         }
                     }
                 } else {
-                    // Keyless list: items carry no stable identifier. Positional
-                    // (by-index) matching mis-attributes shifts — deleting an
-                    // element makes every later element look edited and, on
-                    // patch, removes the wrong one (WI193).
+                    // Keyless list: items carry no stable identifier, so a
+                    // positional (by-index) diff mis-attributes shifts — deleting
+                    // or inserting a row makes every later row look edited and, on
+                    // patch, touches the wrong one (WI193).
                     //
-                    // We can only reorder the diff safely within what the patcher
-                    // can replay: it overwrites a list slot by index or appends,
-                    // and applies index-addressed Removes in descending order —
-                    // it has *no* insert-at-index. So:
+                    // Diff it as a sequence instead: an LCS over structural
+                    // equality, turned into edit opcodes per gap between matched
+                    // anchors — equal (skip), replace (field-level Update), delete
+                    // (Remove), insert (Add).
                     //
-                    //   * Pure deletion (target is an ordered subsequence of the
-                    //     source): emit clean Removes for the dropped rows, found
-                    //     via an LCS over structural equality. Remove addresses
-                    //     any index and round-trips, so this is safe and fixes the
-                    //     shift mis-attribution.
-                    //   * Anything else (insert / reorder / edit / mixed): fall
-                    //     back to positional overwrite+append, the only encoding
-                    //     the index-based patcher can faithfully replay.
+                    // Constraint: the patcher overwrites a list slot by index or
+                    // appends, applies index-addressed Removes in descending
+                    // order, and has *no* insert-at-index. An inserted row
+                    // therefore only round-trips if it lands at the very end. When
+                    // an insert would have to go mid-list we fall back to the
+                    // positional overwrite+append encoding the patcher can replay.
                     let n = sl.len();
                     let m = tl.len();
                     let eq = |i: usize, j: usize| sl[i].equals(&tl[j], opts.treat_missing_as_null);
@@ -299,34 +297,77 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                         }
                     }
 
-                    // `dp[0][0] == m` means every target row lies on a common
-                    // subsequence — i.e. the target is the source with some rows
-                    // dropped (same order): a pure deletion.
-                    if dp[0][0] == m && m < n {
-                        // Backtrack to flag the surviving (matched) source rows;
-                        // the rest were deleted.
-                        let mut matched_src = vec![false; n];
-                        let (mut i, mut j) = (0usize, 0usize);
-                        while i < n && j < m {
-                            if eq(i, j) {
-                                matched_src[i] = true;
-                                i += 1;
-                                j += 1;
-                            } else if dp[i + 1][j] >= dp[i][j + 1] {
-                                i += 1;
-                            } else {
-                                j += 1;
+                    // Backtrack into matched (source, target) anchor pairs.
+                    let mut anchors: Vec<(usize, usize)> = Vec::new();
+                    let (mut i, mut j) = (0usize, 0usize);
+                    while i < n && j < m {
+                        if eq(i, j) {
+                            anchors.push((i, j));
+                            i += 1;
+                            j += 1;
+                        } else if dp[i + 1][j] >= dp[i][j + 1] {
+                            i += 1;
+                        } else {
+                            j += 1;
+                        }
+                    }
+
+                    // Gaps = runs of unmatched rows before/between/after anchors,
+                    // as half-open ranges (src_lo, src_hi, tgt_lo, tgt_hi).
+                    let mut gaps: Vec<(usize, usize, usize, usize)> = Vec::new();
+                    let (mut ps, mut pt) = (0usize, 0usize);
+                    for &(si, tj) in &anchors {
+                        gaps.push((ps, si, pt, tj));
+                        ps = si + 1;
+                        pt = tj + 1;
+                    }
+                    gaps.push((ps, n, pt, m)); // trailing gap
+
+                    // An insert round-trips only if it appends, i.e. no gap other
+                    // than the last carries excess target rows.
+                    let last_gap = gaps.len() - 1;
+                    let insert_is_suffix =
+                        gaps.iter().enumerate().all(|(g, &(slo, shi, tlo, thi))| {
+                            g == last_gap || (thi - tlo) <= (shi - slo)
+                        });
+
+                    if insert_is_suffix {
+                        // Per gap: pair rows positionally as replaces (recurse for
+                        // field-level Updates), excess source rows are Removes,
+                        // excess target rows are Adds. Emit replaces + adds first
+                        // and removes last so every index is still valid when the
+                        // patcher applies it (removes go in descending order).
+                        let mut pending_removes: Vec<(usize, JsonValue)> = Vec::new();
+                        let mut add_idx = n;
+                        for &(slo, shi, tlo, thi) in &gaps {
+                            let paired = (shi - slo).min(thi - tlo);
+                            for k in 0..paired {
+                                let si = slo + k;
+                                path.push(si.to_string());
+                                inner(path, None, &sl[si], &tl[tlo + k], opts, out);
+                                path.pop();
+                            }
+                            for (si, sv) in sl.iter().enumerate().take(shi).skip(slo + paired) {
+                                pending_removes.push((si, sv.to_json()));
+                            }
+                            for tv in tl.iter().take(thi).skip(tlo + paired) {
+                                path.push(add_idx.to_string());
+                                out.push(Delta {
+                                    path: path.clone(),
+                                    op: DeltaOp::Add,
+                                    old: None,
+                                    new: Some(tv.to_json()),
+                                });
+                                path.pop();
+                                add_idx += 1;
                             }
                         }
-                        for (i, sv) in sl.iter().enumerate() {
-                            if matched_src[i] {
-                                continue;
-                            }
-                            path.push(i.to_string());
+                        for (si, old) in pending_removes {
+                            path.push(si.to_string());
                             out.push(Delta {
                                 path: path.clone(),
                                 op: DeltaOp::Remove,
-                                old: Some(sv.to_json()),
+                                old: Some(old),
                                 new: None,
                             });
                             path.pop();

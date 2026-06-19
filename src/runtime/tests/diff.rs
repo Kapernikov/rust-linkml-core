@@ -662,4 +662,26 @@ fn diff_and_patch_keyless_object_list_shifts() {
     let src = load(&person_with(&format!("{e1},{e2}")));
     let tgt = load(&person_with(&format!("{e1},{e3},{e2}")));
     roundtrip(&src, &tgt);
+
+    // Case 5: combined delete-first + append [E1, E2] -> [E2, E3]. The added row
+    // E3 must read as an Add (not the deleted E1 mis-attributed as an edit), the
+    // dropped E1 as a Remove, and the survivor E2 stays quiet. Round-trips
+    // because the insert lands at the tail.
+    let src = load(&person_with(&format!("{e1},{e2}")));
+    let tgt = load(&person_with(&format!("{e2},{e3}")));
+    let deltas = roundtrip(&src, &tgt);
+    assert_eq!(
+        deltas.iter().filter(|d| d.op == DeltaOp::Remove).count(),
+        1,
+        "combined: exactly one Remove (E1), got: {deltas:?}"
+    );
+    assert_eq!(
+        deltas.iter().filter(|d| d.op == DeltaOp::Add).count(),
+        1,
+        "combined: exactly one Add (E3), got: {deltas:?}"
+    );
+    assert!(
+        deltas.iter().all(|d| d.op != DeltaOp::Update),
+        "combined: no row should be mis-reported as an Update, got: {deltas:?}"
+    );
 }
