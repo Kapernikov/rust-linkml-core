@@ -685,27 +685,24 @@ fn diff_and_patch_keyless_object_list_shifts() {
         "combined: no row should be mis-reported as an Update, got: {deltas:?}"
     );
 
-    // Case 6: same-position delete + add of an UNRELATED row [E1, E2] -> [E1, X],
-    // where X shares no field values with E2. The LCS keeps E1 and leaves E2/X in
-    // the same gap; they must NOT be paired into a field-level Update (that is the
-    // reported bug where the added row reads as an edit of the deleted one). With
-    // no shared fields they are dissimilar -> Remove E2 + Add X.
+    // Case 6: same-position content change [E1, E2] -> [E1, X]. The LCS keeps E1
+    // and pairs E2/X in the trailing gap. The engine reports this as field-level
+    // Updates on row 1 — it does NOT guess whether it was an in-place edit or a
+    // delete+add (that is a UI concern resolved from tracked ops). Must
+    // round-trip and touch only index 1.
     let x = r#"{"started_at_time":"2099-09-09","duration":99.0}"#;
-    let src = load(&person_with(&format!("{e1},{e2}")));
-    let tgt = load(&person_with(&format!("{e1},{x}")));
+    let src = load(&person_with(&format!("{e1},{x}")));
+    let tgt = load(&person_with(&format!("{e1},{e2}")));
     let deltas = roundtrip(&src, &tgt);
     assert!(
-        deltas.iter().all(|d| d.op != DeltaOp::Update),
-        "dissimilar replace must not be an Update, got: {deltas:?}"
+        deltas.iter().all(|d| d.op == DeltaOp::Update),
+        "same-position change: all deltas are field Updates, got: {deltas:?}"
     );
-    assert_eq!(
-        deltas.iter().filter(|d| d.op == DeltaOp::Remove).count(),
-        1,
-        "dissimilar replace: one Remove (E2), got: {deltas:?}"
-    );
-    assert_eq!(
-        deltas.iter().filter(|d| d.op == DeltaOp::Add).count(),
-        1,
-        "dissimilar replace: one Add (X), got: {deltas:?}"
+    assert!(
+        deltas.iter().all(
+            |d| d.path.first().map(|s| s.as_str()) == Some("has_medical_history")
+                && d.path.get(1).map(|s| s.as_str()) == Some("1")
+        ),
+        "same-position change: Updates address only row 1, got: {deltas:?}"
     );
 }

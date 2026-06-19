@@ -20,46 +20,6 @@ fn slot_is_ignored(slot: &SlotView) -> bool {
         .unwrap_or(false)
 }
 
-/// Heuristic: are two keyless-list rows the *same row edited* (so a diff should
-/// pair them as a field-level update) or *different rows* (a delete + add)?
-///
-/// Keyless rows have no identifier, so we judge by content: two objects are
-/// "the same edited row" when at least half of their fields are unchanged. A
-/// genuine field edit keeps most fields; a freshly added row that displaced a
-/// deleted one typically shares almost nothing. Non-objects (e.g. scalars) are
-/// always treated as edits — a scalar value change is an update in place.
-fn rows_similar(s: &LinkMLInstance, t: &LinkMLInstance, treat_missing_as_null: bool) -> bool {
-    match (s, t) {
-        (LinkMLInstance::Object { values: sm, .. }, LinkMLInstance::Object { values: tm, .. }) => {
-            let mut keys: std::collections::HashSet<&String> = sm.keys().collect();
-            keys.extend(tm.keys());
-            if keys.is_empty() {
-                return true;
-            }
-            let mut equal = 0usize;
-            for k in &keys {
-                match (sm.get(*k), tm.get(*k)) {
-                    (Some(a), Some(b)) if a.equals(b, treat_missing_as_null) => equal += 1,
-                    (None, None) => equal += 1,
-                    // With treat_missing_as_null, a field present-as-null on one
-                    // side and absent on the other is equal (matches
-                    // LinkMLInstance::equals null/missing normalisation), so a
-                    // null-vs-missing difference doesn't flip the similarity.
-                    (Some(LinkMLInstance::Null { .. }), None)
-                    | (None, Some(LinkMLInstance::Null { .. }))
-                        if treat_missing_as_null =>
-                    {
-                        equal += 1
-                    }
-                    _ => {}
-                }
-            }
-            equal * 2 >= keys.len()
-        }
-        _ => true,
-    }
-}
-
 /// Operation applied by a [`Delta`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -406,26 +366,20 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                         }
                         gaps.push((ps, n, pt, m)); // trailing gap
 
-                        // A paired position is a *replace* only when the rows are
-                        // similar (a field edit); dissimilar rows are a delete +
-                        // add. A gap emits an Add when it has excess target rows or
-                        // a dissimilar pair, which only round-trips if it appends —
-                        // so it must be the trailing gap, else fall back.
+                        // Per gap: paired positions are field-level Updates
+                        // (recurse), excess source rows are Removes, excess target
+                        // rows are Adds. An Add only round-trips if it appends, so a
+                        // gap with excess target rows must be the trailing gap;
+                        // otherwise fall back to the positional encoding.
+                        //
+                        // Whether a same-position content change is an "edit" or a
+                        // "replace" (delete+add) is intentionally NOT decided here —
+                        // that is a UI concern resolved from tracked add/remove ops
+                        // higher up the chain. The engine just reports the change.
                         let last_gap = gaps.len() - 1;
-                        let gap_emits_add = |slo: usize, shi: usize, tlo: usize, thi: usize| {
-                            let paired = (shi - slo).min(thi - tlo);
-                            (thi - tlo) > (shi - slo)
-                                || (0..paired).any(|k| {
-                                    !rows_similar(
-                                        &sl[slo + k],
-                                        &tl[tlo + k],
-                                        opts.treat_missing_as_null,
-                                    )
-                                })
-                        };
                         let clean_safe =
                             gaps.iter().enumerate().all(|(g, &(slo, shi, tlo, thi))| {
-                                g == last_gap || !gap_emits_add(slo, shi, tlo, thi)
+                                g == last_gap || (thi - tlo) <= (shi - slo)
                             });
 
                         if clean_safe {
@@ -450,16 +404,9 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                                 let paired = (shi - slo).min(thi - tlo);
                                 for k in 0..paired {
                                     let si = slo + k;
-                                    let tj = tlo + k;
-                                    if rows_similar(&sl[si], &tl[tj], opts.treat_missing_as_null) {
-                                        path.push(si.to_string());
-                                        inner(path, None, &sl[si], &tl[tj], opts, out);
-                                        path.pop();
-                                    } else {
-                                        // Different rows: delete source, add target.
-                                        pending_removes.push((si, sl[si].to_json()));
-                                        emit_add(path, out, tl[tj].to_json());
-                                    }
+                                    path.push(si.to_string());
+                                    inner(path, None, &sl[si], &tl[tlo + k], opts, out);
+                                    path.pop();
                                 }
                                 for (si, sv) in sl.iter().enumerate().take(shi).skip(slo + paired) {
                                     pending_removes.push((si, sv.to_json()));
