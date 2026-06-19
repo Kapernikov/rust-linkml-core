@@ -654,4 +654,12 @@ fn diff_and_patch_keyless_object_list_shifts() {
         ],
         "in-place-edit: Update must address the changed field of the edited row, got: {deltas:?}"
     );
+
+    // Case 4: mid-list insert [E1, E2] -> [E1, E3, E2]. The index-based patcher
+    // has no insert-at-index, so this falls back to positional overwrite+append;
+    // it must still round-trip exactly (regression guard for the hybrid).
+    let e3 = r#"{"started_at_time":"2022-03-03","duration":3.0}"#;
+    let src = load(&person_with(&format!("{e1},{e2}")));
+    let tgt = load(&person_with(&format!("{e1},{e3},{e2}")));
+    roundtrip(&src, &tgt);
 }

@@ -265,17 +265,24 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                         }
                     }
                 } else {
-                    // Keyless list: items carry no stable identifier, so
-                    // positional (by-index) matching mis-attributes shifts —
-                    // deleting an element makes every later element look edited
-                    // and, on patch, removes the wrong one. Diff as a sequence
-                    // via LCS over structural equality instead.
+                    // Keyless list: items carry no stable identifier. Positional
+                    // (by-index) matching mis-attributes shifts — deleting an
+                    // element makes every later element look edited and, on
+                    // patch, removes the wrong one (WI193).
                     //
-                    // Phase 1: rows in the longest common subsequence are
-                    // unchanged. Phase 2: pair the leftover source/target rows
-                    // in residual order and recurse, so an in-place edit stays a
-                    // field-level Update rather than a remove+add; any surplus
-                    // source row is a Remove, any surplus target row an Add.
+                    // We can only reorder the diff safely within what the patcher
+                    // can replay: it overwrites a list slot by index or appends,
+                    // and applies index-addressed Removes in descending order —
+                    // it has *no* insert-at-index. So:
+                    //
+                    //   * Pure deletion (target is an ordered subsequence of the
+                    //     source): emit clean Removes for the dropped rows, found
+                    //     via an LCS over structural equality. Remove addresses
+                    //     any index and round-trips, so this is safe and fixes the
+                    //     shift mis-attribution.
+                    //   * Anything else (insert / reorder / edit / mixed): fall
+                    //     back to positional overwrite+append, the only encoding
+                    //     the index-based patcher can faithfully replay.
                     let n = sl.len();
                     let m = tl.len();
                     let eq = |i: usize, j: usize| sl[i].equals(&tl[j], opts.treat_missing_as_null);
@@ -292,61 +299,67 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                         }
                     }
 
-                    // Backtrack to flag matched (unchanged) rows on each side.
-                    let mut matched_src = vec![false; n];
-                    let mut matched_tgt = vec![false; m];
-                    let (mut i, mut j) = (0usize, 0usize);
-                    while i < n && j < m {
-                        if eq(i, j) {
-                            matched_src[i] = true;
-                            matched_tgt[j] = true;
-                            i += 1;
-                            j += 1;
-                        } else if dp[i + 1][j] >= dp[i][j + 1] {
-                            i += 1;
-                        } else {
-                            j += 1;
+                    // `dp[0][0] == m` means every target row lies on a common
+                    // subsequence — i.e. the target is the source with some rows
+                    // dropped (same order): a pure deletion.
+                    if dp[0][0] == m && m < n {
+                        // Backtrack to flag the surviving (matched) source rows;
+                        // the rest were deleted.
+                        let mut matched_src = vec![false; n];
+                        let (mut i, mut j) = (0usize, 0usize);
+                        while i < n && j < m {
+                            if eq(i, j) {
+                                matched_src[i] = true;
+                                i += 1;
+                                j += 1;
+                            } else if dp[i + 1][j] >= dp[i][j + 1] {
+                                i += 1;
+                            } else {
+                                j += 1;
+                            }
                         }
-                    }
-
-                    let leftover_src: Vec<usize> = (0..n).filter(|&i| !matched_src[i]).collect();
-                    let leftover_tgt: Vec<usize> = (0..m).filter(|&j| !matched_tgt[j]).collect();
-                    let paired = leftover_src.len().min(leftover_tgt.len());
-
-                    // Paired leftovers: recurse for field-level deltas, addressed
-                    // by the source index (Updates patch in place).
-                    for k in 0..paired {
-                        let si = leftover_src[k];
-                        path.push(si.to_string());
-                        inner(path, None, &sl[si], &tl[leftover_tgt[k]], opts, out);
-                        path.pop();
-                    }
-                    // Surplus source rows are removed, addressed by source index.
-                    // These are the highest leftover indices, so they sit above
-                    // every paired Update and (applied descending by the patcher)
-                    // never shift a lower index.
-                    for &si in &leftover_src[paired..] {
-                        path.push(si.to_string());
-                        out.push(Delta {
-                            path: path.clone(),
-                            op: DeltaOp::Remove,
-                            old: Some(sl[si].to_json()),
-                            new: None,
-                        });
-                        path.pop();
-                    }
-                    // Surplus target rows are added past the source end so the
-                    // patcher appends them (it overwrites for in-range indices
-                    // and appends otherwise), preserving target order.
-                    for (add_idx, &tj) in (n..).zip(leftover_tgt[paired..].iter()) {
-                        path.push(add_idx.to_string());
-                        out.push(Delta {
-                            path: path.clone(),
-                            op: DeltaOp::Add,
-                            old: None,
-                            new: Some(tl[tj].to_json()),
-                        });
-                        path.pop();
+                        for (i, sv) in sl.iter().enumerate() {
+                            if matched_src[i] {
+                                continue;
+                            }
+                            path.push(i.to_string());
+                            out.push(Delta {
+                                path: path.clone(),
+                                op: DeltaOp::Remove,
+                                old: Some(sv.to_json()),
+                                new: None,
+                            });
+                            path.pop();
+                        }
+                    } else {
+                        let max_len = std::cmp::max(n, m);
+                        for i in 0..max_len {
+                            let step = if let Some(sv) = sl.get(i) {
+                                label(sv)
+                                    .or_else(|| tl.get(i).and_then(&label))
+                                    .unwrap_or_else(|| i.to_string())
+                            } else {
+                                tl.get(i).and_then(&label).unwrap_or_else(|| i.to_string())
+                            };
+                            path.push(step);
+                            match (sl.get(i), tl.get(i)) {
+                                (Some(sv), Some(tv)) => inner(path, None, sv, tv, opts, out),
+                                (Some(sv), None) => out.push(Delta {
+                                    path: path.clone(),
+                                    op: DeltaOp::Remove,
+                                    old: Some(sv.to_json()),
+                                    new: None,
+                                }),
+                                (None, Some(tv)) => out.push(Delta {
+                                    path: path.clone(),
+                                    op: DeltaOp::Add,
+                                    old: None,
+                                    new: Some(tv.to_json()),
+                                }),
+                                (None, None) => {}
+                            }
+                            path.pop();
+                        }
                     }
                 }
             }
