@@ -41,6 +41,16 @@ fn rows_similar(s: &LinkMLInstance, t: &LinkMLInstance, treat_missing_as_null: b
                 match (sm.get(*k), tm.get(*k)) {
                     (Some(a), Some(b)) if a.equals(b, treat_missing_as_null) => equal += 1,
                     (None, None) => equal += 1,
+                    // With treat_missing_as_null, a field present-as-null on one
+                    // side and absent on the other is equal (matches
+                    // LinkMLInstance::equals null/missing normalisation), so a
+                    // null-vs-missing difference doesn't flip the similarity.
+                    (Some(LinkMLInstance::Null { .. }), None)
+                    | (None, Some(LinkMLInstance::Null { .. }))
+                        if treat_missing_as_null =>
+                    {
+                        equal += 1
+                    }
                     _ => {}
                 }
             }
@@ -315,117 +325,10 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                     let m = tl.len();
                     let eq = |i: usize, j: usize| sl[i].equals(&tl[j], opts.treat_missing_as_null);
 
-                    // LCS-length DP filled from the bottom-right corner.
-                    let mut dp = vec![vec![0usize; m + 1]; n + 1];
-                    for i in (0..n).rev() {
-                        for j in (0..m).rev() {
-                            dp[i][j] = if eq(i, j) {
-                                dp[i + 1][j + 1] + 1
-                            } else {
-                                dp[i + 1][j].max(dp[i][j + 1])
-                            };
-                        }
-                    }
-
-                    // Backtrack into matched (source, target) anchor pairs.
-                    let mut anchors: Vec<(usize, usize)> = Vec::new();
-                    let (mut i, mut j) = (0usize, 0usize);
-                    while i < n && j < m {
-                        if eq(i, j) {
-                            anchors.push((i, j));
-                            i += 1;
-                            j += 1;
-                        } else if dp[i + 1][j] >= dp[i][j + 1] {
-                            i += 1;
-                        } else {
-                            j += 1;
-                        }
-                    }
-
-                    // Gaps = runs of unmatched rows before/between/after anchors,
-                    // as half-open ranges (src_lo, src_hi, tgt_lo, tgt_hi).
-                    let mut gaps: Vec<(usize, usize, usize, usize)> = Vec::new();
-                    let (mut ps, mut pt) = (0usize, 0usize);
-                    for &(si, tj) in &anchors {
-                        gaps.push((ps, si, pt, tj));
-                        ps = si + 1;
-                        pt = tj + 1;
-                    }
-                    gaps.push((ps, n, pt, m)); // trailing gap
-
-                    // Within each gap, a paired position is a *replace* only when
-                    // the two rows are similar (a field edit); dissimilar rows are
-                    // a delete + add. A gap emits an Add when it has excess target
-                    // rows or a dissimilar pair. Such an Add only round-trips if it
-                    // appends, so it must be confined to the trailing gap;
-                    // otherwise fall back to the positional encoding.
-                    let last_gap = gaps.len() - 1;
-                    let gap_emits_add = |slo: usize, shi: usize, tlo: usize, thi: usize| {
-                        let paired = (shi - slo).min(thi - tlo);
-                        (thi - tlo) > (shi - slo)
-                            || (0..paired).any(|k| {
-                                !rows_similar(
-                                    &sl[slo + k],
-                                    &tl[tlo + k],
-                                    opts.treat_missing_as_null,
-                                )
-                            })
-                    };
-                    let clean_safe = gaps.iter().enumerate().all(|(g, &(slo, shi, tlo, thi))| {
-                        g == last_gap || !gap_emits_add(slo, shi, tlo, thi)
-                    });
-
-                    if clean_safe {
-                        // Emit replaces + adds first and removes last so every index
-                        // is still valid when the patcher applies it (removes go in
-                        // descending order, adds append).
-                        let mut pending_removes: Vec<(usize, JsonValue)> = Vec::new();
-                        let mut add_idx = n;
-                        let mut emit_add =
-                            |path: &mut Vec<String>, out: &mut Vec<Delta>, v: JsonValue| {
-                                path.push(add_idx.to_string());
-                                out.push(Delta {
-                                    path: path.clone(),
-                                    op: DeltaOp::Add,
-                                    old: None,
-                                    new: Some(v),
-                                });
-                                path.pop();
-                                add_idx += 1;
-                            };
-                        for &(slo, shi, tlo, thi) in &gaps {
-                            let paired = (shi - slo).min(thi - tlo);
-                            for k in 0..paired {
-                                let si = slo + k;
-                                let tj = tlo + k;
-                                if rows_similar(&sl[si], &tl[tj], opts.treat_missing_as_null) {
-                                    path.push(si.to_string());
-                                    inner(path, None, &sl[si], &tl[tj], opts, out);
-                                    path.pop();
-                                } else {
-                                    // Different rows: delete the source, add the target.
-                                    pending_removes.push((si, sl[si].to_json()));
-                                    emit_add(path, out, tl[tj].to_json());
-                                }
-                            }
-                            for (si, sv) in sl.iter().enumerate().take(shi).skip(slo + paired) {
-                                pending_removes.push((si, sv.to_json()));
-                            }
-                            for tv in tl.iter().take(thi).skip(tlo + paired) {
-                                emit_add(path, out, tv.to_json());
-                            }
-                        }
-                        for (si, old) in pending_removes {
-                            path.push(si.to_string());
-                            out.push(Delta {
-                                path: path.clone(),
-                                op: DeltaOp::Remove,
-                                old: Some(old),
-                                new: None,
-                            });
-                            path.pop();
-                        }
-                    } else {
+                    // Positional overwrite/append/remove encoding — the patcher's
+                    // native shape. Used as the fallback for mid-list inserts and
+                    // for lists too large to diff in O(n*m).
+                    let run_positional = |path: &mut Vec<String>, out: &mut Vec<Delta>| {
                         let max_len = std::cmp::max(n, m);
                         for i in 0..max_len {
                             let step = if let Some(sv) = sl.get(i) {
@@ -454,6 +357,132 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                             }
                             path.pop();
                         }
+                    };
+
+                    // The LCS table is O(n*m); cap it so a pathologically large
+                    // list can't blow up memory/time. Above the cap, fall back to
+                    // the linear positional diff.
+                    const MAX_LCS_CELLS: usize = 1 << 20; // ~8 MB as a flat usize grid
+                    let mut used_lcs = false;
+                    if n.saturating_mul(m) <= MAX_LCS_CELLS {
+                        // LCS-length DP in a flat (n+1)*(m+1) grid, filled from the
+                        // bottom-right corner.
+                        let cols = m + 1;
+                        let at = |i: usize, j: usize| i * cols + j;
+                        let mut dp = vec![0usize; (n + 1) * cols];
+                        for i in (0..n).rev() {
+                            for j in (0..m).rev() {
+                                dp[at(i, j)] = if eq(i, j) {
+                                    dp[at(i + 1, j + 1)] + 1
+                                } else {
+                                    dp[at(i + 1, j)].max(dp[at(i, j + 1)])
+                                };
+                            }
+                        }
+
+                        // Backtrack into matched (source, target) anchor pairs.
+                        let mut anchors: Vec<(usize, usize)> = Vec::new();
+                        let (mut i, mut j) = (0usize, 0usize);
+                        while i < n && j < m {
+                            if eq(i, j) {
+                                anchors.push((i, j));
+                                i += 1;
+                                j += 1;
+                            } else if dp[at(i + 1, j)] >= dp[at(i, j + 1)] {
+                                i += 1;
+                            } else {
+                                j += 1;
+                            }
+                        }
+
+                        // Gaps = runs of unmatched rows before/between/after
+                        // anchors, as half-open (src_lo, src_hi, tgt_lo, tgt_hi).
+                        let mut gaps: Vec<(usize, usize, usize, usize)> = Vec::new();
+                        let (mut ps, mut pt) = (0usize, 0usize);
+                        for &(si, tj) in &anchors {
+                            gaps.push((ps, si, pt, tj));
+                            ps = si + 1;
+                            pt = tj + 1;
+                        }
+                        gaps.push((ps, n, pt, m)); // trailing gap
+
+                        // A paired position is a *replace* only when the rows are
+                        // similar (a field edit); dissimilar rows are a delete +
+                        // add. A gap emits an Add when it has excess target rows or
+                        // a dissimilar pair, which only round-trips if it appends —
+                        // so it must be the trailing gap, else fall back.
+                        let last_gap = gaps.len() - 1;
+                        let gap_emits_add = |slo: usize, shi: usize, tlo: usize, thi: usize| {
+                            let paired = (shi - slo).min(thi - tlo);
+                            (thi - tlo) > (shi - slo)
+                                || (0..paired).any(|k| {
+                                    !rows_similar(
+                                        &sl[slo + k],
+                                        &tl[tlo + k],
+                                        opts.treat_missing_as_null,
+                                    )
+                                })
+                        };
+                        let clean_safe =
+                            gaps.iter().enumerate().all(|(g, &(slo, shi, tlo, thi))| {
+                                g == last_gap || !gap_emits_add(slo, shi, tlo, thi)
+                            });
+
+                        if clean_safe {
+                            // Emit replaces + adds first and removes last so every
+                            // index is still valid when the patcher applies it
+                            // (removes go descending, adds append).
+                            let mut pending_removes: Vec<(usize, JsonValue)> = Vec::new();
+                            let mut add_idx = n;
+                            let mut emit_add =
+                                |path: &mut Vec<String>, out: &mut Vec<Delta>, v: JsonValue| {
+                                    path.push(add_idx.to_string());
+                                    out.push(Delta {
+                                        path: path.clone(),
+                                        op: DeltaOp::Add,
+                                        old: None,
+                                        new: Some(v),
+                                    });
+                                    path.pop();
+                                    add_idx += 1;
+                                };
+                            for &(slo, shi, tlo, thi) in &gaps {
+                                let paired = (shi - slo).min(thi - tlo);
+                                for k in 0..paired {
+                                    let si = slo + k;
+                                    let tj = tlo + k;
+                                    if rows_similar(&sl[si], &tl[tj], opts.treat_missing_as_null) {
+                                        path.push(si.to_string());
+                                        inner(path, None, &sl[si], &tl[tj], opts, out);
+                                        path.pop();
+                                    } else {
+                                        // Different rows: delete source, add target.
+                                        pending_removes.push((si, sl[si].to_json()));
+                                        emit_add(path, out, tl[tj].to_json());
+                                    }
+                                }
+                                for (si, sv) in sl.iter().enumerate().take(shi).skip(slo + paired) {
+                                    pending_removes.push((si, sv.to_json()));
+                                }
+                                for tv in tl.iter().take(thi).skip(tlo + paired) {
+                                    emit_add(path, out, tv.to_json());
+                                }
+                            }
+                            for (si, old) in pending_removes {
+                                path.push(si.to_string());
+                                out.push(Delta {
+                                    path: path.clone(),
+                                    op: DeltaOp::Remove,
+                                    old: Some(old),
+                                    new: None,
+                                });
+                                path.pop();
+                            }
+                            used_lcs = true;
+                        }
+                    }
+                    if !used_lcs {
+                        run_positional(path, out);
                     }
                 }
             }
