@@ -338,8 +338,7 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                     // Surplus target rows are added past the source end so the
                     // patcher appends them (it overwrites for in-range indices
                     // and appends otherwise), preserving target order.
-                    let mut add_idx = n;
-                    for &tj in &leftover_tgt[paired..] {
+                    for (add_idx, &tj) in (n..).zip(leftover_tgt[paired..].iter()) {
                         path.push(add_idx.to_string());
                         out.push(Delta {
                             path: path.clone(),
@@ -348,7 +347,6 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                             new: Some(tl[tj].to_json()),
                         });
                         path.pop();
-                        add_idx += 1;
                     }
                 }
             }
