@@ -634,3 +634,74 @@ fn diff_int_vs_float_no_spurious_delta_on_float_range() {
         "a real change to a float field must still diff, got: {deltas:?}"
     );
 }
+
+/// Regression (symmetric direction): an `integer`-ranged slot whose value is
+/// supplied as a whole float (`30.0`) must box to the same integer as `30`, so
+/// the two compare equal and produce no spurious `Update` delta. A fractional
+/// value (`30.5`) must NOT be coerced — it is left intact for validation.
+/// See design doc `57-int-float-spurious-delta`.
+#[test]
+fn diff_float_vs_int_no_spurious_delta_on_integer_range() {
+    use linkml_runtime::LinkMLInstance;
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let person = class_in_schema(&sv, &schema, "Person");
+
+    // `age_in_years` (range: integer) supplied as a whole float.
+    let as_float = load_json_instance(
+        r#"{ "id": "P:1", "name": "Alice", "age_in_years": 30.0 }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+    let as_int = load_json_instance(
+        r#"{ "id": "P:1", "name": "Alice", "age_in_years": 30 }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+
+    // Boxing must canonicalise the whole float to an integer.
+    let age = as_float.navigate_path(["age_in_years"]).unwrap();
+    if let LinkMLInstance::Scalar { value, .. } = age {
+        assert!(
+            value.is_i64() || value.is_u64(),
+            "whole float supplied for an integer range should box as integer, got {value:?}"
+        );
+    } else {
+        panic!("expected scalar age_in_years");
+    }
+
+    assert!(
+        diff(&as_float, &as_int, DiffOptions::new(false)).is_empty(),
+        "whole float vs int of the same value must not diff"
+    );
+    assert!(
+        diff(&as_int, &as_float, DiffOptions::new(false)).is_empty(),
+        "int vs whole float of the same value must not diff"
+    );
+
+    // A fractional value must be left intact (not coerced), so it can be flagged
+    // by validation and still differs from the integer.
+    let fractional = load_json_instance(
+        r#"{ "id": "P:1", "name": "Alice", "age_in_years": 30.5 }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+    let frac_age = fractional.navigate_path(["age_in_years"]).unwrap();
+    if let LinkMLInstance::Scalar { value, .. } = frac_age {
+        assert!(
+            value.is_f64(),
+            "a fractional value must not be coerced to integer, got {value:?}"
+        );
+    } else {
+        panic!("expected scalar age_in_years");
+    }
+    assert!(
+        !diff(&as_int, &fractional, DiffOptions::new(false)).is_empty(),
+        "30 vs 30.5 must still diff"
+    );
+}

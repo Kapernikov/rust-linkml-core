@@ -98,6 +98,17 @@ fn path_to_string(path: &[String]) -> String {
     }
 }
 
+/// Convert a float to `i64` only when it is exactly integral and within range,
+/// so canonicalising `114.0` to an integer never rounds or loses data. Returns
+/// `None` for fractional, infinite, NaN, or out-of-range values.
+fn f64_to_exact_i64(f: f64) -> Option<i64> {
+    if f.fract() == 0.0 && (i64::MIN as f64..=i64::MAX as f64).contains(&f) {
+        Some(f as i64)
+    } else {
+        None
+    }
+}
+
 fn alt_names(name: &str) -> Vec<String> {
     let mut v = Vec::new();
     if name.contains('_') {
@@ -1170,33 +1181,44 @@ impl LinkMLInstance {
         })
     }
 
-    /// Canonicalise an integer JSON scalar to a float when the slot's range is
-    /// a real-valued number type (`float`/`double`/`decimal`).
+    /// Canonicalise a numeric JSON scalar to the representation its declared
+    /// range expects, so the same value boxes identically regardless of which
+    /// path produced it.
     ///
-    /// `114` and `114.0` denote the same real number, but they box to distinct
+    /// `114` and `114.0` denote the same number but box to distinct
     /// `serde_json::Number` variants and compare unequal, so a value authored
-    /// server-side (`114.0`) and the same value round-tripped through a JSON int
-    /// (`114`, e.g. via a browser that has no int/float distinction) would diff
-    /// as a spurious update. Coercing at this single boxing chokepoint makes the
-    /// representation canonical before any diff/equals/patch sees it.
-    /// See design doc `57-int-float-spurious-delta`.
+    /// server-side and the same value round-tripped through a layer with no
+    /// int/float distinction (notably a browser — JavaScript collapses `114.0`
+    /// to `114`) would diff as a spurious update. Coercing at this single boxing
+    /// chokepoint makes the representation canonical before any diff/equals/patch
+    /// sees it. See design doc `57-int-float-spurious-delta`.
+    ///
+    /// Only the int/float distinction is representationally ambiguous across
+    /// JSON producers; every other scalar range has a single unambiguous JSON
+    /// form and is left untouched.
     fn coerce_scalar_to_range(value: JsonValue, slot: Option<&SlotView>) -> JsonValue {
-        let JsonValue::Number(ref n) = value else {
+        let (JsonValue::Number(n), Some(slot)) = (&value, slot) else {
             return value;
         };
-        if n.is_f64() {
-            return value;
+        if slot.is_range_floating_point() {
+            // Integer literal for a real-valued range -> float, so it compares
+            // equal to a server-authored float (114 == 114.0).
+            if !n.is_f64() {
+                if let Some(f) = n.as_f64().and_then(serde_json::Number::from_f64) {
+                    return JsonValue::Number(f);
+                }
+            }
+        } else if slot.is_range_integer() {
+            // Whole float literal for an integer range -> integer. Fractional or
+            // out-of-range values are left intact so validation can flag them
+            // rather than silently losing data.
+            if n.is_f64() {
+                if let Some(i) = n.as_f64().and_then(f64_to_exact_i64) {
+                    return JsonValue::Number(i.into());
+                }
+            }
         }
-        let Some(slot) = slot else {
-            return value;
-        };
-        if !slot.is_range_floating_point() {
-            return value;
-        }
-        match n.as_f64().and_then(serde_json::Number::from_f64) {
-            Some(f) => JsonValue::Number(f),
-            None => value,
-        }
+        value
     }
 
     fn parse_scalar_value(
