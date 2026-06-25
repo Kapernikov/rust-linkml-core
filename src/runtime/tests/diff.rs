@@ -549,3 +549,88 @@ fn diff_and_patch_multiple_removes_from_scalar_list() {
         "patched source should equal target after multi-remove"
     );
 }
+
+/// Regression: a `float`-ranged slot whose value is supplied as a JSON integer
+/// (`114`) must box to the same representation as the equivalent float (`114.0`)
+/// so the two compare equal and produce no spurious `Update` delta.
+/// See design doc `57-int-float-spurious-delta`.
+#[test]
+fn diff_int_vs_float_no_spurious_delta_on_float_range() {
+    use linkml_runtime::LinkMLInstance;
+    let schema = from_yaml(Path::new(&info_path("personinfo.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let person = class_in_schema(&sv, &schema, "Person");
+
+    // `duration` (range: float) supplied as a bare integer — mimics a value
+    // round-tripped through a layer with no int/float distinction.
+    let as_int = load_json_instance(
+        r#"{
+            "id": "P:1",
+            "name": "Alice",
+            "has_employment_history": [
+                { "started_at_time": "2019-01-01", "duration": 114 }
+            ]
+        }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+    // The same value supplied as a float — mimics a server-authored value.
+    let as_float = load_json_instance(
+        r#"{
+            "id": "P:1",
+            "name": "Alice",
+            "has_employment_history": [
+                { "started_at_time": "2019-01-01", "duration": 114.0 }
+            ]
+        }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+
+    // Boxing must canonicalise the integer to a float.
+    let duration = as_int
+        .navigate_path(["has_employment_history", "0", "duration"])
+        .unwrap();
+    if let LinkMLInstance::Scalar { value, .. } = duration {
+        assert!(
+            value.is_f64(),
+            "integer supplied for a float range should box as f64, got {value:?}"
+        );
+    } else {
+        panic!("expected scalar duration");
+    }
+
+    // No spurious delta in either direction.
+    assert!(
+        diff(&as_int, &as_float, DiffOptions::new(false)).is_empty(),
+        "int vs float of the same value must not diff"
+    );
+    assert!(
+        diff(&as_float, &as_int, DiffOptions::new(false)).is_empty(),
+        "float vs int of the same value must not diff"
+    );
+
+    // A genuine numeric change must still be detected.
+    let changed = load_json_instance(
+        r#"{
+            "id": "P:1",
+            "name": "Alice",
+            "has_employment_history": [
+                { "started_at_time": "2019-01-01", "duration": 116 }
+            ]
+        }"#,
+        &sv,
+        &person,
+        &conv,
+    );
+    let deltas = diff(&as_int, &changed, DiffOptions::new(false));
+    assert!(
+        deltas.iter().any(|d| d.op == DeltaOp::Update
+            && d.path.iter().any(|seg| seg == "duration")),
+        "a real change to a float field must still diff, got: {deltas:?}"
+    );
+}

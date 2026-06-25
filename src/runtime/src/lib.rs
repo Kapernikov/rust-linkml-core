@@ -990,7 +990,7 @@ impl LinkMLInstance {
             }
             (true, other) => Ok(LinkMLInstance::Scalar {
                 node_id: new_node_id(),
-                value: other,
+                value: Self::coerce_scalar_to_range(other, Some(&sl)),
                 slot: sl.clone(),
                 class: Some(class.clone()),
                 sv: sv.clone(),
@@ -1170,6 +1170,35 @@ impl LinkMLInstance {
         })
     }
 
+    /// Canonicalise an integer JSON scalar to a float when the slot's range is
+    /// a real-valued number type (`float`/`double`/`decimal`).
+    ///
+    /// `114` and `114.0` denote the same real number, but they box to distinct
+    /// `serde_json::Number` variants and compare unequal, so a value authored
+    /// server-side (`114.0`) and the same value round-tripped through a JSON int
+    /// (`114`, e.g. via a browser that has no int/float distinction) would diff
+    /// as a spurious update. Coercing at this single boxing chokepoint makes the
+    /// representation canonical before any diff/equals/patch sees it.
+    /// See design doc `57-int-float-spurious-delta`.
+    fn coerce_scalar_to_range(value: JsonValue, slot: Option<&SlotView>) -> JsonValue {
+        let JsonValue::Number(ref n) = value else {
+            return value;
+        };
+        if n.is_f64() {
+            return value;
+        }
+        let Some(slot) = slot else {
+            return value;
+        };
+        if !slot.is_range_floating_point() {
+            return value;
+        }
+        match n.as_f64().and_then(serde_json::Number::from_f64) {
+            Some(f) => JsonValue::Number(f),
+            None => value,
+        }
+    }
+
     fn parse_scalar_value(
         value: JsonValue,
         class: ClassView,
@@ -1190,6 +1219,7 @@ impl LinkMLInstance {
                 ),
             )
         })?;
+        let value = Self::coerce_scalar_to_range(value, Some(&sl));
         run_slot_constraints(Some(&class), &sl, &value, path.clone(), validation_issues);
         if value.is_null() {
             Ok(LinkMLInstance::Null {
@@ -1433,7 +1463,7 @@ impl LinkMLInstance {
                     scalar_slot.name.clone(),
                     LinkMLInstance::Scalar {
                         node_id: new_node_id(),
-                        value: other,
+                        value: Self::coerce_scalar_to_range(other, Some(&scalar_slot)),
                         slot: scalar_slot.clone(),
                         class: Some(range_cv.clone()),
                         sv: sv.clone(),
