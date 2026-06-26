@@ -82,6 +82,59 @@ impl RangeInfo {
     /// Well-known XSD string IRI — plain string literals should not carry an
     /// explicit `^^xsd:string` datatype annotation since they are equivalent.
     const XSD_STRING: &'static str = "http://www.w3.org/2001/XMLSchema#string";
+    /// XSD IRIs of the real-valued (non-integer) number types. A value typed
+    /// against one of these is semantically a real number, so `114` and `114.0`
+    /// denote the same value even though their JSON representations differ.
+    const XSD_FLOAT: &'static str = "http://www.w3.org/2001/XMLSchema#float";
+    const XSD_DOUBLE: &'static str = "http://www.w3.org/2001/XMLSchema#double";
+    const XSD_DECIMAL: &'static str = "http://www.w3.org/2001/XMLSchema#decimal";
+    /// XSD IRI of the integer number type.
+    const XSD_INTEGER: &'static str = "http://www.w3.org/2001/XMLSchema#integer";
+
+    /// Builtin LinkML type names for the number types, used as a fallback when
+    /// the `linkml:types` schema that defines the XSD IRIs above has not been
+    /// loaded (e.g. bare test schemas). There is no schema-free way to name a
+    /// builtin type other than by its reserved name.
+    const FLOAT_TYPE_NAMES: &'static [&'static str] = &["float", "double", "decimal"];
+    const INTEGER_TYPE_NAMES: &'static [&'static str] = &["integer"];
+
+    /// `true` when this range is a real-valued number type (`float`, `double`
+    /// or `decimal`), for which an integer JSON literal should be canonicalised
+    /// to a floating-point representation at boxing time.
+    ///
+    /// Prefers the resolved RDF datatype IRI (which also catches user-defined
+    /// subtypes of `float`/`double`/`decimal`), and falls back to the builtin
+    /// LinkML type names so detection still works when the `linkml:types`
+    /// schema that defines those IRIs has not been loaded.
+    pub fn is_floating_point(&self) -> bool {
+        if matches!(
+            self.rdf_datatype_iri.as_deref(),
+            Some(Self::XSD_FLOAT | Self::XSD_DOUBLE | Self::XSD_DECIMAL)
+        ) {
+            return true;
+        }
+        self.range_name_matches(Self::FLOAT_TYPE_NAMES)
+    }
+
+    /// `true` when this range is the integer number type, for which a whole
+    /// float JSON literal (`114.0`) should be canonicalised to an integer.
+    ///
+    /// Same IRI-primary, name-fallback resolution as [`is_floating_point`](Self::is_floating_point).
+    pub fn is_integer(&self) -> bool {
+        if matches!(self.rdf_datatype_iri.as_deref(), Some(Self::XSD_INTEGER)) {
+            return true;
+        }
+        self.range_name_matches(Self::INTEGER_TYPE_NAMES)
+    }
+
+    /// Fallback range check by builtin type name. Only the range itself, never
+    /// a class or enum, can be a number type.
+    fn range_name_matches(&self, names: &[&str]) -> bool {
+        if self.range_class.is_some() || self.range_enum.is_some() {
+            return false;
+        }
+        self.e.range().is_some_and(|r| names.contains(&r))
+    }
 
     pub fn new(e: SlotExpressionOrSubtype, slotview: SlotView) -> Self {
         let range_class = Self::determine_range_class(&e, &slotview);
@@ -464,6 +517,25 @@ impl SlotView {
         self.get_range_info()
             .first()
             .is_none_or(|ri| ri.is_range_scalar)
+    }
+
+    /// Returns `true` when the primary range is a real-valued number type
+    /// (`float`, `double` or `decimal`). Used at boxing time to canonicalise an
+    /// integer JSON literal (`114`) to a float (`114.0`) so it compares equal to
+    /// a server-authored float regardless of which path produced the value.
+    pub fn is_range_floating_point(&self) -> bool {
+        self.get_range_info()
+            .first()
+            .is_some_and(|ri| ri.is_floating_point())
+    }
+
+    /// Returns `true` when the primary range is the integer number type. Used at
+    /// boxing time to canonicalise a whole float JSON literal (`114.0`) to an
+    /// integer (`114`).
+    pub fn is_range_integer(&self) -> bool {
+        self.get_range_info()
+            .first()
+            .is_some_and(|ri| ri.is_integer())
     }
 
     /// Returns the resolved container shape for this slot.
