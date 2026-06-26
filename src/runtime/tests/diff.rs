@@ -629,8 +629,9 @@ fn diff_int_vs_float_no_spurious_delta_on_float_range() {
     );
     let deltas = diff(&as_int, &changed, DiffOptions::new(false));
     assert!(
-        deltas.iter().any(|d| d.op == DeltaOp::Update
-            && d.path.iter().any(|seg| seg == "duration")),
+        deltas
+            .iter()
+            .any(|d| d.op == DeltaOp::Update && d.path.iter().any(|seg| seg == "duration")),
         "a real change to a float field must still diff, got: {deltas:?}"
     );
 }
