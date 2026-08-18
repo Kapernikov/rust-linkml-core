@@ -15,6 +15,17 @@ struct Fixture {
     service: ClassView,
 }
 
+/// Loads a schema from `tests/data` into its own `SchemaView`.
+fn schema_view(file: &str) -> SchemaView {
+    let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    p.push("tests/data");
+    p.push(file);
+    let schema = from_yaml(&p).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema).unwrap();
+    sv
+}
+
 fn fixture() -> Fixture {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.push("tests/data/identity.yaml");
@@ -112,6 +123,34 @@ fn schema_lint_visits_a_class_with_an_explicit_class_uri_exactly_once() {
     assert_eq!(
         subjects, unique,
         "each slot must be reported once, not once per class URI: {warnings:#?}"
+    );
+}
+
+#[test]
+fn schema_lint_reports_both_classes_that_share_one_class_uri() {
+    // LinkML lets distinct classes declare the same `class_uri` (meta.yaml's
+    // `Anything` and extensions.yaml's `AnyValue` both use `linkml:Any`).
+    // Deduping visits by class_uri makes the second class look already-seen and
+    // silently drops every one of its warnings — a false negative, which is
+    // worse in a lint than the duplicate reporting it was meant to fix.
+    //
+    // The fixture pulls in both directions at once: `SharedUriA`/`SharedUriB`
+    // share one `class_uri` and must BOTH be reported, while `TwoUris` is
+    // indexed under two URIs of its own and must be reported only once.
+    let sv = schema_view("identity_shared_class_uri.yaml");
+    let subjects: Vec<Vec<String>> = lint_element_identity(&sv)
+        .iter()
+        .map(|w| w.subject.clone())
+        .collect();
+    assert_eq!(
+        subjects,
+        vec![
+            vec!["SharedUriA".to_string(), "itemsA".to_string()],
+            vec!["SharedUriB".to_string(), "itemsB".to_string()],
+            vec!["TwoUris".to_string(), "itemsC".to_string()],
+        ],
+        "classes sharing a class_uri must each be linted, and a class indexed \
+         under two URIs must be linted once"
     );
 }
 

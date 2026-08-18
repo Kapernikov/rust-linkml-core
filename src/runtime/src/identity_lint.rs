@@ -37,17 +37,22 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
     let conv = sv.converter();
     let mut class_ids = sv.get_class_ids();
     class_ids.sort();
-    let mut seen: HashSet<String> = HashSet::new();
+    let mut seen: HashSet<(String, String)> = HashSet::new();
     for class_id in class_ids {
         let Ok(Some(class)) = sv.get_class(&Identifier::new(&class_id), &conv) else {
             continue;
         };
         // `get_class_ids` yields one id per class *URI*: a class declaring an
         // explicit `class_uri` is indexed under both that and its default URI,
-        // so walking the ids naively reports each of its slots twice. Key the
-        // seen-set on the canonical URI, which is identical for both ids, the
-        // same idiom `ClassView::unique_keys` uses to walk a class hierarchy.
-        if !seen.insert(class.canonical_uri().to_string()) {
+        // so walking the ids naively reports each of its slots twice.
+        //
+        // Key the seen-set on (schema, name), which is unique per class by
+        // construction. Keying on the class URI would be wrong in the other
+        // direction: LinkML lets distinct classes declare the same `class_uri`
+        // (meta.yaml's `Anything` and extensions.yaml's `AnyValue` both declare
+        // `linkml:Any`), and that would silently drop the second class's
+        // warnings — a false negative, worse in a lint than a duplicate.
+        if !seen.insert((class.schema_id().to_string(), class.name().to_string())) {
             continue;
         }
         for slot in class.slots() {
