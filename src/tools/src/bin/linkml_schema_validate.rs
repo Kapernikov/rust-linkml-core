@@ -212,16 +212,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // validation above used, so classes pulled in by `resolve_schemas`
         // from `imports:` are linted too. Warnings only — the exit code is
         // whatever the validation produced.
-        let mut identity_warnings = if args.lint_identity {
-            linkml_runtime::lint_element_identity(&sv)
+        let identity_warnings = if args.lint_identity {
+            let mut warnings = linkml_runtime::lint_element_identity(&sv);
+            // `lint_element_identity` visits classes in sorted order, but a
+            // class's own slots come from `ClassView::slots()`, which is backed
+            // by a HashMap — so the relative order of one class's warnings
+            // varies between runs. Sort by subject (class, then slot) to keep
+            // repeated runs over the same schema diffable.
+            warnings.sort_by(|a, b| a.subject.cmp(&b.subject).then(a.detail.cmp(&b.detail)));
+            // `lint_element_identity` iterates `get_class_ids()`, which holds one
+            // id per class *URI* — a class declaring an explicit `class_uri` is
+            // indexed under both that and its default URI, so it is visited
+            // twice and every one of its warnings is emitted twice. Drop the
+            // exact duplicates rather than reporting a slot twice.
+            warnings.dedup_by(|a, b| a.subject == b.subject && a.detail == b.detail);
+            warnings
         } else {
             Vec::new()
         };
-        // `ClassView::slots()` is backed by a HashMap, so the linter emits a
-        // class's slots in an order that varies between runs. Sort by subject
-        // (class, then slot) so repeated runs over the same schema produce
-        // identical, diffable output.
-        identity_warnings.sort_by(|a, b| a.subject.cmp(&b.subject));
         match args.output {
             OutputFormat::Text => {
                 println!("schema valid");
@@ -234,7 +242,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "{}",
                     serde_json::to_string_pretty(&serde_json::json!({
                         "status": "valid",
+                        "errors": errors,
                         "identity_warnings": identity_warnings_json(&identity_warnings),
+                        "identity_lint_skipped": false,
+                        "identity_lint_skipped_reason": serde_json::Value::Null,
                     }))?
                 );
             }
@@ -260,8 +271,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "invalid",
                         "errors": errors,
-                        "identity_lint_skipped": "schema has errors; fix them and re-run",
+                        "identity_warnings": serde_json::Value::Null,
+                        "identity_lint_skipped": true,
+                        "identity_lint_skipped_reason":
+                            "schema has errors; fix them and re-run",
                     }))?
                 );
             }
