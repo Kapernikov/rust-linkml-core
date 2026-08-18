@@ -14,6 +14,9 @@ default_range: string
 
 classes:
   Service:
+    # An explicit class_uri indexes the class under BOTH this URI and its
+    # default one, so a linter walking `get_class_ids()` sees it twice.
+    class_uri: identity:ServiceEndpoint
     attributes:
       name: {range: string}
       # spec Example 1 with its correct resolution: identity = the function

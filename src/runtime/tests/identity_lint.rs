@@ -98,6 +98,41 @@ fn schema_lint_flags_exactly_the_undeclared_positional_slots() {
 }
 
 #[test]
+fn schema_lint_visits_a_class_with_an_explicit_class_uri_exactly_once() {
+    // `Service` declares `class_uri: identity:ServiceEndpoint`, so schemaview
+    // indexes it under both that URI and its default one and `get_class_ids()`
+    // yields it twice. Walking those ids naively reports every one of the
+    // class's slots twice.
+    let f = fixture();
+    let warnings = lint_element_identity(&f.sv);
+    let mut subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+    subjects.sort();
+    let mut unique = subjects.clone();
+    unique.dedup();
+    assert_eq!(
+        subjects, unique,
+        "each slot must be reported once, not once per class URI: {warnings:#?}"
+    );
+}
+
+#[test]
+fn schema_lint_warning_order_is_deterministic() {
+    // A class's slots come from `ClassView::slots()`, which is HashMap-backed,
+    // so the per-class warning order is process-dependent. Each fresh
+    // `SchemaView` gets its own hash seed, so an unsorted walk eventually
+    // disagrees with itself.
+    let expected = vec![
+        vec!["Service".to_string(), "plainPhoneNumber".to_string()],
+        vec!["Service".to_string(), "tags".to_string()],
+    ];
+    for _ in 0..20 {
+        let warnings = lint_element_identity(&fixture().sv);
+        let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+        assert_eq!(subjects, expected, "{warnings:#?}");
+    }
+}
+
+#[test]
 fn data_lint_flags_duplicate_declared_identities() {
     let f = fixture();
     let dup = json!({"phoneNumber": "09/000.00.00", "hasNumberFunction": "Emergency_Number"});

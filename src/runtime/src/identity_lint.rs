@@ -27,7 +27,7 @@ use crate::diff::{element_identity_label, slot_is_ignored, slot_is_opaque, OPAQU
 use crate::{LinkMLInstance, ValidationProblemType, ValidationResult, ValidationResultSink};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::SchemaView;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Schema-level lint: warn for every multivalued inlined slot whose element
 /// identity comes from nowhere. Warnings only — the schema stays usable.
@@ -37,10 +37,19 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
     let conv = sv.converter();
     let mut class_ids = sv.get_class_ids();
     class_ids.sort();
+    let mut seen: HashSet<String> = HashSet::new();
     for class_id in class_ids {
         let Ok(Some(class)) = sv.get_class(&Identifier::new(&class_id), &conv) else {
             continue;
         };
+        // `get_class_ids` yields one id per class *URI*: a class declaring an
+        // explicit `class_uri` is indexed under both that and its default URI,
+        // so walking the ids naively reports each of its slots twice. Key the
+        // seen-set on the canonical URI, which is identical for both ids, the
+        // same idiom `ClassView::unique_keys` uses to walk a class hierarchy.
+        if !seen.insert(class.canonical_uri().to_string()) {
+            continue;
+        }
         for slot in class.slots() {
             if slot.determine_slot_container_mode() != SlotContainerMode::List {
                 continue;
@@ -93,7 +102,13 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
             );
         }
     }
-    sink.into_vec()
+    let mut warnings = sink.into_vec();
+    // The classes are visited in sorted id order, but a class's own slots come
+    // from `ClassView::slots()`, which is HashMap-backed, so the warnings for a
+    // single class arrive in an order that varies between runs. Sort here, once,
+    // so every consumer inherits a stable, diffable order.
+    warnings.sort_by(|a, b| a.subject.cmp(&b.subject));
+    warnings
 }
 
 /// Data-level lint: warn for every list container whose elements repeat a
