@@ -16,12 +16,18 @@
 //! 2. declare the identity as `unique_keys` (composed keys supported);
 //! 3. annotate the slot `diff.linkml.io/opaque` — replace the value as a whole;
 //! 4. remodel, when one class would need two identity answers.
+//!
+//! A slot annotated `diff.linkml.io/ignore` is never flagged either, for a
+//! different reason: diff skips such a slot entirely, so it produces no deltas
+//! and has no element identity to declare. `ignore` silences the lint by
+//! removing the slot from diff's scope; `opaque` silences it by answering the
+//! question with "nowhere — replace the value as a whole".
 
 use crate::diff::{element_identity_label, slot_is_ignored, slot_is_opaque, OPAQUE_ANNOTATION};
 use crate::{LinkMLInstance, ValidationProblemType, ValidationResult, ValidationResultSink};
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::SchemaView;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Schema-level lint: warn for every multivalued inlined slot whose element
 /// identity comes from nowhere. Warnings only — the schema stays usable.
@@ -42,27 +48,48 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
             if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
                 continue; // elements are references, not inlined
             }
-            if slot_is_opaque(slot) || slot_is_ignored(slot) {
-                continue; // identity declared: nowhere, replace as a whole
+            if slot_is_opaque(slot) {
+                continue; // identity declared: nowhere, replace the value as a whole
             }
-            if let Some(rc) = slot.get_range_class() {
+            if slot_is_ignored(slot) {
+                continue; // outside diff's scope entirely: no deltas, no identity
+            }
+            let range_class = slot.get_range_class();
+            if let Some(rc) = &range_class {
                 if rc.key_or_identifier_slot().is_some() || !rc.unique_keys().is_empty() {
                     continue;
                 }
             }
-            sink.push_warning(
-                ValidationProblemType::AmbiguousElementIdentity,
-                vec![class.name().to_string(), slot.name.clone()],
-                format!(
+            // The advice has to fit the range: a scalar- or enum-ranged slot has
+            // no element class on which a key could be declared.
+            let detail = match &range_class {
+                Some(rc) => format!(
                     "elements of '{}.{}' have no declared identity: deltas are \
                      positional and ambiguous under multi-sourced operation. \
                      Declare a key/identifier or unique_keys on the element \
-                     class, annotate the slot with {} to replace the value as \
-                     a whole, or remodel.",
+                     class '{}', annotate the slot with {} to replace the value \
+                     as a whole, or remodel.",
+                    class.name(),
+                    slot.name,
+                    rc.name(),
+                    OPAQUE_ANNOTATION
+                ),
+                None => format!(
+                    "elements of '{}.{}' have no declared identity: the range is \
+                     not a class, so deltas can only be positional, and they are \
+                     ambiguous under multi-sourced operation. Annotate the slot \
+                     with {} to replace the value as a whole, or remodel the \
+                     range into a class that declares a key/identifier or \
+                     unique_keys.",
                     class.name(),
                     slot.name,
                     OPAQUE_ANNOTATION
                 ),
+            };
+            sink.push_warning(
+                ValidationProblemType::AmbiguousElementIdentity,
+                vec![class.name().to_string(), slot.name.clone()],
+                detail,
             );
         }
     }
@@ -92,7 +119,10 @@ fn walk(v: &LinkMLInstance, path: &mut Vec<String>, sink: &mut ValidationResultS
             }
         }
         LinkMLInstance::Object { values, .. } | LinkMLInstance::Mapping { values, .. } => {
-            for (k, child) in values {
+            // Name-sorted, so the warning order is stable across runs: the
+            // values are a `HashMap`, whose iteration order is not.
+            let ordered: BTreeMap<&String, &LinkMLInstance> = values.iter().collect();
+            for (k, child) in ordered {
                 path.push(k.clone());
                 walk(child, path, sink);
                 path.pop();

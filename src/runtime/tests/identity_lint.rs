@@ -77,6 +77,24 @@ fn schema_lint_flags_exactly_the_undeclared_positional_slots() {
             w.detail
         );
     }
+
+    let detail = |slot: &str| {
+        warnings
+            .iter()
+            .find(|w| w.subject[1] == slot)
+            .map(|w| w.detail.clone())
+            .unwrap_or_default()
+    };
+    assert!(
+        detail("plainPhoneNumber").contains("element class 'PlainPhoneNumber'"),
+        "an object range must be told which class to declare the identity on: {}",
+        detail("plainPhoneNumber")
+    );
+    assert!(
+        !detail("tags").contains("element class"),
+        "a scalar range has no element class to declare keys on: {}",
+        detail("tags")
+    );
 }
 
 #[test]
@@ -92,6 +110,34 @@ fn data_lint_flags_duplicate_declared_identities() {
     );
     assert_eq!(warnings[0].subject, vec!["hasPhoneNumber".to_string()]);
     assert!(!warnings[0].severity.is_error());
+}
+
+#[test]
+fn data_lint_warning_order_is_deterministic_across_sibling_containers() {
+    let f = fixture();
+    // Three sibling containers, each with a duplicated declared identity. The
+    // instance's slots live in a HashMap, so the warnings must be emitted in a
+    // stable (name-sorted) order rather than in process-dependent hash order.
+    let c = json!({"kind": "Emergency", "phone": "02/111.11.11"});
+    let dup = json!({"phoneNumber": "09/000.00.00", "hasNumberFunction": "Emergency_Number"});
+    let data = json!({
+        "name": "svc",
+        "archivedContacts": [c.clone(), c.clone()],
+        "contacts": [c.clone(), c],
+        "hasPhoneNumber": [e(), dup],
+    });
+    let expected = vec![
+        vec!["archivedContacts".to_string()],
+        vec!["contacts".to_string()],
+        vec!["hasPhoneNumber".to_string()],
+    ];
+    // Repeated on freshly built instances: each `HashMap` gets its own hash
+    // seed, so an unordered walk would eventually disagree with itself.
+    for _ in 0..10 {
+        let warnings = lint_instance_identity(&f.load(data.clone()));
+        let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+        assert_eq!(subjects, expected, "{warnings:#?}");
+    }
 }
 
 #[test]
