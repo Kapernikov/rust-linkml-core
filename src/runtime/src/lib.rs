@@ -46,7 +46,9 @@ pub use blame::{
     blame_map_to_paths, format_blame_map, format_blame_map_with, get_blame_info, patch_with_blame,
     record_blame_from_trace,
 };
-pub use diff::{diff, patch, Delta, DeltaOp, DiffOptions, PatchOptions, PatchTrace};
+pub use diff::{
+    diff, patch, Delta, DeltaOp, DiffOptions, PatchOptions, PatchTrace, OPAQUE_ANNOTATION,
+};
 #[derive(Debug)]
 pub struct LinkMLError {
     validation_issues: Vec<ValidationResult>,

@@ -20,6 +20,23 @@ fn slot_is_ignored(slot: &SlotView) -> bool {
         .unwrap_or(false)
 }
 
+/// Slot annotation declaring that element identity comes from nowhere: stop
+/// all recursion, the slot's value is one atomic unit. Any change below the
+/// slot is described as a single whole-value `Update` at the slot path, and
+/// `patch` refuses paths that descend below it.
+pub const OPAQUE_ANNOTATION: &str = "diff.linkml.io/opaque";
+
+pub(crate) fn slot_is_opaque(slot: &SlotView) -> bool {
+    if slot.definitions().is_empty() {
+        return false;
+    }
+    slot.definition()
+        .annotations
+        .as_ref()
+        .map(|a| a.contains_key(OPAQUE_ANNOTATION))
+        .unwrap_or(false)
+}
+
 /// Operation applied by a [`Delta`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -120,6 +137,17 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
     ) {
         if let Some(sl) = slot {
             if slot_is_ignored(sl) {
+                return;
+            }
+            if slot_is_opaque(sl) {
+                if !s.equals(t, opts.treat_missing_as_null) {
+                    out.push(Delta {
+                        path: path.clone(),
+                        op: DeltaOp::Update,
+                        old: Some(s.to_json()),
+                        new: Some(t.to_json()),
+                    });
+                }
                 return;
             }
         }
