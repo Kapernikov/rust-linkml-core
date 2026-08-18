@@ -1,0 +1,15 @@
+id: http://example.com/missing_imports
+name: missing_imports
+prefixes:
+  missing_imports: http://example.com/missing_imports/
+default_prefix: missing_imports
+default_range: string
+# Neither file exists: resolution must report BOTH, not stop at the first.
+imports:
+  - ./definitely_not_here
+  - ./also_not_here
+classes:
+  Stub:
+    attributes:
+      id:
+        identifier: true

@@ -1,0 +1,17 @@
+id: http://example.com/nested_root
+name: nested_root
+prefixes:
+  nested_root: http://example.com/nested_root/
+  nested_a: http://example.com/nested_a/
+default_prefix: nested_root
+default_range: string
+# Relative to THIS file's directory, not the process CWD.
+imports:
+  - ./nested_a
+classes:
+  RootThing:
+    attributes:
+      id:
+        identifier: true
+      middle:
+        range: nested_a:MiddleThing
