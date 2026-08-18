@@ -1,0 +1,121 @@
+use linkml_runtime::{
+    lint_element_identity, lint_instance_identity, load_json_str, LinkMLInstance,
+    ValidationProblemType,
+};
+use linkml_schemaview::identifier::{converter_from_schema, Identifier};
+use linkml_schemaview::io::from_yaml;
+use linkml_schemaview::schemaview::{ClassView, SchemaView};
+use linkml_schemaview::Converter;
+use serde_json::{json, Value as JsonValue};
+use std::path::PathBuf;
+
+struct Fixture {
+    sv: SchemaView,
+    conv: Converter,
+    service: ClassView,
+}
+
+fn fixture() -> Fixture {
+    let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    p.push("tests/data/identity.yaml");
+    let schema = from_yaml(&p).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let service = sv
+        .get_class(&Identifier::new("Service"), &conv)
+        .unwrap()
+        .expect("class not found");
+    Fixture { sv, conv, service }
+}
+
+impl Fixture {
+    fn load(&self, v: JsonValue) -> LinkMLInstance {
+        load_json_str(&v.to_string(), &self.sv, &self.service, &self.conv)
+            .unwrap()
+            .into_instance()
+            .unwrap()
+    }
+}
+
+fn e() -> JsonValue {
+    json!({"phoneNumber": "09/241.25.00", "hasNumberFunction": "Emergency_Number"})
+}
+fn n() -> JsonValue {
+    json!({"phoneNumber": "09/241.25.03", "hasNumberFunction": "Non_Urgent_Communication"})
+}
+fn phones(items: Vec<JsonValue>) -> JsonValue {
+    json!({"name": "svc", "hasPhoneNumber": items})
+}
+
+#[test]
+fn schema_lint_flags_exactly_the_undeclared_positional_slots() {
+    let f = fixture();
+    let warnings = lint_element_identity(&f.sv);
+    let mut flagged: Vec<(String, String)> = warnings
+        .iter()
+        .map(|w| (w.subject[0].clone(), w.subject[1].clone()))
+        .collect();
+    flagged.sort();
+    assert_eq!(
+        flagged,
+        vec![
+            ("Service".to_string(), "plainPhoneNumber".to_string()),
+            ("Service".to_string(), "tags".to_string()),
+        ],
+        "everything else declares its identity source: {warnings:#?}"
+    );
+    for w in &warnings {
+        assert_eq!(
+            w.problem_type,
+            ValidationProblemType::AmbiguousElementIdentity
+        );
+        assert!(!w.severity.is_error(), "the linter warns, never errors");
+        assert!(
+            w.detail.contains("unique_keys") && w.detail.contains("diff.linkml.io/opaque"),
+            "the warning must name the author's options: {}",
+            w.detail
+        );
+    }
+}
+
+#[test]
+fn data_lint_flags_duplicate_declared_identities() {
+    let f = fixture();
+    let dup = json!({"phoneNumber": "09/000.00.00", "hasNumberFunction": "Emergency_Number"});
+    let inst = f.load(phones(vec![e(), dup]));
+    let warnings = lint_instance_identity(&inst);
+    assert_eq!(warnings.len(), 1, "{warnings:#?}");
+    assert_eq!(
+        warnings[0].problem_type,
+        ValidationProblemType::DuplicateElementIdentity
+    );
+    assert_eq!(warnings[0].subject, vec!["hasPhoneNumber".to_string()]);
+    assert!(!warnings[0].severity.is_error());
+}
+
+#[test]
+fn data_lint_is_silent_on_clean_and_undeclared_data() {
+    let f = fixture();
+    // unique phone functions, repeated scalar tags, repeated identity-less vertices
+    let inst = f.load(json!({
+        "name": "svc",
+        "hasPhoneNumber": [e(), n()],
+        "tags": ["a", "a"],
+        "outline": [{"x": 1.0, "y": 2.0}, {"x": 1.0, "y": 2.0}]
+    }));
+    let warnings = lint_instance_identity(&inst);
+    assert!(warnings.is_empty(), "{warnings:#?}");
+}
+
+#[test]
+fn data_lint_does_not_let_opaque_suppress_a_schema_constraint() {
+    let f = fixture();
+    // archivedContacts is opaque, but Contact declares unique_keys: duplicates
+    // still violate the class's claim. diff vocabulary never silences schema truth.
+    let c = json!({"kind": "Emergency", "phone": "02/111.11.11"});
+    let inst = f.load(json!({"name": "svc", "archivedContacts": [c.clone(), c]}));
+    let warnings = lint_instance_identity(&inst);
+    assert_eq!(warnings.len(), 1, "{warnings:#?}");
+    assert_eq!(warnings[0].subject, vec!["archivedContacts".to_string()]);
+}

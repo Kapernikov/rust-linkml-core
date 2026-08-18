@@ -1053,6 +1053,8 @@ fn validation_problem_type_label(problem_type: &ValidationProblemType) -> &'stat
         ValidationProblemType::SlotRangeViolation => "slot_range_violation",
         ValidationProblemType::MaxCountViolation => "max_count_violation",
         ValidationProblemType::ParsingError => "parsing_error",
+        ValidationProblemType::AmbiguousElementIdentity => "ambiguous_element_identity",
+        ValidationProblemType::DuplicateElementIdentity => "duplicate_element_identity",
     }
 }
 

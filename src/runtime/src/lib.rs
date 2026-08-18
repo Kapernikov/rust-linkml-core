@@ -26,6 +26,7 @@ use constraints::{run_object_constraints, run_slot_constraints};
 
 pub mod blame;
 pub mod diff;
+pub mod identity_lint;
 #[cfg(feature = "ttl")]
 pub mod rdf_export;
 #[cfg(feature = "ttl")]
@@ -49,6 +50,7 @@ pub use blame::{
 pub use diff::{
     diff, patch, Delta, DeltaOp, DiffOptions, PatchOptions, PatchTrace, OPAQUE_ANNOTATION,
 };
+pub use identity_lint::{lint_element_identity, lint_instance_identity};
 #[derive(Debug)]
 pub struct LinkMLError {
     validation_issues: Vec<ValidationResult>,
@@ -156,6 +158,12 @@ pub enum ValidationProblemType {
     SlotRangeViolation,
     MaxCountViolation,
     ParsingError,
+    /// A multivalued inlined slot whose elements have no declared identity
+    /// (opt-in, [`crate::lint_element_identity`]).
+    AmbiguousElementIdentity,
+    /// Elements of one list repeat a declared identity (opt-in,
+    /// [`crate::lint_instance_identity`]).
+    DuplicateElementIdentity,
 }
 
 pub type InstancePath = Vec<String>;
