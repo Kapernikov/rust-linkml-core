@@ -22,17 +22,72 @@
 //! and has no element identity to declare. `ignore` silences the lint by
 //! removing the slot from diff's scope; `opaque` silences it by answering the
 //! question with "nowhere — replace the value as a whole".
+//!
+//! Warnings are reported at the class that **introduces** the slot: a flagged
+//! slot inherited unchanged by a descendant is not repeated there, since the
+//! declaration the author would edit lives on the ancestor.
 
 use crate::diff::{element_identity_label, slot_is_ignored, slot_is_opaque, OPAQUE_ANNOTATION};
 use crate::{LinkMLInstance, ValidationProblemType, ValidationResult, ValidationResultSink};
 use linkml_schemaview::identifier::Identifier;
-use linkml_schemaview::schemaview::SchemaView;
+use linkml_schemaview::schemaview::{ClassView, SchemaView};
+use linkml_schemaview::slotview::SlotView;
 use std::collections::{BTreeMap, HashMap, HashSet};
+
+/// Whether this slot is one the lint flags: a multivalued inlined slot whose
+/// element identity comes from nowhere.
+///
+/// Split out from the reporting loop because the same question has to be asked
+/// of an inherited slot on its parent class, to decide which class introduced
+/// the problem.
+fn slot_lacks_element_identity(slot: &SlotView) -> bool {
+    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
+    if slot.determine_slot_container_mode() != SlotContainerMode::List {
+        return false;
+    }
+    if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
+        return false; // elements are references, not inlined
+    }
+    if slot_is_opaque(slot) {
+        return false; // identity declared: nowhere, replace the value as a whole
+    }
+    if slot_is_ignored(slot) {
+        return false; // outside diff's scope entirely: no deltas, no identity
+    }
+    if let Some(rc) = slot.get_range_class() {
+        if rc.key_or_identifier_slot().is_some() || !rc.unique_keys().is_empty() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Whether `class` is where a flagged slot should be reported, rather than an
+/// ancestor it merely inherits the problem from.
+///
+/// Answers no only when the direct `is_a` parent carries a slot of the same
+/// name that is flagged *for the same reason*. Applied at every level this
+/// leaves exactly the topmost flagged declarer, and it keeps a subclass whose
+/// `slot_usage` changes the answer — narrowing the range to a keyed class, or
+/// widening it away from one — judged on its own merits in both directions.
+///
+/// Only the `is_a` chain is walked. A slot arriving from a mixin is reported on
+/// the class using the mixin as well as on the mixin itself: a mixin can be
+/// applied to unrelated classes, so there is no single owning declaration to
+/// point at, and chasing one is not worth the complexity.
+fn introduces_flagged_slot(class: &ClassView, slot_name: &str) -> bool {
+    let Ok(Some(parent)) = class.parent_class() else {
+        return true; // no is_a parent: this class is the declarer
+    };
+    let Some(parent_slot) = parent.slot(&Identifier::new(slot_name)) else {
+        return true; // the parent does not have it: introduced here
+    };
+    !slot_lacks_element_identity(&parent_slot)
+}
 
 /// Schema-level lint: warn for every multivalued inlined slot whose element
 /// identity comes from nowhere. Warnings only — the schema stays usable.
 pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
-    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
     let mut sink = ValidationResultSink::default();
     let conv = sv.converter();
     let mut class_ids = sv.get_class_ids();
@@ -56,24 +111,16 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
             continue;
         }
         for slot in class.slots() {
-            if slot.determine_slot_container_mode() != SlotContainerMode::List {
+            if !slot_lacks_element_identity(slot) {
                 continue;
             }
-            if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
-                continue; // elements are references, not inlined
-            }
-            if slot_is_opaque(slot) {
-                continue; // identity declared: nowhere, replace the value as a whole
-            }
-            if slot_is_ignored(slot) {
-                continue; // outside diff's scope entirely: no deltas, no identity
+            // Report at the class that introduces the slot: repeating an
+            // inherited warning on every descendant buries the one declaration
+            // the author would actually edit.
+            if !introduces_flagged_slot(&class, &slot.name) {
+                continue;
             }
             let range_class = slot.get_range_class();
-            if let Some(rc) = &range_class {
-                if rc.key_or_identifier_slot().is_some() || !rc.unique_keys().is_empty() {
-                    continue;
-                }
-            }
             // The advice has to fit the range: a scalar- or enum-ranged slot has
             // no element class on which a key could be declared.
             let detail = match &range_class {

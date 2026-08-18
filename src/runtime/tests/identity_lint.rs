@@ -155,6 +155,39 @@ fn schema_lint_reports_both_classes_that_share_one_class_uri() {
 }
 
 #[test]
+fn schema_lint_reports_an_inherited_slot_only_where_it_is_introduced() {
+    // A flagged slot is inherited by every descendant, so reporting it per
+    // class buries the one place the author can fix it. Only the topmost
+    // flagged declarer is reported — but a subclass whose `slot_usage` changes
+    // the identity answer is judged on its own merits, in both directions.
+    let sv = schema_view("identity_inheritance.yaml");
+    let subjects: Vec<Vec<String>> = lint_element_identity(&sv)
+        .iter()
+        .map(|w| w.subject.clone())
+        .collect();
+    assert_eq!(
+        subjects,
+        vec![
+            // introduces `outline`; Middle, Leaf and Broken inherit it unchanged
+            vec!["Base".to_string(), "outline".to_string()],
+            // widens an inherited clean slot into an ambiguous one: introduced here
+            vec!["Broken".to_string(), "keyed".to_string()],
+            // mixin-provided, reported both on the mixin and on its user
+            vec!["HasTagsMixin".to_string(), "tags".to_string()],
+            vec!["Tagged".to_string(), "tags".to_string()],
+        ],
+        "an inherited flagged slot must be reported once, at its introducing class"
+    );
+    // Spelled out, because these are the cases a naive fix gets wrong:
+    for silent in ["Middle", "Leaf", "Fixed"] {
+        assert!(
+            !subjects.iter().any(|s| s[0] == silent),
+            "{silent} must stay silent, got {subjects:?}"
+        );
+    }
+}
+
+#[test]
 fn schema_lint_warning_order_is_deterministic() {
     // A class's slots come from `ClassView::slots()`, which is HashMap-backed,
     // so the per-class warning order is process-dependent. Each fresh
