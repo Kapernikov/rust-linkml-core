@@ -899,6 +899,12 @@ fn apply_delta_object(
         );
     }
     if let Some(child) = values.get_mut(key) {
+        let slot = class.slots().iter().find(|s| s.name == *key);
+        if slot.is_some_and(slot_is_opaque) {
+            // The path descends below an opaque slot: it addresses structure
+            // the slot does not expose. Report, never guess.
+            return Ok(false);
+        }
         return apply_delta_linkml_inner(child, &path[1..], op, newv, trace, opts);
     }
     Ok(false)
@@ -916,6 +922,11 @@ fn apply_delta_mapping(
     trace: &mut PatchTrace,
     opts: PatchOptions,
 ) -> LResult<bool> {
+    // A non-empty path here addresses *inside* the mapping, which is below the
+    // mapping's own slot. Reached when the patched root is itself a mapping.
+    if slot_is_opaque(slot) {
+        return Ok(false);
+    }
     let key = &path[0];
     if path.len() == 1 {
         let value = newv.cloned().unwrap_or(JsonValue::Null);
@@ -965,6 +976,11 @@ fn apply_delta_list(
     trace: &mut PatchTrace,
     opts: PatchOptions,
 ) -> LResult<bool> {
+    // A non-empty path here addresses *inside* the list, which is below the
+    // list's own slot. Reached when the patched root is itself a list.
+    if slot_is_opaque(slot) {
+        return Ok(false);
+    }
     let key = &path[0];
     let idx_opt = resolve_list_index(values, key);
     if path.len() == 1 {

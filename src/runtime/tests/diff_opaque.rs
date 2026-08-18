@@ -141,3 +141,44 @@ fn opaque_whole_slot_update_round_trips_through_patch() {
         patched.to_json()
     );
 }
+
+#[test]
+fn patch_below_opaque_slot_is_reported_failed_not_guessed() {
+    let f = fixture();
+    let golden = f.load(outline(square()));
+    let delta = Delta {
+        path: vec!["outline".to_string(), "1".to_string(), "x".to_string()],
+        op: DeltaOp::Update,
+        old: Some(json!(4.36)),
+        new: Some(json!(9.99)),
+    };
+    let (patched, trace) = patch(
+        &golden,
+        std::slice::from_ref(&delta),
+        PatchOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(
+        patched.equals(&golden, true),
+        "nothing may change: {}",
+        patched.to_json()
+    );
+}
+
+#[test]
+fn patch_at_opaque_slot_path_still_applies_whole_value() {
+    let f = fixture();
+    let golden = f.load(outline(square()));
+    let mut moved = square();
+    moved[1] = json!({"x": 4.37, "y": 50.85});
+    let delta = Delta {
+        path: vec!["outline".to_string()],
+        op: DeltaOp::Update,
+        old: Some(json!(square())),
+        new: Some(json!(moved.clone())),
+    };
+    let (patched, trace) = patch(&golden, &[delta], PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(patched.equals(&f.load(outline(moved)), true));
+}
