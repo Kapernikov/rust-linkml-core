@@ -19,7 +19,9 @@ The offered options are:
 
 ## Non-goal
 
-The inferred semantics do **not** change for downstream projects not opting in to the linter. The positional index path deltas produced today are still valuable for projects not dealing with multiple sources producing deltas for the same object at the same time.
+Positional index deltas remain the inferred semantics for slots that declare nothing — they are still valuable for projects not dealing with multiple sources producing deltas for the same object at the same time, and the opt-in linter is the only place that complains about them.
+
+One deliberate compatibility break ships with this design (a spike finding): **keyed matching becomes uniform**. A list is matched by element identity only when every element on both sides yields an identity label (key/identifier first, else the class's `unique_keys`) and the labels are unique within each side; path segments are then the labels. In every other case matching is positional and path segments are plain numeric indices. This removes two behaviours of the old fallback: key values were opportunistically mixed into positional paths, and duplicate key values within a "keyed" list were silently collapsed by the matcher. Consumers see cleaner, uniform delta paths; `patch` keeps accepting both numeric and label segments, and reports a delta as failed instead of guessing when a label matches more than one element.
 
 ## Proposed solution
 

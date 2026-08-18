@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Non-goal (spec):** inferred semantics must not change for schemas that declare nothing. Every existing test passes unchanged; the positional list branch's output (including its path segments) stays byte-identical. Never add a uniqueness guard to key/identifier-labelled matching — only to `unique_keys`-derived matching.
+- **Non-goal + deliberate break (spec, Non-goal section):** slots that declare nothing keep positional semantics, but keyed matching becomes uniform: a list matches by identity iff every element on both sides yields an identity label (key/identifier first, else `unique_keys`) AND the labels are unique within each side; every other case is positional with plain numeric path segments. This deliberately removes (a) opportunistic key labels mixed into positional paths and (b) the silent collapse of duplicate key values under keyed matching. Existing tests that assert those two removed behaviours are updated — the implementer's report must list each updated test with its old assertion and why it changed. All other existing tests pass unchanged.
 - **"Report, never guess" (spec):** a patch that cannot locate its target unambiguously returns `Ok(false)` so the path lands in `PatchTrace::failed`. No fuzzy fallbacks.
 - **Layering (spec):** validation/lint code never reads `diff.linkml.io/*` to *suppress* a schema-constraint finding. The schema-level linter may skip opaque slots (identity is declared: nowhere); the data-level duplicate check never consults the annotation.
 - `PatchTrace::failed` stays `Vec<Vec<String>>` — do not import the abandoned branch's `PatchFailure` struct.
@@ -259,6 +259,11 @@ classes:
         range: Label
         multivalued: true
         inlined: true
+      # keyed class inlined as list: the uniform guard applies to key labels too
+      labelList:
+        range: Label
+        multivalued: true
+        inlined_as_list: true
       # reference list (not inlined): out of the linter's scope
       operators:
         range: Operator
@@ -680,10 +685,10 @@ git commit -m "feat(runtime): patch refuses to descend below an opaque slot"
   - `pub(crate) fn element_identity_label(v: &LinkMLInstance) -> Option<String>` — `element_key_label` first, `element_unique_key_label` as fallback.
   - `fn scalar_slot_string(values: &HashMap<String, LinkMLInstance>, slot_name: &str) -> Option<String>`.
 
-**Precedence and guard rules (from the spec + non-goal):**
+**Precedence and guard rules (from the spec's Non-goal section — the uniform rule):**
 1. opaque > key/identifier > unique_keys > positional.
-2. `unique_keys` labels participate in *matching only*, never in positional path segments — the positional branch keeps using `element_key_label`, so its output stays byte-identical to today.
-3. A `unique_keys` label is a class-level claim, weaker than a key: if any element's label would come from `unique_keys` and the labels are not unique within both lists, fall back to positional matching (dirty data must keep today's behaviour). Key/identifier-labelled lists get **no** new uniqueness guard.
+2. A list is matched by identity iff every element on both sides yields an identity label (`element_identity_label`) AND the labels are unique within each side. The guard is uniform — it applies to key/identifier labels exactly as to `unique_keys` labels (removing today's silent collapse of duplicate keys).
+3. The positional branch uses plain numeric segments (`i.to_string()`) only — the old opportunistic mixing of key values into positional paths is removed.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -795,6 +800,24 @@ fn duplicate_unique_key_data_falls_back_to_positional() {
 }
 
 #[test]
+fn duplicate_key_data_falls_back_to_positional_not_collapse() {
+    let f = fixture();
+    // Label declares `lang` as key; a list that repeats the key must not be
+    // silently collapsed by keyed matching — uniform guard, positional fallback.
+    let before = json!({"name": "svc", "labelList": [
+        {"lang": "nl", "text": "a"}, {"lang": "nl", "text": "b"}]});
+    let after = json!({"name": "svc", "labelList": [
+        {"lang": "nl", "text": "a"}, {"lang": "nl", "text": "B"}]});
+    let deltas = diff2(&f, before, after);
+    let delta = only(&deltas);
+    assert_eq!(
+        delta.path,
+        vec!["labelList".to_string(), "1".to_string(), "text".to_string()],
+        "duplicate key labels must fall back to plain numeric segments"
+    );
+}
+
+#[test]
 fn undeclared_class_keeps_positional_cascade() {
     let f = fixture();
     // PlainPhoneNumber has no unique_keys: removal still cascades as today
@@ -851,7 +874,7 @@ fn inherited_unique_keys_drive_matching() {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p linkml_runtime --test diff_unique_keys`
-Expected: the matching tests FAIL (positional deltas today); `duplicate_unique_key_data_falls_back_to_positional` and `undeclared_class_keeps_positional_cascade` PASS already (they assert today's behaviour and must stay green throughout).
+Expected: the matching tests FAIL (positional deltas today); `duplicate_key_data_falls_back_to_positional_not_collapse` also FAILS today (current keyed matching silently collapses the duplicates — the defect the uniform guard removes). `duplicate_unique_key_data_falls_back_to_positional` and `undeclared_class_keeps_positional_cascade` PASS already and must stay green throughout.
 
 - [ ] **Step 3: Implement**
 
@@ -913,18 +936,6 @@ pub(crate) fn element_identity_label(v: &LinkMLInstance) -> Option<String> {
     element_key_label(v).or_else(|| element_unique_key_label(v))
 }
 
-/// Whether any element's matching label would come from `unique_keys` rather
-/// than a key/identifier slot.
-fn labels_from_unique_keys(elements: &[LinkMLInstance]) -> bool {
-    elements.iter().any(|v| {
-        if let LinkMLInstance::Object { class, .. } = v {
-            class.key_or_identifier_slot().is_none() && !class.unique_keys().is_empty()
-        } else {
-            false
-        }
-    })
-}
-
 fn labels_are_unique<F>(elements: &[LinkMLInstance], label: F) -> bool
 where
     F: Fn(&LinkMLInstance) -> Option<String>,
@@ -938,29 +949,23 @@ The `(List, List)` arm becomes:
 
 ```rust
 (LinkMLInstance::List { values: sl, .. }, LinkMLInstance::List { values: tl, .. }) => {
-    // Positional path segments keep using key/identifier labels ONLY, so the
-    // positional branch's output is byte-identical to before unique_keys
-    // support existed.
-    let label = |v: &LinkMLInstance| -> Option<String> { element_key_label(v) };
     let identity = |v: &LinkMLInstance| -> Option<String> { element_identity_label(v) };
-    let mut keyed = sl.iter().all(|v| identity(v).is_some())
-        && tl.iter().all(|v| identity(v).is_some());
-    // A unique_keys label is a class-level claim, not a per-element identity:
-    // data may legitimately violate it (it must still load and round-trip).
-    // Matching duplicates by such a label would silently collapse elements,
-    // so refuse to guess and fall back to positional.
-    if keyed
-        && (labels_from_unique_keys(sl) || labels_from_unique_keys(tl))
-        && !(labels_are_unique(sl, &identity) && labels_are_unique(tl, &identity))
-    {
-        keyed = false;
-    }
+    // Uniform rule (spec, Non-goal section): keyed matching iff every element
+    // on both sides carries an identity label and the labels are unique
+    // within each side. Duplicate labels (a list repeating a key, or data
+    // violating a unique_keys claim) fall back to positional — matching
+    // duplicates by label would silently collapse elements.
+    let keyed = sl.iter().all(|v| identity(v).is_some())
+        && tl.iter().all(|v| identity(v).is_some())
+        && labels_are_unique(sl, &identity)
+        && labels_are_unique(tl, &identity);
     if keyed {
         // ... identical to the current keyed block (lines 233-266),
         //     with every `label(..)` call replaced by `identity(..)` ...
     } else {
-        // ... the current positional block (lines 267-296), UNCHANGED,
-        //     still using `label` for opportunistic segments ...
+        // ... the current positional block (lines 267-296), with the
+        //     opportunistic label chain REPLACED by plain numeric segments:
+        //     every path segment is `i.to_string()`.
     }
 }
 ```
@@ -968,12 +973,12 @@ The `(List, List)` arm becomes:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test -p linkml_runtime --test diff_unique_keys`
-Expected: PASS (all 8).
+Expected: PASS (all 9).
 
-- [ ] **Step 5: Full runtime suite — the non-goal gate**
+- [ ] **Step 5: Full runtime suite — the compatibility gate**
 
 Run: `cargo test -p linkml_runtime && cargo test -p schemaview`
-Expected: PASS. Any change in `diff.rs`/`diff_identifier.rs`/`trace.rs` test output means the positional branch or key-labelled matching drifted — fix the implementation, not the tests.
+Expected: mostly PASS. Existing tests that assert the two deliberately removed behaviours — opportunistic key labels inside positional paths, or keyed matching of lists with duplicate labels — may fail; update each such test to the uniform rule and list every updated test in your report with its old assertion and why it changed. Any other failure means the implementation drifted — fix the implementation, not the test.
 
 - [ ] **Step 6: Commit**
 
@@ -991,8 +996,8 @@ git commit -m "feat(runtime): match inlined list elements by unique_keys-derived
 - Test: `src/runtime/tests/diff_unique_keys.rs` (extend)
 
 **Interfaces:**
-- Consumes: `element_key_label`, `element_unique_key_label` (Task 4).
-- Produces: patch behaviour only.
+- Consumes: `element_identity_label` (Task 4).
+- Produces: patch behaviour only. Note the deliberate break (Global Constraints): duplicate labels in the current list now refuse (`Ok(false)` → `trace.failed`) instead of first-match; this applies to key/identifier labels exactly as to `unique_keys` labels.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1047,6 +1052,24 @@ fn patch_reports_ambiguous_unique_key_instead_of_guessing() {
 }
 
 #[test]
+fn patch_refuses_ambiguous_duplicate_key_labels() {
+    let f = fixture();
+    // Duplicate key/identifier labels refuse exactly like duplicate
+    // unique_keys labels — the uniform rule on the patch side.
+    let golden = f.load(json!({"name": "svc", "labelList": [
+        {"lang": "nl", "text": "a"}, {"lang": "nl", "text": "b"}]}));
+    let delta = Delta {
+        path: vec!["labelList".to_string(), "nl".to_string(), "text".to_string()],
+        op: DeltaOp::Update,
+        old: Some(json!("a")),
+        new: Some(json!("z")),
+    };
+    let (patched, trace) = patch(&golden, &[delta.clone()], PatchOptions::default()).unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(patched.equals(&golden, true), "nothing may change");
+}
+
+#[test]
 fn unique_key_deltas_round_trip_through_patch() {
     let f = fixture();
     let mut n2 = n();
@@ -1071,18 +1094,23 @@ Expected: the two locate tests FAIL (segment `Emergency_Number` resolves to no i
 
 - [ ] **Step 3: Implement**
 
-Extend `resolve_list_index` (diff.rs:530). Keep the existing numeric-index attempt and the existing key/identifier `find_map` block **byte-identical** (do not rewrite it in terms of `element_key_label` — its scalar comparison semantics differ subtly for non-string keys). Append after it:
+Rewrite `resolve_list_index` (diff.rs:530) as one unified resolver. The numeric-index attempt stays first and unchanged; the old key/identifier `find_map` block is **replaced** by an identity-label pass that uses the same precedence and stringification diff uses to build segments (making diff→patch symmetric), and that refuses ambiguity:
 
 ```rust
-    // unique_keys-derived location. Only an unambiguous hit counts: if the
-    // golden record drifted into duplicate labels, locating "the" element
-    // would be a guess — return None so the delta is reported as failed.
+fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
+    if let Ok(idx) = key.parse::<usize>() {
+        if idx < values.len() {
+            return Some(idx);
+        }
+    }
+    // Identity-label location (key/identifier first, else unique_keys) — the
+    // same precedence and stringification diff uses to build the segment.
+    // Only an unambiguous hit counts: if the current list holds duplicate
+    // labels, locating "the" element would be a guess — return None so the
+    // delta is reported as failed.
     let mut hit: Option<usize> = None;
     for (i, v) in values.iter().enumerate() {
-        if element_key_label(v).is_some() {
-            continue; // this element is addressed by its key, handled above
-        }
-        if element_unique_key_label(v).as_deref() == Some(key) {
+        if element_identity_label(v).as_deref() == Some(key) {
             if hit.is_some() {
                 return None;
             }
@@ -1090,27 +1118,26 @@ Extend `resolve_list_index` (diff.rs:530). Keep the existing numeric-index attem
         }
     }
     hit
+}
 ```
-
-(The existing key block ends with a `find_map(...)` expression; restructure to `let by_key = ...; if by_key.is_some() { return by_key; }` followed by the code above.)
 
 Note on `Add` deltas: an `Add` whose unique-key segment resolves to no element takes the existing `idx_opt = None` append path in `apply_list_leaf_delta` (line 687) — that is correct and needs no change.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test -p linkml_runtime --test diff_unique_keys`
-Expected: PASS (all 11).
+Expected: PASS (all 12).
 
-- [ ] **Step 5: Full runtime suite**
+- [ ] **Step 5: Full runtime suite — the compatibility gate**
 
 Run: `cargo test -p linkml_runtime`
-Expected: PASS.
+Expected: mostly PASS. Existing tests that assert the removed first-match-on-duplicate-labels patch behaviour may fail; update each such test to the uniform refuse-ambiguity rule and list every updated test in your report with its old assertion and why it changed. Any other failure means the implementation drifted — fix the implementation, not the test.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add src/runtime/src/diff.rs src/runtime/tests/diff_unique_keys.rs
-git commit -m "feat(runtime): patch resolves unique_keys-derived path segments"
+git commit -m "feat(runtime): patch resolves identity-label path segments, refuses ambiguity"
 ```
 
 ---
