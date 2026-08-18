@@ -758,6 +758,14 @@ where
 {
     match op {
         DeltaOp::Add | DeltaOp::Update => {
+            // An `Update` addressing an element that is not there is a stale
+            // address, not an invitation to append: report, never guess. Only
+            // `Add` treats "no such index" as "put it at the end". Checked
+            // before `build_child` so a failed address reports rather than
+            // surfacing a build error for a value that is never applied.
+            if idx_opt.is_none() && matches!(op, DeltaOp::Update) {
+                return Ok(false);
+            }
             let new_child = build_child()?;
             if let Some(idx) = idx_opt {
                 let existing = &mut values[idx];

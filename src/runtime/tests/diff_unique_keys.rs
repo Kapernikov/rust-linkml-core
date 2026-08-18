@@ -342,3 +342,51 @@ fn unique_key_deltas_round_trip_through_patch() {
         );
     }
 }
+
+#[test]
+fn patch_refuses_positional_update_into_identity_addressed_list() {
+    let f = fixture();
+    let golden = f.load(phones(vec![e(), n()]));
+    // A stale positional Update against a keyed-shaped list resolves to no
+    // element. It must report, not append: an unresolved address is never an
+    // invitation to grow the list.
+    let mut e2 = e();
+    e2["phoneNumber"] = json!("09/999.99.99");
+    let delta = Delta {
+        path: vec!["hasPhoneNumber".to_string(), "0".to_string()],
+        op: DeltaOp::Update,
+        old: Some(e()),
+        new: Some(e2),
+    };
+    let (patched, trace) = patch(
+        &golden,
+        std::slice::from_ref(&delta),
+        PatchOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(patched.equals(&golden, true), "nothing may be appended");
+}
+
+#[test]
+fn patch_refuses_update_whose_label_matches_nothing() {
+    let f = fixture();
+    let golden = f.load(phones(vec![e(), n()]));
+    // An Update addressing an element that is not there: the producer meant to
+    // edit an existing Operator entry, and the golden has none. Reporting is
+    // the only honest answer — appending would invent an edit as a creation.
+    let delta = Delta {
+        path: vec!["hasPhoneNumber".to_string(), "Operator".to_string()],
+        op: DeltaOp::Update,
+        old: Some(o()),
+        new: Some(o()),
+    };
+    let (patched, trace) = patch(
+        &golden,
+        std::slice::from_ref(&delta),
+        PatchOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(patched.equals(&golden, true), "nothing may be appended");
+}
