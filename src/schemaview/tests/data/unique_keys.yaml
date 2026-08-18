@@ -1,0 +1,35 @@
+id: http://example.org/unique_keys
+name: unique_keys
+prefixes:
+  ex: http://example.org/unique_keys/
+default_prefix: ex
+default_range: string
+
+classes:
+  Base:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+      shared_name:
+        unique_key_slots: [base_field]
+    attributes:
+      code: {range: string}
+      base_field: {range: string}
+  MixinCls:
+    mixin: true
+    unique_keys:
+      by_tag:
+        unique_key_slots: [tag]
+    attributes:
+      tag: {range: string}
+  Child:
+    is_a: Base
+    mixins: [MixinCls]
+    unique_keys:
+      shared_name:
+        unique_key_slots: [child_field]
+    attributes:
+      child_field: {range: string}
+  Plain:
+    attributes:
+      whatever: {range: string}
