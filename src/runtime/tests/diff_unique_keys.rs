@@ -1,4 +1,6 @@
-use linkml_runtime::{diff, load_json_str, Delta, DeltaOp, DiffOptions, LinkMLInstance};
+use linkml_runtime::{
+    diff, load_json_str, patch, Delta, DeltaOp, DiffOptions, LinkMLInstance, PatchOptions,
+};
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
@@ -216,4 +218,127 @@ fn inherited_unique_keys_drive_matching() {
             "note".to_string()
         ]
     );
+}
+
+#[test]
+fn patch_locates_element_by_unique_key_under_drift() {
+    let f = fixture();
+    // producer saw [E, N]; golden drifted to [N, E, O]
+    let golden = f.load(phones(vec![n(), e(), o()]));
+    let delta = Delta {
+        path: vec![
+            "hasPhoneNumber".to_string(),
+            "Emergency_Number".to_string(),
+            "phoneNumber".to_string(),
+        ],
+        op: DeltaOp::Update,
+        old: Some(json!("09/241.25.00")),
+        new: Some(json!("09/999.99.99")),
+    };
+    let (patched, trace) = patch(&golden, &[delta], PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    let mut e2 = e();
+    e2["phoneNumber"] = json!("09/999.99.99");
+    assert!(
+        patched.equals(&f.load(phones(vec![n(), e2, o()])), true),
+        "the edit must land on E wherever it sits: {}",
+        patched.to_json()
+    );
+}
+
+#[test]
+fn patch_reports_ambiguous_unique_key_instead_of_guessing() {
+    let f = fixture();
+    // golden drifted into two Emergency elements: locating "the" one is a guess
+    let e2 = json!({"phoneNumber": "09/000.00.00", "hasNumberFunction": "Emergency_Number"});
+    let golden = f.load(phones(vec![e(), e2]));
+    let delta = Delta {
+        path: vec![
+            "hasPhoneNumber".to_string(),
+            "Emergency_Number".to_string(),
+            "phoneNumber".to_string(),
+        ],
+        op: DeltaOp::Update,
+        old: Some(json!("09/241.25.00")),
+        new: Some(json!("09/999.99.99")),
+    };
+    let (patched, trace) = patch(
+        &golden,
+        std::slice::from_ref(&delta),
+        PatchOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(patched.equals(&golden, true), "nothing may change");
+}
+
+#[test]
+fn patch_refuses_positional_segment_into_identity_addressed_list() {
+    let f = fixture();
+    let golden = f.load(phones(vec![e(), n()]));
+    // A stale positional patch aimed at a list whose elements all carry
+    // unique identity labels: applying "index 0" would be a guess, and for
+    // numeric-valued identity labels it would silently hit the wrong element.
+    let delta = Delta {
+        path: vec!["hasPhoneNumber".to_string(), "0".to_string()],
+        op: DeltaOp::Remove,
+        old: Some(e()),
+        new: None,
+    };
+    let (patched, trace) = patch(
+        &golden,
+        std::slice::from_ref(&delta),
+        PatchOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(patched.equals(&golden, true), "nothing may be removed");
+}
+
+#[test]
+fn patch_refuses_ambiguous_duplicate_key_labels() {
+    let f = fixture();
+    // Duplicate key/identifier labels refuse exactly like duplicate
+    // unique_keys labels — the uniform rule on the patch side.
+    let golden = f.load(json!({"name": "svc", "labelList": [
+        {"lang": "nl", "text": "a"}, {"lang": "nl", "text": "b"}]}));
+    let delta = Delta {
+        path: vec![
+            "labelList".to_string(),
+            "nl".to_string(),
+            "text".to_string(),
+        ],
+        op: DeltaOp::Update,
+        old: Some(json!("a")),
+        new: Some(json!("z")),
+    };
+    let (patched, trace) = patch(
+        &golden,
+        std::slice::from_ref(&delta),
+        PatchOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(patched.equals(&golden, true), "nothing may change");
+}
+
+#[test]
+fn unique_key_deltas_round_trip_through_patch() {
+    let f = fixture();
+    let mut n2 = n();
+    n2["phoneNumber"] = json!("09/241.25.99");
+    for (before, after) in [
+        (phones(vec![e(), n()]), phones(vec![e(), n2])), // field edit
+        (phones(vec![e(), n()]), phones(vec![n()])),     // remove
+        (phones(vec![e(), n()]), phones(vec![e(), n(), o()])), // add
+    ] {
+        let deltas = diff2(&f, before.clone(), after.clone());
+        let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
+        assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+        assert!(
+            patched.equals(&f.load(after), true),
+            "{}",
+            patched.to_json()
+        );
+    }
 }

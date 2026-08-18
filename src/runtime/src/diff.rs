@@ -610,33 +610,37 @@ fn replace_child_subtree(
 }
 
 fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
+    // A list whose elements all carry unique identity labels is addressed by
+    // label ONLY: diff emits label segments for exactly these lists, and a
+    // numeric segment aimed at one (a stale positional patch) would be a
+    // guess — report, never guess. This also keeps integer-valued identity
+    // labels (e.g. a year as unique key) unambiguous: they resolve as
+    // labels, never as positions.
+    let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
+    let keyed_shaped = !values.is_empty() && labels.iter().all(|l| l.is_some()) && {
+        let mut seen = std::collections::HashSet::new();
+        labels.iter().flatten().all(|l| seen.insert(l.clone()))
+    };
+    if keyed_shaped {
+        return labels.iter().position(|l| l.as_deref() == Some(key));
+    }
+    // Positional list: numeric index first (the segments diff produces for
+    // these lists), then a single unambiguous label hit for drift tolerance.
     if let Ok(idx) = key.parse::<usize>() {
         if idx < values.len() {
             return Some(idx);
         }
     }
-    values.iter().enumerate().find_map(|(i, v)| {
-        if let LinkMLInstance::Object {
-            values: mv, class, ..
-        } = v
-        {
-            class
-                .key_or_identifier_slot()
-                .and_then(|id_slot| mv.get(&id_slot.name))
-                .and_then(|child| match child {
-                    LinkMLInstance::Scalar { value, .. } => match value {
-                        JsonValue::String(s) => (s == key).then_some(i),
-                        other => {
-                            let key_json = JsonValue::String(key.to_string());
-                            (other == &key_json).then_some(i)
-                        }
-                    },
-                    _ => None,
-                })
-        } else {
-            None
+    let mut hit: Option<usize> = None;
+    for (i, l) in labels.iter().enumerate() {
+        if l.as_deref() == Some(key) {
+            if hit.is_some() {
+                return None;
+            }
+            hit = Some(i);
         }
-    })
+    }
+    hit
 }
 
 fn try_update_scalar_in_place(
