@@ -4,8 +4,9 @@ use linkml_runtime::diff::{
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
 use linkml_runtime::{
-    load_json_str, load_yaml_str, validate_issues, LinkMLInstance, LoadResult, NodeId,
-    ValidationProblemType, ValidationResult, ValidationSeverity, ValidationValue,
+    lint_element_identity, lint_instance_identity, load_json_str, load_yaml_str, validate_issues,
+    LinkMLInstance, LoadResult, NodeId, ValidationProblemType, ValidationResult,
+    ValidationSeverity, ValidationValue,
 };
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
@@ -744,6 +745,8 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_json, m)?)?;
     m.add_function(wrap_pyfunction!(py_diff, m)?)?;
     m.add_function(wrap_pyfunction!(py_patch, m)?)?;
+    m.add_function(wrap_pyfunction!(py_lint_element_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(py_lint_instance_identity, m)?)?;
     m.add_function(wrap_pyfunction!(py_import_turtle, m)?)?;
     m.add_function(wrap_pyfunction!(py_import_ntriples, m)?)?;
     m.add_function(wrap_pyfunction!(py_export_turtle, m)?)?;
@@ -1569,6 +1572,34 @@ fn py_patch(
     let py_trace = Py::new(py, PyPatchTrace::from(trace))?;
     let result = PyPatchResult::new(py_val, py_trace);
     Py::new(py, result)
+}
+
+// ── Identity lints ──────────────────────────────────────────────────────────
+
+/// Schema-level lint: warn for every multivalued inlined slot whose element
+/// identity comes from nowhere.
+///
+/// Warnings only — the schema stays usable. Results are deterministic: sorted
+/// by subject, deduplicated across class URIs, and an inherited slot is
+/// reported once, at the class that introduces the problem.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "lint_element_identity")]
+fn py_lint_element_identity(
+    py: Python<'_>,
+    schema_view: &PySchemaView,
+) -> PyResult<Vec<Py<PyValidationResult>>> {
+    validation_results_to_py(py, lint_element_identity(schema_view.as_rust()))
+}
+
+/// Data-level lint: warn for every list whose elements repeat a declared
+/// identity (key/identifier or ``unique_keys`` value).
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "lint_instance_identity")]
+fn py_lint_instance_identity(
+    py: Python<'_>,
+    instance: &PyLinkMLInstance,
+) -> PyResult<Vec<Py<PyValidationResult>>> {
+    validation_results_to_py(py, lint_instance_identity(&instance.value))
 }
 
 // ── RDF import/export ───────────────────────────────────────────────────────

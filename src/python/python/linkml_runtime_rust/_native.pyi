@@ -5478,6 +5478,22 @@ def import_turtle(reader:typing.Any, schema_view:SchemaView, root_classes:typing
     Import RDF/Turtle into a streaming iterator of LinkML instances.
     """
 
+def lint_element_identity(schema_view:SchemaView) -> builtins.list[ValidationResult]:
+    r"""
+    Schema-level lint: warn for every multivalued inlined slot whose element
+    identity comes from nowhere.
+    
+    Warnings only — the schema stays usable. Results are deterministic: sorted
+    by subject, deduplicated across class URIs, and an inherited slot is
+    reported once, at the class that introduces the problem.
+    """
+
+def lint_instance_identity(instance:LinkMLInstance) -> builtins.list[ValidationResult]:
+    r"""
+    Data-level lint: warn for every list whose elements repeat a declared
+    identity (key/identifier or ``unique_keys`` value).
+    """
+
 def load_json(source:typing.Any, sv:SchemaView, class_view:ClassView) -> tuple[typing.Optional[LinkMLInstance], builtins.list[ValidationResult]]: ...
 
 def load_yaml(source:typing.Any, sv:SchemaView, class_view:ClassView) -> tuple[typing.Optional[LinkMLInstance], builtins.list[ValidationResult]]: ...
