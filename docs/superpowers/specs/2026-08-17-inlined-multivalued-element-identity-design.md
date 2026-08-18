@@ -97,6 +97,8 @@ Apply A then B: B's cascade overwrites index 0 with the stale snapshot value —
 
 **Duplication.** Two ingest sources independently discover the same new operator number and both emit `Add hasPhoneNumber/2 = {"phoneNumber": "09/241.25.10", "hasNumberFunction": "Operator"}`. Both apply; the golden record now holds the same phone number twice. Under key-based identity the second add would have been recognised as the same element.
 
+The correct resolution for this slot is Option 2 below: declare the SHACL rule as `unique_keys`.
+
 ### Example 2 — `PositioningSystemCoordinate`: one class, two identity shapes
 
 `PositioningSystemCoordinate` declares a key — `typeURI`, the type designator, which plays the role of the coordinate-system discriminator (`rsm.yaml:610-625`, `asset360.yaml:541-550`, elided):
@@ -166,55 +168,62 @@ Real committed data (`asset360-model/tests/data/signal-obj-with-track.json:38-96
         inlined_as_list: true
 ```
 
-Every vertex of a ring is the same coordinate subclass, so the declared key (`typeURI`) is **constant across elements**. Position is the only identity, ring data legitimately repeats the key value (a closed ring may even repeat a whole vertex), and vertex order is meaningful.
+Every vertex of a ring is the same coordinate subclass, so the declared key (`typeURI`) is **constant across elements**. Real committed data shows it plainly (`consolidator_api/goldenrecords/tests/data/a_trail.json`, trimmed to two of four vertices — all four repeat the identical `typeURI` and the identical positioning system):
 
-One class, two identity shapes. That ring data violates any `unique_keys` the class would declare — so the class can't declare one. **Remodelling into different classes is the only solution**: the keyed lookup usage keeps a class whose key/`unique_keys` declaration is truthful for all of its data, and the ring usage gets its own class (an un-keyed vertex) whose containers are declared opaque. We do not compromise on the goal by letting one class carry contradictory identity declarations per slot.
+```json
+"polylines": [{
+  "PolyLine_coordinates": [
+    {"x": 214888.6, "y": 97029.71,
+     "typeURI": "https://data.infrabel.be/asset360/MicroCoordinate",
+     "PositioningSystemCoordinate_positioningSystem": {"typeURI": "http://rsm.uic.org/RSM12#EAID_4160AA98_..."}},
+    {"x": 214819.42, "y": 97029.71,
+     "typeURI": "https://data.infrabel.be/asset360/MicroCoordinate",
+     "PositioningSystemCoordinate_positioningSystem": {"typeURI": "http://rsm.uic.org/RSM12#EAID_4160AA98_..."}}
+  ]
+}]
+```
+
+Position is the only identity, ring data legitimately repeats the key value (a closed ring may even repeat a whole vertex), and vertex order is meaningful. The per-vertex `typeURI` and positioning system are pure redundancy: the system is a property of the ring, not of the vertex.
+
+One class, two identity shapes. That ring data violates any `unique_keys` the class would declare — so the class can't declare one, and letting the opaque annotation suppress a schema constraint would be a layering inversion we do not accept. The resolution is to rework the model: move the positioning-system identity up a layer and give rings a bare vertex class that never inherits the key. One valid remodeling is worked out in Option 4 below; `SpotLocation_coordinates` and the coordinate hierarchy stay untouched.
 
 ## The options when the linter flags a slot
 
-The linter's question is always the same — *where does element identity come from?* — and the author has exactly three answers, plus a rework escape hatch. Worked out on the constituting examples:
+The linter's question is always the same — *where does element identity come from?* — and the author has exactly three answers, plus a rework escape hatch. Each constituting example gets its correct resolution below.
 
-### Option 1 — a key (or identifier): give elements the identity they already have
+### Option 1 — a key (or identifier): identity a single slot already provides
 
-`hasNumberFunction` is already the de-facto key (the SHACL shape says so). Declare it:
+When the element class declares a `key` or `identifier` slot that is truthful for all of its data, nothing needs to change — the diff already matches elements by it. `SpotLocation_coordinates` is the example: a dict keyed by `typeURI`, at most one coordinate per positioning system, exactly what the data means.
+
+### Option 2 — a composed key (content): declare `unique_keys` — the phone number solution
+
+`hasNumberFunction` is already the de-facto identity — the SHACL shape says so. Declare exactly that rule with the existing LinkML meta `unique_keys`:
 
 ```yaml
   ServicePhoneNumber:
+    unique_keys:
+      one_number_per_function:
+        unique_key_slots:
+          - hasNumberFunction
     attributes:
       phoneNumber:
         range: string
       hasNumberFunction:
         range: NumberFunction
-        key: true
         required: true
 ```
 
-Deltas become key-addressed (`hasPhoneNumber/Emergency_Number/phoneNumber`), immune to drift and reorder; the duplicate-add collapses into an update of the same element. The SHACL uniqueness rule is now also expressed in the schema itself.
+This is the SHACL constraint expressed verbatim in the schema, and it is purely additive: `unique_keys` changes neither serialization nor loading of the deployed list data (unlike promoting the slot to `key: true`, which changes the container's serialization contract). Element identity is the function: deltas are addressed by it (`hasPhoneNumber/Emergency_Number/phoneNumber`), immune to drift and reorder, and the duplicate-add from Example 1 collides into the same element instead of duplicating it.
 
-### Option 2 — a composed key (content): declare `unique_keys`
-
-When no single slot identifies an element but a combination does, declare the existing LinkML meta `unique_keys` on the element class:
-
-```yaml
-  ServicePhoneNumber:
-    unique_keys:
-      phone_identity:
-        unique_key_slots:
-          - hasNumberFunction
-          - phoneNumber
-    attributes:
-      ...
-```
-
-Element identity is the composed key — here effectively the element's content. Elements are matched across versions by that identity; an edit of a key-constituent is a remove-plus-add of the whole element, an edit of a non-key slot is addressed at the element. Reorder is not a change.
+`unique_key_slots` composes: had the model allowed several numbers per function, `[hasNumberFunction, phoneNumber]` would make the full content the identity — at the price that every correction becomes a remove-plus-add of the whole element. Here that composition would be wrong: it would permit two numbers for the same function, contradicting the SHACL rule.
 
 ### Option 3 — opaque: identity comes from nowhere, say so
 
 For the vertex ring, elements genuinely have no identity — a moved vertex, an inserted vertex, a reversed ring are all edits *of the geometry*, not of a vertex:
 
 ```yaml
-      RingVertex_coordinates:
-        range: RingVertex
+      Polygon_coordinates:
+        range: Vertex
         multivalued: true
         inlined_as_list: true
         annotations:
@@ -223,13 +232,55 @@ For the vertex ring, elements genuinely have no identity — a moved vertex, an 
 
 All recursion stops at the slot: any change below it is exactly one `Update` at the slot path carrying the whole old and new value. Two sources editing the same ring conflict visibly at the ring level — whole value against whole value — instead of interleaving vertex indices into a corrupt geometry.
 
-### Option 4 — remodel: when one class needs two answers
+### Option 4 — remodel: when one class needs two answers — the coordinate solution
 
-`PositioningSystemCoordinate` needs option "key" in `SpotLocation` and option "opaque" in `Polyline`/`Polygon`, and its ring data violates the very declaration the keyed usage needs. Split the class: the keyed coordinate lookup keeps `PositioningSystemCoordinate` (with its `typeURI` key), the rings move to a dedicated vertex class with no key, held by opaque slots. Identity declarations stay class-level truths; slots choose only *whether* to recurse, never *what identity means*.
+`PositioningSystemCoordinate` needs Option 1 in `SpotLocation` and Option 3 in `Polyline`/`Polygon`, and its ring data violates the very declaration the keyed usage needs. No slot-level override can fix that — identity declarations stay class-level truths; slots choose only *whether* to recurse, never *what identity means*. Rework the model instead. One valid remodeling (shown for `Polygon`; `Polyline` is symmetric):
+
+```yaml
+  AreaLocation:
+    attributes:
+      polygons:
+        range: Polygon
+        multivalued: true
+        inlined_as_list: true
+
+  Polygon:
+    is_a: NamedResource
+    unique_keys:
+      one_polygon_per_positioning_system:
+        unique_key_slots:
+          - positioningSystemType
+    attributes:
+      positioningSystemType:        # the identity the vertices used to repeat,
+        range: uri                  # lifted up to the ring layer
+        required: true
+      Polygon_positioningSystem:
+        range: PositioningSystem
+        inlined: true
+      Polygon_coordinates:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+
+  Vertex:
+    attributes:
+      x: {range: float}
+      y: {range: float}
+      z: {range: float}
+```
+
+The move is to introduce a layer so the key slot no longer sits on the elements holding the geometry data:
+
+- `locations` is already keyed by `locationrole` — that layer exists.
+- A polygon's identity within `polygons` is its positioning system, declared as a `unique_keys` composed key on `Polygon`. The schema's own description already says the list holds the same shape once per positioning system; the redundant per-vertex `typeURI` / positioning system move up to the ring layer, which is what they always described.
+- The ring becomes an opaque list of a bare `Vertex` class that never inherits `key: typeURI`, so no declaration is violated by repeated vertices.
+- `SpotLocation_coordinates` and the `PositioningSystemCoordinate` hierarchy are untouched; the ~25k keyed lookup records keep their behaviour.
 
 ## Consequence of strict mode
 
-- Some LinkML schemas need to be reworked to be compliant — in asset360 concretely: `ServicePhoneNumber` gains a key or `unique_keys`, and the `PositioningSystemCoordinate` ring/lookup dual use is split into two classes.
+- Some LinkML schemas need to be reworked to be compliant — in asset360 concretely: `ServicePhoneNumber` gains a `unique_keys` declaration, and the polygon/polyline rings move their positioning-system identity up a layer and become opaque lists of a bare `Vertex` class.
 - More cases of patches produced outside this diff lib cannot be applied fully: a patch that addresses elements positionally has no meaning against an opaque slot (only whole-value updates apply) and no reliable meaning against a keyed/composed-key container. Such deltas are reported as failed rather than guessed at.
 
 ## Recyclable material
