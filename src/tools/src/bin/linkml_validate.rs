@@ -5,7 +5,7 @@ use linkml_runtime::{
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io::from_yaml;
 #[cfg(feature = "resolve")]
-use linkml_schemaview::resolve::resolve_schemas;
+use linkml_schemaview::resolve::resolve_schemas_from;
 use linkml_schemaview::schemaview::SchemaView;
 use serde_json::json;
 use std::path::PathBuf;
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .map_err(|e| e.to_string())?;
     #[cfg(feature = "resolve")]
-    resolve_schemas(&mut sv).map_err(|e| e.to_string())?;
+    resolve_schemas_from(&mut sv, &args.schema).map_err(|e| e.to_string())?;
     let conv = sv.converter();
     let class_view = sv
         .get_class(&Identifier::new(&args.class), &conv)

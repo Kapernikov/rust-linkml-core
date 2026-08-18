@@ -1,7 +1,7 @@
 use clap::{Parser, ValueEnum};
 use linkml_runtime::{ValidationResult, ValidationSeverity};
 #[cfg(feature = "resolve")]
-use linkml_schemaview::resolve::resolve_schemas;
+use linkml_schemaview::resolve::resolve_schemas_from;
 use linkml_schemaview::{identifier::Identifier, io::from_yaml, schemaview::SchemaView, Converter};
 use std::path::PathBuf;
 
@@ -139,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).map_err(|e| e.to_string())?;
     #[cfg(feature = "resolve")]
-    if let Err(e) = resolve_schemas(&mut sv) {
+    if let Err(e) = resolve_schemas_from(&mut sv, &args.schema) {
         eprintln!("{e}");
     }
     let conv = sv.converter();

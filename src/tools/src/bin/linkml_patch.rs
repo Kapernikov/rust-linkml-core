@@ -2,7 +2,7 @@ use clap::Parser;
 use linkml_runtime::{load_json_file, load_yaml_file, patch, Delta};
 use linkml_schemaview::io::from_yaml;
 #[cfg(feature = "resolve")]
-use linkml_schemaview::resolve::resolve_schemas;
+use linkml_schemaview::resolve::resolve_schemas_from;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
 use linkml_schemaview::Converter;
 use std::fs::File;
@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).map_err(|e| e.to_string())?;
     #[cfg(feature = "resolve")]
-    resolve_schemas(&mut sv).map_err(|e| e.to_string())?;
+    resolve_schemas_from(&mut sv, &args.schema).map_err(|e| e.to_string())?;
     let conv = sv.converter();
     let class_view = sv.get_tree_root_or(args.class.as_deref()).ok_or_else(|| {
         format!(
