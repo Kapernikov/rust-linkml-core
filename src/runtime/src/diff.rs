@@ -122,6 +122,10 @@ pub enum DeltaOp {
 /// elements do not all carry a *unique* identity label are addressed by numeric
 /// index instead.
 ///
+/// For a `unique_keys`-derived segment, a single-slot key contributes the bare
+/// value of that slot, while a composite key contributes the JSON array encoding
+/// of the values in `unique_key_slots` order, e.g. `["Emergency","02/111.11.11"]`.
+///
 /// Operations are expressed jointly via [`Delta::op`], `old`, and `new`:
 ///
 /// | `op` | `old` | `new` | Description |
@@ -193,6 +197,10 @@ impl DiffOptions {
 /// - X → missing (object slot): ignored by default; `Update` to null when `treat_missing_as_null`.
 /// - X → missing (mapping key): ignored by default; `Remove` when `treat_missing_as_null`.
 /// - X → missing (list element): always `Remove` (lists are positional/complete).
+///
+/// Slots annotated `diff.linkml.io/opaque` stop all recursion: any change at or
+/// below the slot is described as a single whole-value `Update` at the slot
+/// path. See [`OPAQUE_ANNOTATION`].
 pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions) -> Vec<Delta> {
     fn inner(
         path: &mut Vec<String>,
