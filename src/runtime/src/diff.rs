@@ -37,6 +37,70 @@ pub(crate) fn slot_is_opaque(slot: &SlotView) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn scalar_slot_string(
+    values: &std::collections::HashMap<String, LinkMLInstance>,
+    slot_name: &str,
+) -> Option<String> {
+    if let Some(LinkMLInstance::Scalar { value, .. }) = values.get(slot_name) {
+        return match value {
+            JsonValue::String(s) => Some(s.clone()),
+            other => Some(other.to_string()),
+        };
+    }
+    None
+}
+
+/// The key/identifier value identifying `v` among its list siblings, if any.
+pub(crate) fn element_key_label(v: &LinkMLInstance) -> Option<String> {
+    if let LinkMLInstance::Object { values, class, .. } = v {
+        let id_slot = class.key_or_identifier_slot()?;
+        return scalar_slot_string(values, &id_slot.name);
+    }
+    None
+}
+
+/// A matching label derived from the range class's merged `unique_keys`.
+///
+/// The name-sorted first entry with a non-empty slot list is the matching
+/// identity (declaration order is not preserved by the metamodel, and diff
+/// paths must be stable). Single-slot keys use the bare scalar value as the
+/// label and path segment; composite keys use the JSON array encoding of the
+/// values in `unique_key_slots` order (`["Emergency","02/111.11.11"]`) —
+/// unambiguous, parseable, and displayable.
+pub(crate) fn element_unique_key_label(v: &LinkMLInstance) -> Option<String> {
+    if let LinkMLInstance::Object { values, class, .. } = v {
+        let uks = class.unique_keys();
+        let (_, uk) = uks.iter().find(|(_, uk)| !uk.unique_key_slots.is_empty())?;
+        let parts: Option<Vec<String>> = uk
+            .unique_key_slots
+            .iter()
+            .map(|s| scalar_slot_string(values, s))
+            .collect();
+        let mut parts = parts?;
+        return Some(if parts.len() == 1 {
+            parts.remove(0)
+        } else {
+            // Infallible JSON array encoding (the crate denies `expect`).
+            JsonValue::Array(parts.into_iter().map(JsonValue::String).collect()).to_string()
+        });
+    }
+    None
+}
+
+/// Identity for keyed list matching: a key/identifier slot outranks a
+/// `unique_keys` claim.
+pub(crate) fn element_identity_label(v: &LinkMLInstance) -> Option<String> {
+    element_key_label(v).or_else(|| element_unique_key_label(v))
+}
+
+fn labels_are_unique<F>(elements: &[LinkMLInstance], label: F) -> bool
+where
+    F: Fn(&LinkMLInstance) -> Option<String>,
+{
+    let mut seen = std::collections::HashSet::new();
+    elements.iter().filter_map(label).all(|l| seen.insert(l))
+}
+
 /// Operation applied by a [`Delta`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -52,8 +116,11 @@ pub enum DeltaOp {
 /// Semantic delta emitted by [`diff`] and consumed by [`patch`].
 ///
 /// The `path` identifies the location within the instance tree. Each segment is a
-/// slot name, mapping key, list index, or (when available) the identifier/key slot
-/// value for inlined objects in lists.
+/// slot name, mapping key, list index, or — for inlined objects in lists matched
+/// by identity — the element's identity label: its identifier/key slot value, or
+/// failing that a value derived from the range class's `unique_keys`. Lists whose
+/// elements do not all carry a *unique* identity label are addressed by numeric
+/// index instead.
 ///
 /// Operations are expressed jointly via [`Delta::op`], `old`, and `new`:
 ///
@@ -237,36 +304,28 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                 }
             }
             (LinkMLInstance::List { values: sl, .. }, LinkMLInstance::List { values: tl, .. }) => {
-                let label = |v: &LinkMLInstance| -> Option<String> {
-                    if let LinkMLInstance::Object { values, class, .. } = v {
-                        if let Some(id_slot) = class.key_or_identifier_slot() {
-                            if let Some(LinkMLInstance::Scalar { value, .. }) =
-                                values.get(&id_slot.name)
-                            {
-                                return match value {
-                                    JsonValue::String(s) => Some(s.clone()),
-                                    other => Some(other.to_string()),
-                                };
-                            }
-                        }
-                    }
-                    None
-                };
-                // If every item in both lists carries an identifier, match by id
-                // rather than by position. Positional diff corrupts mid-list
+                let identity = |v: &LinkMLInstance| -> Option<String> { element_identity_label(v) };
+                // Uniform rule (spec, Non-goal section): keyed matching iff every
+                // element on both sides carries an identity label and the labels
+                // are unique within each side. Positional diff corrupts mid-list
                 // removes/inserts into shifted Updates, and on patch the label
-                // resolver can remove the wrong duplicate.
-                let keyed =
-                    sl.iter().all(|v| label(v).is_some()) && tl.iter().all(|v| label(v).is_some());
+                // resolver can remove the wrong duplicate. Duplicate labels (a
+                // list repeating a key, or data violating a unique_keys claim)
+                // fall back to positional — matching duplicates by label would
+                // silently collapse elements.
+                let keyed = sl.iter().all(|v| identity(v).is_some())
+                    && tl.iter().all(|v| identity(v).is_some())
+                    && labels_are_unique(sl, identity)
+                    && labels_are_unique(tl, identity);
                 if keyed {
                     use std::collections::HashSet;
-                    let src_ids: HashSet<String> = sl.iter().filter_map(&label).collect();
+                    let src_ids: HashSet<String> = sl.iter().filter_map(&identity).collect();
                     let tgt_by_id: std::collections::HashMap<String, &LinkMLInstance> = tl
                         .iter()
-                        .filter_map(|v| label(v).map(|id| (id, v)))
+                        .filter_map(|v| identity(v).map(|id| (id, v)))
                         .collect();
                     for sv in sl {
-                        let Some(id) = label(sv) else { continue };
+                        let Some(id) = identity(sv) else { continue };
                         path.push(id.clone());
                         match tgt_by_id.get(&id) {
                             Some(tv) => inner(path, None, sv, tv, opts, out),
@@ -280,7 +339,7 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                         path.pop();
                     }
                     for tv in tl {
-                        let Some(id) = label(tv) else { continue };
+                        let Some(id) = identity(tv) else { continue };
                         if !src_ids.contains(&id) {
                             path.push(id);
                             out.push(Delta {
@@ -295,14 +354,9 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                 } else {
                     let max_len = std::cmp::max(sl.len(), tl.len());
                     for i in 0..max_len {
-                        let step = if let Some(sv) = sl.get(i) {
-                            label(sv)
-                                .or_else(|| tl.get(i).and_then(&label))
-                                .unwrap_or_else(|| i.to_string())
-                        } else {
-                            tl.get(i).and_then(&label).unwrap_or_else(|| i.to_string())
-                        };
-                        path.push(step);
+                        // Plain numeric segments only: a label that failed the
+                        // keyed guard cannot address an element unambiguously.
+                        path.push(i.to_string());
                         match (sl.get(i), tl.get(i)) {
                             (Some(sv), Some(tv)) => inner(path, None, sv, tv, opts, out),
                             (Some(sv), None) => out.push(Delta {
