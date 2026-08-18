@@ -1052,6 +1052,25 @@ fn patch_reports_ambiguous_unique_key_instead_of_guessing() {
 }
 
 #[test]
+fn patch_refuses_positional_segment_into_identity_addressed_list() {
+    let f = fixture();
+    let golden = f.load(phones(vec![e(), n()]));
+    // A stale positional patch aimed at a list whose elements all carry
+    // unique identity labels: applying "index 0" would be a guess, and for
+    // numeric-valued identity labels it would silently hit the wrong element.
+    let delta = Delta {
+        path: vec!["hasPhoneNumber".to_string(), "0".to_string()],
+        op: DeltaOp::Remove,
+        old: Some(e()),
+        new: None,
+    };
+    let (patched, trace) =
+        patch(&golden, std::slice::from_ref(&delta), PatchOptions::default()).unwrap();
+    assert_eq!(trace.failed, vec![delta.path.clone()]);
+    assert!(patched.equals(&golden, true), "nothing may be removed");
+}
+
+#[test]
 fn patch_refuses_ambiguous_duplicate_key_labels() {
     let f = fixture();
     // Duplicate key/identifier labels refuse exactly like duplicate
@@ -1094,23 +1113,34 @@ Expected: the two locate tests FAIL (segment `Emergency_Number` resolves to no i
 
 - [ ] **Step 3: Implement**
 
-Rewrite `resolve_list_index` (diff.rs:530) as one unified resolver. The numeric-index attempt stays first and unchanged; the old key/identifier `find_map` block is **replaced** by an identity-label pass that uses the same precedence and stringification diff uses to build segments (making diff→patch symmetric), and that refuses ambiguity:
+Rewrite `resolve_list_index` (diff.rs:530) as one unified resolver that mirrors how diff produces segments. A list whose elements all carry unique identity labels ("keyed-shaped") is addressed by label ONLY — diff emits label segments for exactly these lists, and resolving a numeric segment positionally against one would silently write the wrong element whenever an identity label is itself numeric (integer-ranged key slots). Positional lists keep numeric-first, with a single unambiguous label hit as drift tolerance. The old key/identifier `find_map` block is replaced entirely:
 
 ```rust
 fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
+    // A list whose elements all carry unique identity labels is addressed by
+    // label ONLY: diff emits label segments for exactly these lists, and a
+    // numeric segment aimed at one (a stale positional patch) would be a
+    // guess — report, never guess. This also keeps integer-valued identity
+    // labels (e.g. a year as unique key) unambiguous: they resolve as
+    // labels, never as positions.
+    let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
+    let keyed_shaped = !values.is_empty() && labels.iter().all(|l| l.is_some()) && {
+        let mut seen = std::collections::HashSet::new();
+        labels.iter().flatten().all(|l| seen.insert(l.clone()))
+    };
+    if keyed_shaped {
+        return labels.iter().position(|l| l.as_deref() == Some(key));
+    }
+    // Positional list: numeric index first (the segments diff produces for
+    // these lists), then a single unambiguous label hit for drift tolerance.
     if let Ok(idx) = key.parse::<usize>() {
         if idx < values.len() {
             return Some(idx);
         }
     }
-    // Identity-label location (key/identifier first, else unique_keys) — the
-    // same precedence and stringification diff uses to build the segment.
-    // Only an unambiguous hit counts: if the current list holds duplicate
-    // labels, locating "the" element would be a guess — return None so the
-    // delta is reported as failed.
     let mut hit: Option<usize> = None;
-    for (i, v) in values.iter().enumerate() {
-        if element_identity_label(v).as_deref() == Some(key) {
+    for (i, l) in labels.iter().enumerate() {
+        if l.as_deref() == Some(key) {
             if hit.is_some() {
                 return None;
             }
@@ -1121,12 +1151,14 @@ fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
 }
 ```
 
+(An `Add` whose label segment matches nothing returns `None`, which takes the existing append path in `apply_list_leaf_delta` — correct for both list shapes.)
+
 Note on `Add` deltas: an `Add` whose unique-key segment resolves to no element takes the existing `idx_opt = None` append path in `apply_list_leaf_delta` (line 687) — that is correct and needs no change.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test -p linkml_runtime --test diff_unique_keys`
-Expected: PASS (all 12).
+Expected: PASS (all 13).
 
 - [ ] **Step 5: Full runtime suite — the compatibility gate**
 
