@@ -213,20 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // from `imports:` are linted too. Warnings only — the exit code is
         // whatever the validation produced.
         let identity_warnings = if args.lint_identity {
-            let mut warnings = linkml_runtime::lint_element_identity(&sv);
-            // `lint_element_identity` visits classes in sorted order, but a
-            // class's own slots come from `ClassView::slots()`, which is backed
-            // by a HashMap — so the relative order of one class's warnings
-            // varies between runs. Sort by subject (class, then slot) to keep
-            // repeated runs over the same schema diffable.
-            warnings.sort_by(|a, b| a.subject.cmp(&b.subject).then(a.detail.cmp(&b.detail)));
-            // `lint_element_identity` iterates `get_class_ids()`, which holds one
-            // id per class *URI* — a class declaring an explicit `class_uri` is
-            // indexed under both that and its default URI, so it is visited
-            // twice and every one of its warnings is emitted twice. Drop the
-            // exact duplicates rather than reporting a slot twice.
-            warnings.dedup_by(|a, b| a.subject == b.subject && a.detail == b.detail);
-            warnings
+            linkml_runtime::lint_element_identity(&sv)
         } else {
             Vec::new()
         };
