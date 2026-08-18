@@ -1,4 +1,5 @@
 use clap::{Parser, ValueEnum};
+use linkml_runtime::{ValidationResult, ValidationSeverity};
 #[cfg(feature = "resolve")]
 use linkml_schemaview::resolve::resolve_schemas;
 use linkml_schemaview::{identifier::Identifier, io::from_yaml, schemaview::SchemaView, Converter};
@@ -12,6 +13,11 @@ struct Args {
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
     output: OutputFormat,
+    /// Opt-in: warn for multivalued inlined slots whose element identity comes
+    /// from nowhere (positional, ambiguous deltas in multi-sourced use).
+    /// Warnings never change the exit code.
+    #[arg(long, default_value_t = false)]
+    lint_identity: bool,
 }
 
 #[derive(ValueEnum, Clone)]
@@ -102,6 +108,31 @@ fn enum_exists(
     }
 }
 
+fn severity_label(severity: &ValidationSeverity) -> &'static str {
+    match severity {
+        ValidationSeverity::Fatal => "fatal",
+        ValidationSeverity::Error => "error",
+        ValidationSeverity::Warning => "warning",
+        ValidationSeverity::Info => "info",
+    }
+}
+
+fn identity_warnings_json(warnings: &[ValidationResult]) -> serde_json::Value {
+    serde_json::Value::Array(
+        warnings
+            .iter()
+            .map(|w| {
+                serde_json::json!({
+                    "type": format!("{:?}", w.problem_type),
+                    "severity": severity_label(&w.severity),
+                    "subject": w.subject,
+                    "detail": w.detail,
+                })
+            })
+            .collect(),
+    )
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let schema = from_yaml(&args.schema)?;
@@ -177,17 +208,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     if errors.is_empty() {
+        // Opt-in identity lint. It runs against the same SchemaView the
+        // validation above used, so classes pulled in by `resolve_schemas`
+        // from `imports:` are linted too. Warnings only — the exit code is
+        // whatever the validation produced.
+        let mut identity_warnings = if args.lint_identity {
+            linkml_runtime::lint_element_identity(&sv)
+        } else {
+            Vec::new()
+        };
+        // `ClassView::slots()` is backed by a HashMap, so the linter emits a
+        // class's slots in an order that varies between runs. Sort by subject
+        // (class, then slot) so repeated runs over the same schema produce
+        // identical, diffable output.
+        identity_warnings.sort_by(|a, b| a.subject.cmp(&b.subject));
         match args.output {
-            OutputFormat::Text => println!("schema valid"),
+            OutputFormat::Text => {
+                println!("schema valid");
+                for w in &identity_warnings {
+                    println!("warning[{}]: {}", w.subject.join("."), w.detail);
+                }
+            }
+            OutputFormat::Json if args.lint_identity => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "valid",
+                        "identity_warnings": identity_warnings_json(&identity_warnings),
+                    }))?
+                );
+            }
             OutputFormat::Json => println!("{}", serde_json::json!({"status":"valid"})),
         }
         Ok(())
     } else {
+        // The lint is deliberately skipped when the schema does not validate:
+        // it asks "where does this slot's element identity come from?" of a
+        // schema graph that is known to be incomplete, so its answers would be
+        // wrong (an unresolved import turns a class range into "not a class").
+        // Reporting the errors first is also the only useful output here.
         match args.output {
             OutputFormat::Text => {
                 for e in &errors {
                     println!("{e}");
                 }
+                if args.lint_identity {
+                    println!("note: --lint-identity skipped: fix the schema errors above first");
+                }
+            }
+            OutputFormat::Json if args.lint_identity => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "errors": errors,
+                        "identity_lint_skipped": "schema has errors; fix them and re-run",
+                    }))?
+                );
             }
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(&errors)?);
