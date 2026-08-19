@@ -21,7 +21,7 @@ The offered options are:
 
 Positional index deltas remain the inferred semantics for slots that declare nothing — they are still valuable for projects not dealing with multiple sources producing deltas for the same object at the same time, and the opt-in linter is the only place that complains about them.
 
-One deliberate compatibility break ships with this design (a spike finding): **keyed matching becomes uniform**. A list is matched by element identity only when every element on both sides yields an identity label (key/identifier first, else the class's `unique_keys`) and the labels are unique within each side; path segments are then the labels. In every other case matching is positional and path segments are plain numeric indices. This removes two behaviours of the old fallback: key values were opportunistically mixed into positional paths, and duplicate key values within a "keyed" list were silently collapsed by the matcher. Consumers see cleaner, uniform delta paths; `patch` keeps accepting both numeric and label segments, and reports a delta as failed instead of guessing when a label matches more than one element.
+One deliberate compatibility break ships with this design (a spike finding): **keyed matching becomes uniform**. A list is matched by element identity only when every element on both sides yields an identity label (key/identifier first — unless that key is the element class's type designator, which the addendum's rule 1 never accepts as element identity — else the class's `unique_keys`) and the labels are unique within each side; path segments are then the labels, IRI-expanded when the slot they came from ranges on `uri`/`uriorcurie` (addendum rule 2). In every other case matching is positional and path segments are plain numeric indices. This removes two behaviours of the old fallback: key values were opportunistically mixed into positional paths, and duplicate key values within a "keyed" list were silently collapsed by the matcher. Consumers see cleaner, uniform delta paths; `patch` keeps accepting both numeric and label segments, and reports a delta as failed instead of guessing when a label matches more than one element.
 
 ## Proposed solution
 
@@ -196,6 +196,8 @@ The linter's question is always the same — *where does element identity come f
 ### Option 1 — a key (or identifier): identity a single slot already provides
 
 When the element class declares a `key` or `identifier` slot that is truthful for all of its data, nothing needs to change — the diff already matches elements by it. `SpotLocation_coordinates` is the example: a dict keyed by `typeURI`, at most one coordinate per positioning system, exactly what the data means.
+
+One slot cannot answer this way: the class's own type designator. Its value is a function of the element's class, not of the element, so the addendum's rule 1 makes the engine look past it in **list** form and fall through to `unique_keys` (else position). The dict form above is unaffected — a mapping keyed by the designator is exactly the at-most-one-per-subtype statement it looks like — and the linter says so on the slot that needs the other answer.
 
 ### Option 2 — a composed key (content): declare `unique_keys` — the phone number solution
 
