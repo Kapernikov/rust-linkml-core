@@ -1,8 +1,8 @@
 use clap::{Parser, ValueEnum};
-use linkml_runtime::{ValidationResult, ValidationSeverity};
 #[cfg(feature = "resolve")]
 use linkml_schemaview::resolve::resolve_schemas_from;
 use linkml_schemaview::{identifier::Identifier, io::from_yaml, schemaview::SchemaView, Converter};
+use linkml_tools::validation_utils::identity_warnings_json;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -106,34 +106,6 @@ fn enum_exists(
             })
         }
     }
-}
-
-fn severity_label(severity: &ValidationSeverity) -> &'static str {
-    match severity {
-        ValidationSeverity::Fatal => "fatal",
-        ValidationSeverity::Error => "error",
-        ValidationSeverity::Warning => "warning",
-        ValidationSeverity::Info => "info",
-    }
-}
-
-fn identity_warnings_json(warnings: &[ValidationResult]) -> serde_json::Value {
-    serde_json::Value::Array(
-        warnings
-            .iter()
-            .map(|w| {
-                serde_json::json!({
-                    // The shared machine label, never `Debug` formatting: it
-                    // is the same spelling the Python binding reports, and a
-                    // variant rename cannot change it behind the CLI's back.
-                    "type": w.problem_type.label(),
-                    "severity": severity_label(&w.severity),
-                    "subject": w.subject,
-                    "detail": w.detail,
-                })
-            })
-            .collect(),
-    )
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
