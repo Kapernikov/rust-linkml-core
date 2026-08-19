@@ -1621,3 +1621,55 @@ Expected: PASS — this is the spec's Example 1 (phones via unique_keys), Exampl
 git add src/runtime/src/diff.rs src/runtime/src/identity_lint.rs
 git commit -m "docs(runtime): document opaque annotation and unique_keys path segments"
 ```
+
+---
+
+# Addendum tasks (2026-08-19): designator and canonicalization hardening
+
+> Argued from the spec's "Addendum (2026-08-19)" section — its numbered rules are the binding requirements. Detailed empirical findings: `.superpowers/sdd/2026-08-18-inlined-multivalued-element-identity/spike-findings.md` (D1–D9). These tasks are specified rule-and-test-first rather than code-verbatim: each names its binding spec rule, its exact observable behaviour changes, and its test cases; implementers derive the code. **Every task's verification includes the differential harness gate (Task 10): re-run, and attribute every changed output line to a spec-addendum rule; unattributable changes fail the task.**
+
+### Task 10: downstream differential harness + baseline
+
+**Files:** Create scripts + baselines under `.superpowers/sdd/2026-08-18-inlined-multivalued-element-identity/harness/` (gitignored workspace — nothing committed to the repo).
+
+Build a script (bash or python, your choice) that, given a repo checkout, produces a deterministic text report over a fixed corpus, using the repo's CLIs (`linkml-validate`, `linkml-diff`, `linkml-patch`, `linkml-schema-validate --lint-identity`, `linkml-convert` where useful):
+- Corpus A (real downstream): every committed instance JSON under /home/ejsyx/projects/consolidator-server/components/py (skip .worktrees), each validated against the asset360 schema root and its class where derivable (signal/goldenrecords/deltas test files; record per-file: validate output, load→convert normal form, self-diff = must be empty).
+- Corpus B (in-repo): the runtime test fixtures' data files + meta.yaml; the asset360 schema lint output (already known: 27 warnings).
+- Pairwise diffs: for the consolidator delta fixtures directory, diff meaningful before/after pairs if identifiable; otherwise diff each file against a jq-mutated variant (deterministic mutation) to exercise list matching.
+- Output: one sorted, stable report file per corpus. Capture BASELINE at current HEAD into `harness/baseline/`. The gate for later tasks: `diff -u baseline/ current/` — reviewed line by line.
+
+**Verification:** run twice at HEAD — byte-identical reports (determinism). Report corpus size (file counts) and any files that fail to load at baseline (they are baseline facts, not defects).
+
+### Task 11: D3 — a type designator is never an element identity (spec rule 1)
+
+**Files:** Modify `src/runtime/src/diff.rs` (`element_key_label`); `src/runtime/src/identity_lint.rs` only if gating needs alignment; tests `src/runtime/tests/diff_unique_keys.rs` + `identity_lint.rs` + fixture(s).
+
+`element_key_label` returns `None` when the key/identifier slot's merged definition has `designates_type == Some(true)`. Behaviour deltas to pin with tests: (1) a class with a designator key AND `unique_keys` now matches by the unique_keys label (the D3 shadow case: reorder of `{x,y}`-keyed elements emits zero deltas); (2) a designator-keyed class WITHOUT unique_keys is positional (and: no double lint fire — the designator-key rule remains the only voice for it; check `slot_lacks_element_identity`'s key gate and keep exactly one warning per such slot); (3) polymorphic designator-keyed list (one element per subtype) is now positional — pin the new behaviour. Harness gate: expected attributable changes only in designator-keyed polymorphic/shadowed cases.
+
+### Task 12: D1 + D6 — identity compares meaning, not spelling (spec rule 2)
+
+**Files:** Modify `src/runtime/src/lib.rs` (boxing chokepoints: `parse_object_fixed_class`, `parse_object_value`, `build_mapping_entry_for_slot` — designator canonicalization after class selection, mirroring `coerce_scalar_to_range`), `src/runtime/src/diff.rs` (`scalar_slot_string` IRI expansion for uri/uriorcurie-descended ranges — hits all four resolve sites through the existing shared helpers; thread a Converter via the class's schemaview handle), tests + fixtures.
+
+Tests to pin: designator spelled as curie / full URI / implicit all load to ONE canonical stored value and `to_json` emits it; junk designator value (matches no accepted value) becomes a load-time validation warning + canonical fill (decide error-vs-warning by the loader-tolerance precedent: warning); curie-vs-expanded uri unique_keys values are ONE identity across diff, patch, navigate, instance lint (one test each); RDF-vs-JSON agreement (load the same content both ways where the harness corpus allows, or a focused turtle_import test). Harness gate: attributable changes = canonical designator spellings in convert output for files that spelled them differently; self-diffs stay empty.
+
+### Task 13: D2 — class change is whole-element replacement; patch never hard-errors (spec rules 3+4)
+
+**Files:** Modify `src/runtime/src/diff.rs` (object arm class comparison; apply paths' builder-error handling), tests.
+
+Tests: Bolt-vs-Nut same-key diff = ONE whole-element Update (both directions); patch of a hand-built bad delta (unbuildable value at a resolved location) → `Ok`, path in `trace.failed`, tree untouched, and OTHER deltas in the same batch still apply; existing suites' Err expectations updated only where they asserted the old contract (list each). Check `src/runtime/src/blame/` compiles and its semantics commentary still holds. Harness gate: no expected corpus changes (defensive: attribute any).
+
+### Task 14: D5 — the inlined-dict key is real data (spec rule 5)
+
+**Files:** Modify `src/runtime/src/lib.rs` (`build_mapping_entry_for_slot` + validation sink usage), tests.
+
+Tests: plain keyed class dict entry without payload key → key slot filled from dict key, NO MissingSlotValue error; payload key present and equal → clean; payload key disagreeing with dict key → validation WARNING naming both; designator-keyed dict whose key is not an accepted designator value → validation warning; designator-keyed dict key that IS accepted → designator canonicalized per Task 12 and consistent. Harness gate: expected attributable changes = disappearing MissingSlotValue errors and new divergence warnings on real dict data (the known asset360 LinearCoordinate divergence should surface as a warning — cite it in the report).
+
+### Task 15: lint extensions + docs (spec rule 6)
+
+**Files:** Modify `src/runtime/src/identity_lint.rs` (+ tests/fixtures), rustdoc.
+
+(1) Instance lint: "positional despite declared identity" warning when keyed-shaped fails due to MISSING labels while the range class declares key/unique_keys (D7; also gives half-labelled lists a voice). (2) Schema lint: multi-unique_keys check unions entries across `rc.get_descendants(true,false)`; additional warning when descendants resolve different load-bearing entries (D4d — the split-label-space case). (3) Schema lint: warn when two classes in one is_a hierarchy share a `class_uri` and the hierarchy carries a designator (D8, warn-only). (4) Rustdoc: D9 note (`slot_usage: designates_type: false` leaves an unfillable key) + module doc lists all rules. Each rule: RED/GREEN with its own fixture case; existing exact-set tests stay green or are extended deliberately (list changes). Harness gate: asset360 lint delta reported and attributed (new warnings expected; count them).
+
+### Task 16: hardening close-out
+
+Full gates (fmt, scoped clippy, `cargo test --workspace --exclude linkml_runtime_python`, `cargo check -p linkml_runtime_python`), final harness run with the complete attribution table (baseline → final), asset360 lint before/after summary, and one rustdoc/spec cross-check that every addendum rule is implemented or explicitly listed as out-of-scope. Docs-only fixes allowed; anything behavioural found here is reported, not fixed.
