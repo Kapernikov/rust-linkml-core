@@ -5,8 +5,7 @@ use linkml_runtime::diff::{
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
 use linkml_runtime::{
     lint_element_identity, lint_instance_identity, load_json_str, load_yaml_str, validate_issues,
-    LinkMLInstance, LoadResult, NodeId, ValidationProblemType, ValidationResult,
-    ValidationSeverity, ValidationValue,
+    LinkMLInstance, LoadResult, NodeId, ValidationResult, ValidationSeverity, ValidationValue,
 };
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
@@ -877,7 +876,7 @@ impl From<ValidationResult> for PyValidationResult {
 impl PyValidationResult {
     #[getter]
     fn r#type(&self) -> String {
-        validation_problem_type_label(&self.inner.problem_type).to_string()
+        self.inner.problem_type.label().to_string()
     }
 
     #[getter]
@@ -918,7 +917,7 @@ impl PyValidationResult {
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "ValidationResult(type='{}', severity='{}', subject={:?}, detail={})",
-            validation_problem_type_label(&self.inner.problem_type),
+            self.inner.problem_type.label(),
             severity_label(&self.inner.severity),
             self.inner.subject,
             self.inner.detail
@@ -1045,19 +1044,6 @@ fn validation_value_to_py(py: Python<'_>, value: &ValidationValue) -> PyResult<P
         ValidationValue::None => Ok(py.None()),
         ValidationValue::Literal(v) => Ok(PyString::new(py, v).into_any().unbind()),
         ValidationValue::Node(path) => Ok(path.clone().into_pyobject(py)?.into_any().unbind()),
-    }
-}
-
-fn validation_problem_type_label(problem_type: &ValidationProblemType) -> &'static str {
-    match problem_type {
-        ValidationProblemType::UndeclaredSlot => "undeclared_slot",
-        ValidationProblemType::InapplicableSlot => "inapplicable_slot",
-        ValidationProblemType::MissingSlotValue => "missing_slot_value",
-        ValidationProblemType::SlotRangeViolation => "slot_range_violation",
-        ValidationProblemType::MaxCountViolation => "max_count_violation",
-        ValidationProblemType::ParsingError => "parsing_error",
-        ValidationProblemType::AmbiguousElementIdentity => "ambiguous_element_identity",
-        ValidationProblemType::DuplicateElementIdentity => "duplicate_element_identity",
     }
 }
 

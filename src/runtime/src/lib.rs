@@ -166,6 +166,28 @@ pub enum ValidationProblemType {
     DuplicateElementIdentity,
 }
 
+impl ValidationProblemType {
+    /// The stable machine-readable name of this variant.
+    ///
+    /// Every machine surface — the Python binding's `problem_type`, the CLI's
+    /// JSON `type` — reports the value through this one function, so the two
+    /// cannot spell the same variant differently and a variant rename cannot
+    /// silently change either contract. `Debug` formatting is a Rust
+    /// implementation detail and is deliberately not it.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::UndeclaredSlot => "undeclared_slot",
+            Self::InapplicableSlot => "inapplicable_slot",
+            Self::MissingSlotValue => "missing_slot_value",
+            Self::SlotRangeViolation => "slot_range_violation",
+            Self::MaxCountViolation => "max_count_violation",
+            Self::ParsingError => "parsing_error",
+            Self::AmbiguousElementIdentity => "ambiguous_element_identity",
+            Self::DuplicateElementIdentity => "duplicate_element_identity",
+        }
+    }
+}
+
 pub type InstancePath = Vec<String>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

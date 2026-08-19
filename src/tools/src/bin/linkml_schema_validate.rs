@@ -123,7 +123,10 @@ fn identity_warnings_json(warnings: &[ValidationResult]) -> serde_json::Value {
             .iter()
             .map(|w| {
                 serde_json::json!({
-                    "type": format!("{:?}", w.problem_type),
+                    // The shared machine label, never `Debug` formatting: it
+                    // is the same spelling the Python binding reports, and a
+                    // variant rename cannot change it behind the CLI's back.
+                    "type": w.problem_type.label(),
                     "severity": severity_label(&w.severity),
                     "subject": w.subject,
                     "detail": w.detail,
