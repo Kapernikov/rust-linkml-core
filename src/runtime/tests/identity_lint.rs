@@ -216,6 +216,10 @@ fn schema_lint_flags_a_list_whose_identity_is_the_type_designator() {
     assert_eq!(
         subjects,
         vec![
+            // the wild shape: the designator is declared on a base class and
+            // the subclass promotes it to the key with `slot_usage`, so the
+            // rule sees it only through `SlotView::definition()`'s chain merge
+            vec!["Ring".to_string(), "inheritedVertices".to_string()],
             // the designator key outranks `unique_keys`, so `markers` is flagged
             // by this rule, once, and not by the several-unique_keys rule
             vec!["Ring".to_string(), "markers".to_string()],
@@ -247,6 +251,16 @@ fn schema_lint_flags_a_list_whose_identity_is_the_type_designator() {
         w.detail.contains("positional"),
         "the warning must say what the diff engine actually does: {}",
         w.detail
+    );
+    let inherited = warnings
+        .iter()
+        .find(|w| w.subject[1] == "inheritedVertices")
+        .expect("a designator promoted to key by slot_usage must be flagged too");
+    assert!(
+        inherited.detail.contains("'KeyedTypedThing.typeURI'"),
+        "the warning must name the subclass that declares the key, and the \
+         inherited slot it declares it on: {}",
+        inherited.detail
     );
 }
 

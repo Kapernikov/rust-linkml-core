@@ -50,6 +50,14 @@ classes:
         inlined_as_list: true
         annotations:
           diff.linkml.io/ignore: true
+      # the wild shape (asset360's PositioningSystemCoordinate): the designator
+      # is declared on a base class and a subclass promotes it to the key with
+      # `slot_usage`. The rule only sees this because `SlotView::definition()`
+      # merges the is_a chain; without that it is a silent false negative.
+      inheritedVertices:
+        range: KeyedTypedThing
+        multivalued: true
+        inlined_as_list: true
       # an ordinary key, discriminating per element: nothing to warn about
       points:
         range: Point
@@ -82,6 +90,22 @@ classes:
         designates_type: true
       code: {range: string, required: true}
       label: {range: string, required: true}
+
+  # declares the designator but no key: nothing ranges a list on it directly
+  TypedThing:
+    attributes:
+      typeURI:
+        range: uri
+        designates_type: true
+      label: {range: string}
+
+  # promotes the inherited designator to the key, exactly as
+  # PositioningSystemCoordinate does
+  KeyedTypedThing:
+    is_a: TypedThing
+    slot_usage:
+      typeURI:
+        key: true
 
   Point:
     attributes:

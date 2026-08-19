@@ -226,8 +226,10 @@ fn ambiguous_unique_keys_detail(
 }
 
 /// Schema-level lint: warn for every multivalued inlined slot whose element
-/// identity comes from nowhere, and for every one whose identity is derived
-/// from a class offering more than one `unique_keys` entry to derive it from.
+/// identity comes from nowhere; for every list whose identity is the range
+/// class's type designator, which cannot tell the elements of a homogeneous
+/// list apart; and for every one whose identity is derived from a class
+/// offering more than one `unique_keys` entry to derive it from.
 /// Warnings only — the schema stays usable.
 pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
     let mut sink = ValidationResultSink::default();
@@ -255,7 +257,7 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
         for slot in class.slots() {
             // Report at the class that introduces the slot: repeating an
             // inherited warning on every descendant buries the one declaration
-            // the author would actually edit. Applies to both rules below.
+            // the author would actually edit. Applies to all three rules below.
             if !slot_lacks_element_identity(slot) {
                 // Precedence mirrors `element_identity_label`: a key outranks
                 // `unique_keys`, so a designator key is what diff would use and
