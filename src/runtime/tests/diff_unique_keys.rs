@@ -390,3 +390,70 @@ fn patch_refuses_update_whose_label_matches_nothing() {
     assert_eq!(trace.failed, vec![delta.path.clone()]);
     assert!(patched.equals(&golden, true), "nothing may be appended");
 }
+
+/// A second element carrying the same identity label as [`e`].
+fn e2() -> JsonValue {
+    json!({"phoneNumber": "09/000.00.00", "hasNumberFunction": "Emergency_Number"})
+}
+
+#[test]
+fn keyed_source_to_duplicated_target_is_one_whole_slot_update() {
+    let f = fixture();
+    // The source list is keyed-shaped, the target repeats a label. Positional
+    // segments against a keyed-shaped source are unappliable by design (patch
+    // resolves such a list by label only), so the honest description is: this
+    // list stopped having coherent element identity — one whole-slot Update.
+    let before = phones(vec![e(), n()]);
+    let after = phones(vec![e(), e2()]);
+    let deltas = diff2(&f, before.clone(), after.clone());
+    let delta = only(&deltas);
+    assert_eq!(delta.path, vec!["hasPhoneNumber".to_string()]);
+    assert_eq!(delta.op, DeltaOp::Update);
+    assert_eq!(delta.old, Some(json!([e(), n()])));
+    assert_eq!(delta.new, Some(json!([e(), e2()])));
+
+    let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(after), true),
+        "patch(a, diff(a,b)) must equal b: {}",
+        patched.to_json()
+    );
+}
+
+#[test]
+fn duplicated_source_to_keyed_target_stays_positional_and_round_trips() {
+    let f = fixture();
+    // The mirror image: the source is NOT keyed-shaped, so numeric segments
+    // are exactly what patch resolves against it. Keep positional deltas.
+    //
+    // The second element differs from its target only in the key-bearing slot,
+    // so the whole edit is one delta. A multi-delta variant of this case is
+    // order-dependent for reasons unrelated to the source-keyed fallback (see
+    // the branch report): once the key edit lands the list becomes
+    // keyed-shaped, and any numeric segment still queued stops resolving.
+    let dup = json!({"phoneNumber": "09/241.25.03", "hasNumberFunction": "Emergency_Number"});
+    let before = phones(vec![e(), dup]);
+    let after = phones(vec![e(), n()]);
+    let deltas = diff2(&f, before.clone(), after.clone());
+    assert!(!deltas.is_empty(), "expected positional deltas");
+    for d in &deltas {
+        assert_eq!(
+            d.path[0], "hasPhoneNumber",
+            "unexpected delta path: {:?}",
+            d.path
+        );
+        assert!(
+            d.path.len() > 1 && d.path[1].parse::<usize>().is_ok(),
+            "a non-keyed-shaped source keeps numeric segments: {:?}",
+            d.path
+        );
+    }
+    let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(after), true),
+        "patch(a, diff(a,b)) must equal b: {}",
+        patched.to_json()
+    );
+}

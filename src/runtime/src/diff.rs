@@ -101,6 +101,21 @@ where
     elements.iter().filter_map(label).all(|l| seen.insert(l))
 }
 
+/// Whether this one list is addressed by identity label: it is non-empty,
+/// every element carries an identity label, and the labels are unique.
+///
+/// This is the predicate that decides how a list is *addressed*, asked of a
+/// single list. `diff` needs the same answer of both sides at once (a keyed
+/// match needs identity on both), but every consumer that has only one list in
+/// front of it — `patch`'s segment resolver, `navigate_path`, and diff's
+/// keyed-source fallback — must agree, or a path one of them emits is a path
+/// another cannot resolve.
+pub(crate) fn list_is_keyed_shaped(values: &[LinkMLInstance]) -> bool {
+    !values.is_empty()
+        && values.iter().all(|v| element_identity_label(v).is_some())
+        && labels_are_unique(values, element_identity_label)
+}
+
 /// Operation applied by a [`Delta`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -201,6 +216,13 @@ impl DiffOptions {
 /// Slots annotated `diff.linkml.io/opaque` stop all recursion: any change at or
 /// below the slot is described as a single whole-value `Update` at the slot
 /// path. See [`OPAQUE_ANNOTATION`].
+///
+/// Lists are matched by element identity when both sides carry unique identity
+/// labels, and positionally otherwise — with one exception: when the *source*
+/// list alone is label-addressed (the target repeats or lacks a label), the
+/// change is described as a single whole-value `Update` at the list's path.
+/// `patch` addresses a label-addressed list by label only, so positional
+/// segments aimed at one could never be applied.
 pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions) -> Vec<Delta> {
     fn inner(
         path: &mut Vec<String>,
@@ -358,6 +380,22 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                             });
                             path.pop();
                         }
+                    }
+                } else if list_is_keyed_shaped(sl) {
+                    // The source alone is keyed-shaped: `patch` resolves such a
+                    // list by label ONLY, so positional segments aimed at it are
+                    // unappliable by design and `patch(a, diff(a, b))` would
+                    // refuse the very deltas we just emitted. What actually
+                    // happened is honestly a whole-value change — this list
+                    // stopped having coherent element identity — so say that,
+                    // once, at the slot.
+                    if !s.equals(t, opts.treat_missing_as_null) {
+                        out.push(Delta {
+                            path: path.clone(),
+                            op: DeltaOp::Update,
+                            old: Some(s.to_json()),
+                            new: Some(t.to_json()),
+                        });
                     }
                 } else {
                     let max_len = std::cmp::max(sl.len(), tl.len());
@@ -625,11 +663,7 @@ fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
     // labels (e.g. a year as unique key) unambiguous: they resolve as
     // labels, never as positions.
     let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
-    let keyed_shaped = !values.is_empty() && labels.iter().all(|l| l.is_some()) && {
-        let mut seen = std::collections::HashSet::new();
-        labels.iter().flatten().all(|l| seen.insert(l.clone()))
-    };
-    if keyed_shaped {
+    if list_is_keyed_shaped(values) {
         return labels.iter().position(|l| l.as_deref() == Some(key));
     }
     // Positional list: numeric index first (the segments diff produces for
