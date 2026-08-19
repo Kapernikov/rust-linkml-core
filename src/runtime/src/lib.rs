@@ -544,8 +544,19 @@ impl LinkMLInstance {
         }
     }
 
-    /// Navigate the value by a path of strings, where each element is either
-    /// a dictionary key (for maps) or a list index (for lists).
+    /// Navigate the value by a path of strings, where each segment is a slot
+    /// name, a mapping key, or — for lists — whatever addresses an element:
+    /// its identity label (identifier/key slot value, or a value derived from
+    /// the range class's `unique_keys`) for a list whose elements all carry
+    /// unique labels, and a numeric index otherwise.
+    ///
+    /// List segments resolve through the same rule [`crate::diff`] emits and
+    /// [`crate::patch`] applies, so a delta path is navigable by construction.
+    /// In particular a numeric segment aimed at a label-addressed list resolves
+    /// to nothing rather than to that position: when a label happens to be
+    /// `"0"`, position and label name different elements, and guessing which
+    /// one was meant is exactly the wrong-element hazard.
+    ///
     /// Returns `Some(&LinkMLInstance)` if the full path can be resolved, otherwise `None`.
     pub fn navigate_path<I, S>(&self, path: I) -> Option<&LinkMLInstance>
     where
@@ -560,42 +571,7 @@ impl LinkMLInstance {
                     current = values.get(key)?;
                 }
                 LinkMLInstance::List { values, .. } => {
-                    // Support either numeric index or identifier/key-based selection
-                    if let Ok(idx) = key.parse::<usize>() {
-                        current = values.get(idx)?;
-                    } else {
-                        // Attempt identifier-based lookup for object elements
-                        let mut found: Option<&LinkMLInstance> = None;
-                        for v in values.iter() {
-                            if let LinkMLInstance::Object {
-                                values: mv, class, ..
-                            } = v
-                            {
-                                if let Some(id_slot) = class.key_or_identifier_slot() {
-                                    if let Some(LinkMLInstance::Scalar { value, .. }) =
-                                        mv.get(&id_slot.name)
-                                    {
-                                        match value {
-                                            JsonValue::String(sv) => {
-                                                if sv == key {
-                                                    found = Some(v);
-                                                    break;
-                                                }
-                                            }
-                                            other => {
-                                                let sv = other.to_string();
-                                                if sv == key {
-                                                    found = Some(v);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        current = found?;
-                    }
+                    current = values.get(diff::resolve_list_segment(values, key)?)?;
                 }
                 LinkMLInstance::Mapping { values, .. } => {
                     current = values.get(key)?;

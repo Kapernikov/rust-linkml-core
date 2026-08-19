@@ -655,7 +655,14 @@ fn replace_child_subtree(
     }
 }
 
-fn resolve_list_index(values: &[LinkMLInstance], key: &str) -> Option<usize> {
+/// Resolve one path segment against a list, to the index of the element it
+/// addresses.
+///
+/// The single rule every consumer of a delta path shares — `patch` when it
+/// applies one, [`crate::LinkMLInstance::navigate_path`] when it follows one.
+/// Keeping it in one function is what makes "diff emits it, patch applies it,
+/// navigate finds it" true by construction rather than by three coincidences.
+pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Option<usize> {
     // A list whose elements all carry unique identity labels is addressed by
     // label ONLY: diff emits label segments for exactly these lists, and a
     // numeric segment aimed at one (a stale positional patch) would be a
@@ -1090,7 +1097,7 @@ fn apply_delta_list(
         return Ok(false);
     }
     let key = &path[0];
-    let idx_opt = resolve_list_index(values, key);
+    let idx_opt = resolve_list_segment(values, key);
     if path.len() == 1 {
         let value = newv.cloned().unwrap_or(JsonValue::Null);
         let slot_clone = slot.clone();

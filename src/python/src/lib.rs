@@ -1228,7 +1228,12 @@ impl PyLinkMLInstance {
         }
     }
 
-    /// Navigate by a path of strings (map keys or list indices).
+    /// Navigate by a path of strings: slot names, mapping keys, and — for
+    /// lists — element identity labels (identifier/key or `unique_keys` value)
+    /// when the list carries unique labels, numeric indices otherwise. This is
+    /// the same addressing `diff` emits and `patch` applies, so delta paths are
+    /// navigable; a numeric segment aimed at a label-addressed list resolves to
+    /// nothing rather than to that position.
     /// Returns a new LinkMLInstance if found, otherwise None.
     #[pyo3(name = "navigate")]
     fn py_navigate<'py>(
