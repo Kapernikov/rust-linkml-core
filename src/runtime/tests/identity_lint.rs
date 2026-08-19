@@ -797,11 +797,23 @@ fn schema_lint_flags_a_shared_class_uri_within_a_designator_hierarchy() {
     let sv = schema_view("identity_shared_uri_designator.yaml");
     let warnings = lint_element_identity(&sv);
     let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+    // The classes that share the URI, behind a discriminator. Rules 1-4 are
+    // per-slot and subject `[class, slot]`; both CLIs render a subject by
+    // joining it with `.`, so a bare `[Alpha, Beta]` printed as `Alpha.Beta` —
+    // indistinguishable from a slot warning about `Beta` on class `Alpha`, and
+    // just as indistinguishable to anything grouping findings by subject. The
+    // leading segment says which rule spoke, and no `[class, slot]` subject can
+    // collide with it: it is not a class name in any schema being linted, since
+    // it is not a class name at all.
     assert_eq!(
         subjects,
-        vec![vec!["Alpha".to_string(), "Beta".to_string()]],
-        "the sharing classes are the subject, and the controls stay silent: \
-         {warnings:#?}"
+        vec![vec![
+            "shared_class_uri".to_string(),
+            "Alpha".to_string(),
+            "Beta".to_string()
+        ]],
+        "the sharing classes are the subject, behind the rule's discriminator, \
+         and the controls stay silent: {warnings:#?}"
     );
     let w = &warnings[0];
     assert_eq!(

@@ -5500,7 +5500,9 @@ def lint_element_identity(schema_view:SchemaView) -> builtins.list[ValidationRes
     by subject, deduplicated across class URIs, and an inherited slot is
     reported once, at the class that introduces the problem. Rules 1-4 are
     per-slot and their ``subject`` is ``[class_name, slot_name]``; rule 5 is
-    class-level and its ``subject`` is the list of classes sharing the URI.
+    class-level and its ``subject`` is ``"shared_class_uri"`` followed by the
+    classes sharing the URI — the marker distinguishes it from a per-slot
+    subject, which a rendering that joins the segments could not otherwise do.
     """
 
 def lint_instance_identity(instance:LinkMLInstance) -> builtins.list[ValidationResult]:

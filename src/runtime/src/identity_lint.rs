@@ -81,7 +81,10 @@
 //! range class matches all three raw shapes while rule 2 is the slot's only
 //! voice: a parent that emitted no warning must not suppress a subclass's.
 //! Rule 5 is class-level and has no slot to attribute, so it is emitted once per
-//! (hierarchy, shared URI) instead.
+//! (hierarchy, shared URI) instead, and its subject is the sharing classes
+//! behind a `shared_class_uri` marker — every other rule's subject is
+//! `[class, slot]`, and a consumer joining the segments could not otherwise
+//! tell the two apart.
 //!
 //! ## Instance rules
 //!
@@ -548,6 +551,18 @@ fn hierarchy_root(class: &ClassView) -> ClassView {
     current
 }
 
+/// First subject segment of every rule-5 warning, marking what the segments
+/// after it are.
+///
+/// Every other rule in this module has a subject of the form
+/// `[class_name, slot_name]`, and both CLIs render a subject by joining it with
+/// `.`. Rule 5's subject is a *list of classes*, so two of them printed as
+/// `Alpha.Beta` — a slot warning about `Beta` on class `Alpha`, as far as any
+/// reader or any consumer grouping findings by subject could tell. The marker
+/// makes the subject say which rule produced it; it cannot collide with a class
+/// name, since it is not one.
+const SHARED_CLASS_URI_SUBJECT: &str = "shared_class_uri";
+
 /// The warning text for two classes of one hierarchy sharing a `class_uri`.
 fn shared_class_uri_detail(root: &str, uri: &str, classes: &[String], designator: &str) -> String {
     let quoted: Vec<String> = classes.iter().map(|c| format!("'{c}'")).collect();
@@ -612,6 +627,9 @@ fn declared_identity_description(rc: &ClassView) -> Option<String> {
 /// declared and the schema-derived default otherwise. Two defaults can never
 /// collide (they are derived from the class name), so a collision always means
 /// at least one explicit declaration.
+///
+/// The subject is [`SHARED_CLASS_URI_SUBJECT`] followed by the sharing classes:
+/// see that constant for why the marker is there.
 fn lint_shared_class_uris(classes: &[ClassView], sink: &mut ValidationResultSink) {
     let mut hierarchies: BTreeMap<(String, String), Vec<&ClassView>> = BTreeMap::new();
     for class in classes {
@@ -644,9 +662,11 @@ fn lint_shared_class_uris(classes: &[ClassView], sink: &mut ValidationResultSink
             if names.len() < 2 {
                 continue;
             }
+            let mut subject = vec![SHARED_CLASS_URI_SUBJECT.to_string()];
+            subject.extend(names.iter().cloned());
             sink.push_warning(
                 ValidationProblemType::AmbiguousElementIdentity,
-                names.clone(),
+                subject,
                 shared_class_uri_detail(&root_name, &uri, &names, &designator),
             );
         }
