@@ -234,9 +234,22 @@ where
 /// keyed-source fallback — must agree, or a path one of them emits is a path
 /// another cannot resolve.
 pub(crate) fn list_is_keyed_shaped(values: &[LinkMLInstance]) -> bool {
-    !values.is_empty()
-        && values.iter().all(|v| element_identity_label(v).is_some())
-        && labels_are_unique(values, element_identity_label)
+    let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
+    list_is_keyed_shaped_from_labels(&labels)
+}
+
+/// [`list_is_keyed_shaped`] for a caller that already has the labels.
+///
+/// The predicate itself, over labels rather than elements. Deriving a label is
+/// not free — it walks the class's merged `unique_keys` and IRI-expands the
+/// components — and [`resolve_list_segment`] needs both the labels and this
+/// answer, so it must not pay for them twice.
+fn list_is_keyed_shaped_from_labels(labels: &[Option<String>]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    !labels.is_empty()
+        && labels
+            .iter()
+            .all(|l| matches!(l, Some(l) if seen.insert(l.as_str())))
 }
 
 /// Operation applied by a [`Delta`].
@@ -349,7 +362,18 @@ impl DiffOptions {
 ///
 /// Two paired objects of *different classes* are likewise one whole-element
 /// `Update`, never a field-by-field recursion across the two class definitions:
-/// the element did not change, it was replaced.
+/// the element did not change, it was replaced. "Different class" is the
+/// schema-qualified name, but the `Update` is still suppressed when the two
+/// objects compare equal, so two classes sharing a `class_uri` with identical
+/// content emit nothing.
+///
+/// The qualification is by schema *id*, not by `SchemaView` instance: two views
+/// built separately over the same schema qualify their classes identically and
+/// diff as finely as ever. Where it bites is a genuinely cross-schema pairing —
+/// one tree typed by `…/schema/v1`, the other by `…/schema/v2`, or by two
+/// schemas that merely declare the same class name. Then no paired object is
+/// ever "the same class" and every one of them coarsens to a whole-element
+/// `Update`: correct and patchable, just coarse.
 ///
 /// Lists are matched by element identity when both sides carry unique identity
 /// labels, and positionally otherwise — with one exception: when the *source*
@@ -704,8 +728,14 @@ impl Default for PatchOptions {
 /// payload cannot be built at the location it addresses — a scalar where the
 /// range is a class, a slot the resolved element's class does not declare — is
 /// reported the same way, with the tree untouched, and the remaining deltas
-/// still apply. `Err` is reserved for infrastructure failure; callers wanting
-/// "all or nothing" check `trace.failed` and discard the result themselves.
+/// still apply. Callers wanting "all or nothing" check `trace.failed` and
+/// discard the result themselves.
+///
+/// With that, `patch` no longer fails: every way a delta can go wrong is a
+/// `trace.failed` entry, and `LinkMLError` carries validation problems, not
+/// infrastructure ones. The `LResult` return is retained for API stability —
+/// treat an `Err` as unreachable rather than as the place to look for a
+/// rejected delta.
 ///
 /// **List segments are resolved against the list's CURRENT state**, as the
 /// deltas are applied in order — not against a snapshot of the list the deltas
@@ -907,7 +937,7 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
             .map(|i| i + from)
     };
     let matches = |i: usize| segment_matches_label(&values[i], labels[i].as_deref(), key);
-    if list_is_keyed_shaped(values) {
+    if list_is_keyed_shaped_from_labels(&labels) {
         // Labels are unique here, so an exact hit is the only exact hit.
         return exact(0).or_else(|| (0..values.len()).find(|i| matches(*i)));
     }

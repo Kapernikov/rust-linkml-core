@@ -130,6 +130,27 @@ fn same_class_key_change_still_replaces_whole_element() {
     assert_eq!(deltas[0].op, DeltaOp::Update);
 }
 
+/// Rule 3 qualifies class identity by schema *id*, not by `SchemaView`
+/// instance: two views built separately over the same schema must still diff
+/// field-by-field. (Cross-*schema* pairings do coarsen to whole-element
+/// Updates — that is the documented, intended consequence.)
+#[test]
+fn separate_schema_views_over_one_schema_still_diff_finely() {
+    let a = fixture();
+    let b = fixture();
+    let src = a.load(json!({"parts": [bolt()]}));
+    let mut edited = bolt();
+    edited["thread"] = json!("M10");
+    let tgt = b.load(json!({"parts": [edited]}));
+    let deltas = diff(&src, &tgt, DiffOptions::new(true));
+    assert_eq!(deltas.len(), 1, "{deltas:#?}");
+    assert_eq!(
+        deltas[0].path,
+        vec!["parts".to_string(), "B1".to_string(), "thread".to_string()],
+        "a second SchemaView over the same schema is not a class change"
+    );
+}
+
 /// Rule 4: a hand-built delta whose value cannot be built at its resolved
 /// location (`thread` is a `Bolt` slot; the element is a `Nut`) fails soft —
 /// `Ok`, path in `trace.failed`, tree untouched — and the OTHER deltas in the
