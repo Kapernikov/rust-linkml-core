@@ -470,17 +470,25 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                     // Update has already been emitted. What is left for this
                     // branch — and why it stays — is a changed key value within
                     // ONE class: same class, different element.
+                    //
+                    // The comparison is the canonical one (rule 2), through
+                    // [`scalar_slot_string`] — the very function identity
+                    // labels are built from. Raw strings were the rule's last
+                    // unconverted site: a `uri`-ranged key respelled
+                    // curie↔uri makes ONE identity label, so the list above
+                    // matched the two elements as one element, and this branch
+                    // then called that element replaced — a whole-element
+                    // `Update` at a path that addresses it by the identity the
+                    // branch had just declared changed. What the two questions
+                    // disagree about is *which slot* to read (see above), never
+                    // what makes two values of it the same value.
                     let key_slot_name = sc
                         .key_or_identifier_slot()
                         .or_else(|| tc.key_or_identifier_slot())
                         .map(|s| s.name.clone());
                     if let Some(ks) = key_slot_name {
-                        let sid = sm.get(&ks);
-                        let tid = tm.get(&ks);
-                        if let (
-                            Some(LinkMLInstance::Scalar { value: s_id, .. }),
-                            Some(LinkMLInstance::Scalar { value: t_id, .. }),
-                        ) = (sid, tid)
+                        if let (Some(s_id), Some(t_id)) =
+                            (scalar_slot_string(sm, &ks), scalar_slot_string(tm, &ks))
                         {
                             if s_id != t_id {
                                 out.push(Delta {

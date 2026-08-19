@@ -84,6 +84,11 @@ fn systems(items: Vec<JsonValue>) -> JsonValue {
     json!({ "systems": items })
 }
 
+/// The same list shape over `KeyedSystem`, whose identity component is a `key`.
+fn keyed_systems(items: Vec<JsonValue>) -> JsonValue {
+    json!({ "keyed_systems": items })
+}
+
 // ---------------------------------------------------------------------------
 // D1 — designator values canonicalised at load
 // ---------------------------------------------------------------------------
@@ -358,6 +363,68 @@ fn respelled_element_is_matched_never_replaced() {
             ],
         ],
         "one element, addressed by its IRI: {deltas:#?}"
+    );
+}
+
+/// The same re-spelling, on a class whose identity component is a `key`.
+///
+/// Rule 2's last raw comparison lived here: the list matched the two elements
+/// as one identity (labels are canonicalised), diff then recursed into the
+/// pair, and `treat_changed_identifier_as_new_object` — which reads the
+/// metamodel's key slot, not the identity label — compared `ex:WGS84` with its
+/// own expansion as two strings and called the element replaced. The delta was
+/// self-contradictory: a whole-element `Update` at a path that addresses the
+/// element by the very identity the branch had just declared changed.
+///
+/// `unique_keys`-derived identity (the test above) never reached this branch at
+/// all, which is why the case survived rule 2's first pass.
+#[test]
+fn respelled_key_is_matched_never_replaced() {
+    let f = fixture();
+    let deltas = diff2(
+        &f,
+        keyed_systems(vec![json!({"systemType": WGS84_CURIE, "value": "one"})]),
+        keyed_systems(vec![json!({"systemType": WGS84_URI, "value": "two"})]),
+    );
+    let mut paths: Vec<Vec<String>> = deltas.iter().map(|d| d.path.clone()).collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec![
+            vec![
+                "keyed_systems".to_string(),
+                WGS84_URI.to_string(),
+                "systemType".to_string()
+            ],
+            vec![
+                "keyed_systems".to_string(),
+                WGS84_URI.to_string(),
+                "value".to_string()
+            ],
+        ],
+        "field-level deltas under one element, never a replacement: {deltas:#?}"
+    );
+}
+
+/// The complement, and the reason the branch stays: a key value that is a
+/// *different* IRI is a different element, and the whole-element replacement is
+/// exactly right. Only spelling was ever meant to be forgiven.
+#[test]
+fn a_genuinely_changed_key_is_still_a_replacement() {
+    let f = fixture();
+    let deltas = diff2(
+        &f,
+        keyed_systems(vec![json!({"systemType": WGS84_URI, "value": "one"})]),
+        keyed_systems(vec![json!({"systemType": ETRS89_URI, "value": "one"})]),
+    );
+    assert!(
+        deltas
+            .iter()
+            .any(|d| d.op == DeltaOp::Remove && d.path == vec!["keyed_systems", WGS84_URI])
+            && deltas
+                .iter()
+                .any(|d| d.op == DeltaOp::Add && d.path == vec!["keyed_systems", ETRS89_URI]),
+        "two different IRIs are two different elements: {deltas:#?}"
     );
 }
 
