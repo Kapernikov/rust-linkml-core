@@ -254,6 +254,14 @@ impl ClassView {
     /// - `native=true` uses the schema's default prefix; `native=false` prefers
     ///   an explicit `class_uri` when set.
     /// - `expand=true` returns a full URI; `expand=false` returns a CURIE.
+    ///
+    /// All four combinations are distinct for a class that declares a
+    /// `class_uri`. In particular `(native: true, expand: true)` is the
+    /// *schema-native* URI (`<default prefix expansion><ClassName>`) and not the
+    /// `class_uri` — that is what `(native: false, expand: true)` returns.
+    /// [`Self::get_accepted_type_designator_values`] depends on the difference:
+    /// data that spells a designator with the schema-native URI of a class that
+    /// also declares a `class_uri` still *means* that class.
     pub fn get_uri(
         &self,
         conv: &Converter,
@@ -279,7 +287,7 @@ impl ClassView {
         expand: bool,
     ) -> Result<Identifier, IdentifierError> {
         match (native, expand) {
-            (true, true) => Ok(ids.canonical_uri()),
+            (true, true) => Ok(ids.native_uri()),
             (true, false) => {
                 if let Some(curie) = ids.native_curie() {
                     Ok(curie)
@@ -306,9 +314,6 @@ impl ClassView {
         native: bool,
         expand: bool,
     ) -> Result<Identifier, IdentifierError> {
-        if native && expand {
-            return Ok(self.canonical_uri());
-        }
         let schema = self
             .data
             .sv
