@@ -95,43 +95,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else if is_valid {
         println!("valid");
-        // Non-error diagnostics, which a valid document may now carry. Marked
-        // with their severity, in front of the shape the error list below uses:
-        // the same line without the marker is what this binary prints for an
-        // error, and a warning must not be mistakable for one.
+        // A valid document may now carry diagnostics, all of them non-error.
         for issue in &validation_issues {
-            println!(
-                "{}: {:?} at {}: {}",
-                severity_label(&issue.severity),
-                issue.problem_type,
-                format_path(&issue.subject),
-                issue.detail
-            );
+            print_issue(issue);
         }
         for w in &identity_warnings {
             println!("warning[{}]: {}", w.subject.join("."), w.detail);
         }
         Ok(())
     } else {
-        // Deliberately unmarked, and deliberately including the non-error
-        // issues: this list is a published output shape of the binary, and
-        // re-spelling every line of it would move the output of every document
-        // that has ever failed to validate, to say something about the few that
-        // also carry a warning. The marker above is where the distinction is
-        // needed — there, an unmarked line would read as an error on a document
-        // that has none.
         for issue in &validation_issues {
-            println!(
-                "{:?} at {}: {}",
-                issue.problem_type,
-                format_path(&issue.subject),
-                issue.detail
-            );
+            print_issue(issue);
         }
         if args.lint_identity {
             println!("note: --lint-identity skipped: fix the validation errors above first");
         }
         std::process::exit(1);
+    }
+}
+
+/// One validation issue, in text mode, wherever it appears.
+///
+/// An error keeps the bare `Type at path: detail` line this binary has always
+/// printed — so a document whose diagnostics are all errors prints exactly what
+/// it always printed, which is every document that predates the spec addendum's
+/// warnings. Anything that is *not* an error is named, because the alternative
+/// is a warning that looks like the error it is listed beside: in the valid
+/// branch it would be an error on a document that has none, and in the error
+/// branch it would be one more thing the reader is told to fix before re-running.
+fn print_issue(issue: &ValidationResult) {
+    let location = format_path(&issue.subject);
+    if issue.severity.is_error() {
+        println!("{:?} at {}: {}", issue.problem_type, location, issue.detail);
+    } else {
+        println!(
+            "{}: {:?} at {}: {}",
+            severity_label(&issue.severity),
+            issue.problem_type,
+            location,
+            issue.detail
+        );
     }
 }
 

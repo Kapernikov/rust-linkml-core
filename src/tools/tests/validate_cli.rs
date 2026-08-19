@@ -17,7 +17,8 @@
 //!   it in `issues` with `severity: "warning"` as it always did);
 //! * `--lint-identity` **runs** on such a document — the lint is gated on
 //!   errors, not on diagnostics;
-//! * an **error** still skips the lint, with the reason stated in both modes;
+//! * an **error** still skips the lint, with the reason stated in both modes,
+//!   and a warning listed beside errors is still marked as a warning;
 //! * a warning-free document invoked without the flag produces byte-for-byte
 //!   the output it always did.
 
@@ -138,6 +139,26 @@ fn errors_skip_the_lint_and_say_so() {
         "the reason names errors, since errors are what gates the lint: {doc:#}"
     );
     assert_eq!(doc["identity_warnings"], serde_json::Value::Null);
+}
+
+/// A document with both. The error decides validity, and the two lines are
+/// told apart: the error keeps the bare shape this binary has always printed
+/// for one, the warning says what it is. Anything else asks the reader to fix
+/// "errors" that include a warning — the same misreading the exit code used to
+/// force, one line further down.
+#[test]
+fn a_warning_beside_an_error_is_still_marked_as_a_warning() {
+    let (code, out) = validate("validate_mixed.json", &[]);
+    assert_eq!(code, 1, "{out}");
+    assert!(
+        out.contains("warning: SlotRangeViolation at people.p1.pid:"),
+        "the warning names its severity: {out}"
+    );
+    assert!(
+        out.contains("UndeclaredSlot at readings.0.not_a_slot:")
+            && !out.contains("error: UndeclaredSlot"),
+        "the error keeps the published unmarked shape: {out}"
+    );
 }
 
 // ---------------------------------------------------------------------------

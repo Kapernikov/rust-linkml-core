@@ -1,0 +1,8 @@
+{
+  "people": {
+    "p1": {"pid": "p2", "name": "Ann"}
+  },
+  "readings": [
+    {"code": "c1", "not_a_slot": "x"}
+  ]
+}
