@@ -961,20 +961,31 @@ impl LinkMLInstance {
     /// document loads, because the LinkML `inlined` contract makes both halves
     /// legal on their own and only their *combination* is contradictory.
     ///
-    /// 1. **Divergence.** The dict key and the payload value say different
-    ///    things about the same slot. The payload value is the element's data
-    ///    and is what gets stored; the dict key is the address and is what the
-    ///    mapping stays keyed by (`parse_mapping_slot` inserts under the raw
+    /// 1. **Divergence.** The dict key and the element's key-slot value say
+    ///    different things about the same slot. The payload is the element's
+    ///    data and is what gets stored; the dict key is the address and is what
+    ///    the mapping stays keyed by (`parse_mapping_slot` inserts under the raw
     ///    key). Neither can be dropped without losing information the document
     ///    contains, so both are named and the author decides.
     ///
-    ///    Compared through [`crate::diff::canonical_identity_component`], the
-    ///    same function every identity label is built from, so a CURIE key and
-    ///    its expanded payload are one identity (rule 2) rather than a
-    ///    divergence. Class-level equivalence is deliberately *not* applied to
-    ///    a designator key: `{"<native URI>": {"typeURI": "<class_uri>"}}` names
-    ///    one class twice, but the payload is canonicalised at load and the dict
-    ///    key never is, so the loaded document still contradicts itself. That is
+    ///    The comparison is against the value **as stored**, which is why this
+    ///    runs after [`Self::canonicalize_type_designator`] and
+    ///    [`Self::populate_type_designator`] rather than against the raw
+    ///    payload. A designator payload is rewritten to its class's canonical
+    ///    spelling at load, so comparing the raw payload would call
+    ///    `{"<class_uri>": {"typeURI": "<native URI>"}}` a divergence while the
+    ///    two ends of the message — key and "the stored value" — had in fact
+    ///    already been made to agree, and reloading the emitted document would
+    ///    be silent. The rule is therefore: warn when the entry, *as it will be
+    ///    written back out*, contradicts the key it is written under.
+    ///
+    ///    Both sides go through [`crate::diff::canonical_identity_component`],
+    ///    the same function every identity label is built from, so a CURIE key
+    ///    and an expanded stored value are one identity (rule 2) rather than a
+    ///    divergence. What survives is the genuinely contradictory case:
+    ///    `{"<native URI>": {"typeURI": "<class_uri>"}}`, where both spellings
+    ///    name one class but only the payload is canonicalised, so the loaded
+    ///    entry really is addressed by one IRI and carries another. That is
     ///    asset360's committed `SpotLocation_coordinates` shape.
     ///
     /// 2. **An unaccepted designator key.** When the key slot *is* the class's
@@ -983,10 +994,16 @@ impl LinkMLInstance {
     ///    nothing. Before this rule the case was silent twice over: nothing read
     ///    the key, and `populate_type_designator` filled the slot from the range
     ///    class, so the entry looked complete.
+    ///
+    /// The key slot itself is [`ClassView::key_or_identifier_slot`] on the
+    /// slot's **range** class, not on the class finally selected: the key has to
+    /// be read (and injected) before `select_class` can run, so a key declared
+    /// only by a subclass — via `slot_usage` on a descendant — is chicken-and-egg
+    /// and gets neither the injection nor these checks.
     fn reconcile_dict_key_with_payload(
         entry_key: &str,
         key_slot: &SlotView,
-        payload: &JsonValue,
+        values: &HashMap<String, LinkMLInstance>,
         selected: &ClassView,
         conv: &Converter,
         path: &[String],
@@ -996,6 +1013,13 @@ impl LinkMLInstance {
         p.push(key_slot.name.clone());
 
         if key_slot.definition().designates_type == Some(true) {
+            // Deliberately a raw string compare, unlike the divergence half
+            // below: the accepted set is what `canonicalize_type_designator`
+            // (Task 12, rule 2) matches against, verbatim, and a key that this
+            // check waved through on an IRI-equal-but-differently-spelled basis
+            // would then be rewritten by that function and reported by *it*
+            // instead — two voices for one fact.
+            //
             // `Err` means the accepted set is unknown, not empty — the same
             // posture `canonicalize_type_designator` takes: do not punish the
             // data for a schema the view cannot resolve.
@@ -1016,16 +1040,18 @@ impl LinkMLInstance {
             }
         }
 
-        // An explicit `null` and a structurally wrong value (list, object) are
-        // left for the range checks that already ran to describe; calling them
-        // a divergence would say the wrong thing about the wrong problem.
-        let supplied = match payload {
+        // A `Null` and a structurally wrong value (list, object) are left for
+        // the range checks that already ran to describe; calling them a
+        // divergence would say the wrong thing about the wrong problem.
+        let Some(LinkMLInstance::Scalar { value, .. }) = values.get(&key_slot.name) else {
+            return;
+        };
+        let stored = match value {
             JsonValue::String(s) => s.clone(),
-            JsonValue::Null | JsonValue::Array(_) | JsonValue::Object(_) => return,
             other => other.to_string(),
         };
         if crate::diff::canonical_identity_component(entry_key, key_slot)
-            == crate::diff::canonical_identity_component(&supplied, key_slot)
+            == crate::diff::canonical_identity_component(&stored, key_slot)
         {
             return;
         }
@@ -1033,9 +1059,9 @@ impl LinkMLInstance {
             ValidationProblemType::SlotRangeViolation,
             p,
             format!(
-                "inlined-dict key `{entry_key}` disagrees with the payload value `{supplied}` of \
-                 key slot `{}`; the payload value is stored as the element's data and the entry \
-                 stays addressed by its dict key",
+                "inlined-dict key `{entry_key}` disagrees with `{stored}`, the value stored in \
+                 key slot `{}`; the payload is the element's data and the dict key is its \
+                 address, so the entry keeps both and stays addressed by its dict key",
                 key_slot.name
             ),
         );
@@ -1611,6 +1637,12 @@ impl LinkMLInstance {
     /// [`Self::canonicalize_type_designator`] (so an injected designator value
     /// is canonicalised exactly as a payload-supplied one is). When the payload
     /// does supply it, [`Self::reconcile_dict_key_with_payload`] speaks.
+    ///
+    /// The key slot is read from the slot's **range** class only. It has to be:
+    /// the key is injected *before* `select_class` runs, so consulting the
+    /// selected class would be circular. A key declared solely by a descendant
+    /// — `slot_usage: {k: {key: true}}` on a subclass, the range class having no
+    /// key of its own — therefore gets neither the injection nor the checks.
     pub(crate) fn build_mapping_entry_for_slot(
         map_slot: &SlotView,
         entry_key: &str,
@@ -1642,28 +1674,15 @@ impl LinkMLInstance {
                 // name `slot_matches_key` accepts — the same lookup the child
                 // loop below uses, so "did the payload supply it?" and "which
                 // entry is it?" cannot disagree.
-                let payload_key: Option<JsonValue> = key_slot.as_ref().and_then(|ks| {
-                    m.iter()
-                        .find(|(ck, _)| slot_matches_key(ks, ck))
-                        .map(|(_, cv)| cv.clone())
-                });
+                let payload_states_key = key_slot
+                    .as_ref()
+                    .is_some_and(|ks| m.keys().any(|ck| slot_matches_key(ks, ck)));
                 if let Some(ks) = &key_slot {
-                    if payload_key.is_none() {
+                    if !payload_states_key {
                         m.insert(ks.name.clone(), Self::dict_key_value(entry_key));
                     }
                 }
                 let selected = Self::select_class(&m, &range_cv, sv, conv);
-                if let (Some(ks), Some(pv)) = (key_slot.as_ref(), payload_key.as_ref()) {
-                    Self::reconcile_dict_key_with_payload(
-                        entry_key,
-                        ks,
-                        pv,
-                        &selected,
-                        conv,
-                        &path,
-                        validation_issues,
-                    );
-                }
                 let mut child_values = HashMap::new();
                 for (ck, cv) in m.into_iter() {
                     let slot_tmp = selected
@@ -1706,6 +1725,22 @@ impl LinkMLInstance {
                     validation_issues,
                 );
                 Self::populate_type_designator(&mut child_values, &selected, sv, conv);
+                // After both designator passes, so the comparison is against
+                // the value the entry will actually carry out. Skipped when the
+                // key was injected: the entry then agrees with its key by
+                // construction, and a rejected *injected* designator value is
+                // `canonicalize_type_designator`'s to report.
+                if let (Some(ks), true) = (key_slot.as_ref(), payload_states_key) {
+                    Self::reconcile_dict_key_with_payload(
+                        entry_key,
+                        ks,
+                        &child_values,
+                        &selected,
+                        conv,
+                        &path,
+                        validation_issues,
+                    );
+                }
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
                     values: child_values,

@@ -245,11 +245,36 @@ fn an_unaccepted_designator_key_is_heard_even_when_the_payload_is_accepted() {
     );
 }
 
+/// The compact form of a designator-*keyed* dict: the dict key is the only
+/// thing that names the class, and the bare scalar fills the first ordinary
+/// slot. Selection, injection and canonicalisation all have to come off the key
+/// alone.
+#[test]
+fn a_compact_entry_takes_its_class_from_a_designator_dict_key() {
+    let f = fixture();
+    let (inst, issues) = f.load_result(json!({
+        "coords": {LINEAR_NATIVE: "somevalue"}
+    }));
+    assert!(issues.is_empty(), "no diagnostics expected: {issues:#?}");
+    let out = inst.to_json();
+    let entry = &out["coords"][LINEAR_NATIVE];
+    assert_eq!(
+        entry["typeURI"],
+        json!(LINEAR_CANONICAL),
+        "the class the key named, canonicalised: {out:#?}"
+    );
+    assert_eq!(
+        entry["value"],
+        json!("somevalue"),
+        "the compact scalar lands in the first ordinary slot: {out:#?}"
+    );
+}
+
 /// The asset360 shape, reduced: the dict key spells the class with its
 /// schema-native URI and the payload spells it with the `class_uri`. Both are
-/// accepted designator values of the same class, but the two strings are two
-/// different IRIs, and the mapping is addressed by the raw key while the
-/// payload is canonicalised — so the document contradicts itself and says so.
+/// accepted designator values of the same class, but the payload is
+/// canonicalised at load and the key is not, so the *loaded* entry really is
+/// addressed by one IRI and carries another. That contradiction is the warning.
 #[test]
 fn native_uri_key_against_class_uri_payload_is_a_divergence() {
     let f = fixture();
@@ -273,5 +298,54 @@ fn native_uri_key_against_class_uri_payload_is_a_divergence() {
         out["coords"][LINEAR_NATIVE]["typeURI"],
         json!(LINEAR_CANONICAL),
         "the payload value, canonicalised, is the stored data: {out:#?}"
+    );
+}
+
+/// The mirror image of the test above, and the reason the divergence check
+/// compares the value **as stored** rather than the raw payload: here the key is
+/// the canonical spelling and the payload is the native URI, so rule 2 rewrites
+/// the payload to the key's own spelling. The entry that comes out agrees with
+/// the key it is written under, and reloading that output is silent — so the
+/// load must be silent too. Comparing raw payloads would warn here, and the
+/// message would name a "stored" value that is not what was stored.
+#[test]
+fn a_payload_canonicalised_onto_the_dict_key_is_not_a_divergence() {
+    let f = fixture();
+    let (inst, issues) = f.load_result(json!({
+        "coords": {LINEAR_CANONICAL: {"typeURI": LINEAR_NATIVE, "measure": 4.0}}
+    }));
+    assert!(
+        issues.is_empty(),
+        "canonicalisation made the two agree before anything was stored: {issues:#?}"
+    );
+    let out = inst.to_json();
+    assert_eq!(
+        out["coords"][LINEAR_CANONICAL]["typeURI"],
+        json!(LINEAR_CANONICAL),
+        "in {out:#?}"
+    );
+    // The invariant that makes the silence correct: the emitted document reloads
+    // without a word.
+    let (_, reloaded) = f.load_result(out.clone());
+    assert!(reloaded.is_empty(), "round-trip must stay silent: {out:#?}");
+}
+
+/// The same invariant from the other side: the asset360 divergence is real
+/// precisely because it *survives* the round-trip — the emitted document is
+/// still addressed by one IRI and still carries another.
+#[test]
+fn a_real_divergence_survives_the_round_trip() {
+    let f = fixture();
+    let (inst, _) = f.load_result(json!({
+        "coords": {LINEAR_NATIVE: {"typeURI": LINEAR_CANONICAL, "measure": 3.0}}
+    }));
+    let (_, reloaded) = f.load_result(inst.to_json());
+    assert_eq!(
+        reloaded
+            .iter()
+            .filter(|i| i.detail.contains("disagrees"))
+            .count(),
+        1,
+        "the contradiction is in the data, not in the load: {reloaded:#?}"
     );
 }
