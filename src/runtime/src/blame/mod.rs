@@ -22,6 +22,12 @@ use std::fmt;
 /// strategy: every node touched by the patch (added or updated according to the
 /// [`PatchTrace`]) will have the supplied metadata cloned into the provided
 /// `blame` map.
+///
+/// Deltas that did not apply are in [`PatchTrace::failed`] and touch nothing,
+/// so they leave no blame entry — and, since [`patch`] never hard-errors on
+/// one (spec addendum rule 4), an `Ok` here does not mean the whole batch
+/// landed. Callers that treat a patch as atomic must check `trace.failed`
+/// themselves; the blame map records what actually happened either way.
 pub fn patch_with_blame<M: Clone>(
     value: &LinkMLInstance,
     deltas: &[Delta],

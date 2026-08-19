@@ -84,6 +84,19 @@ pub(crate) fn scalar_slot_string(
     None
 }
 
+/// Are these two `ClassView`s the same class?
+///
+/// Schema-qualified name, not pointer equality: a `ClassView` is a derived,
+/// freshly built view, so two views of one class are routinely distinct values,
+/// and a name alone is only unique within its schema. This is the question
+/// "did diff pair two objects of different classes?" (spec addendum rule 3),
+/// which is about the *declaration* the element instantiates — deliberately
+/// finer than [`crate::LinkMLInstance::equals`]'s canonical-URI comparison,
+/// which two classes sharing a `class_uri` (spike D8) also satisfy.
+fn class_identity_equal(a: &ClassView, b: &ClassView) -> bool {
+    a.name() == b.name() && a.schema_id() == b.schema_id()
+}
+
 /// The class's key/identifier slot, when it can identify an *element*.
 ///
 /// A key (or identifier) that is also the class's type designator is skipped: a
@@ -334,6 +347,10 @@ impl DiffOptions {
 /// below the slot is described as a single whole-value `Update` at the slot
 /// path. See [`OPAQUE_ANNOTATION`].
 ///
+/// Two paired objects of *different classes* are likewise one whole-element
+/// `Update`, never a field-by-field recursion across the two class definitions:
+/// the element did not change, it was replaced.
+///
 /// Lists are matched by element identity when both sides carry unique identity
 /// labels, and positionally otherwise — with one exception: when the *source*
 /// list alone is label-addressed (the target repeats or lacks a label), the
@@ -378,17 +395,47 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                     ..
                 },
             ) => {
+                // Spec addendum rule 3 (D2a): the two sides are different
+                // *kinds* of thing, so the change is one whole-element
+                // replacement — never field recursion across two classes.
+                // Recursing produced deltas describing one class's slots on
+                // the other's element (`thread` on a `Nut`), which no builder
+                // can apply: the diff was unpatchable by construction.
+                //
+                // Guarded by `equals` so the invariant "objects the crate
+                // considers equal produce no delta" survives: `equals` compares
+                // class identity by canonical URI, so two *differently named*
+                // classes sharing a `class_uri` (spike D8) with matching
+                // assignments stay silent, exactly as before.
+                //
+                // Not governed by `treat_changed_identifier_as_new_object`:
+                // that flag chooses how to describe a changed *key* within one
+                // class, while a cross-class recursion is unpatchable whatever
+                // the caller prefers.
+                if !class_identity_equal(sc, tc) {
+                    if !s.equals(t, opts.treat_missing_as_null) {
+                        out.push(Delta {
+                            path: path.clone(),
+                            op: DeltaOp::Update,
+                            old: Some(s.to_json()),
+                            new: Some(t.to_json()),
+                        });
+                    }
+                    return;
+                }
                 // If objects have an identifier or key slot and it changed, treat as whole-object replacement
                 // This applies for single-valued and list-valued inlined objects.
                 if opts.treat_changed_identifier_as_new_object {
                     // Deliberately the metamodel's key, not [`identity_key_slot`]:
                     // this asks "is this still the same thing?", not "how is it
-                    // labelled among its siblings". A changed key value means a
-                    // different element, and for a *designator* key a changed
-                    // value means a different class — which is a whole-element
-                    // replacement too (spec addendum rule 3). Routing this
-                    // through `identity_key_slot` would drop that replacement
-                    // and recurse field-by-field across two classes.
+                    // labelled among its siblings".
+                    //
+                    // Rule 3 above now owns the *designator* case: a designator
+                    // value is canonicalised at load (rule 2), so a changed
+                    // designator means a changed class and the whole-element
+                    // Update has already been emitted. What is left for this
+                    // branch — and why it stays — is a changed key value within
+                    // ONE class: same class, different element.
                     let key_slot_name = sc
                         .key_or_identifier_slot()
                         .or_else(|| tc.key_or_identifier_slot())
@@ -626,7 +673,11 @@ pub struct PatchTrace {
     pub deleted: Vec<NodeId>,
     /// Node IDs of nodes that were directly updated (e.g., parent containers, scalars).
     pub updated: Vec<NodeId>,
-    /// Paths of deltas that could not be applied (missing targets, etc.).
+    /// Paths of deltas that could not be applied: an address that resolves to
+    /// nothing or resolves ambiguously, a path descending below an opaque slot,
+    /// or a payload that cannot be built at the location it addresses (spec
+    /// addendum rule 4). Each such delta leaves the tree untouched and the rest
+    /// of the batch still applies.
     pub failed: Vec<Vec<String>>,
 }
 
@@ -648,6 +699,13 @@ impl Default for PatchOptions {
 /// Apply `deltas` to a clone of `source`, returning the result and a
 /// [`PatchTrace`]. A delta whose path cannot be resolved is reported in
 /// [`PatchTrace::failed`] rather than guessed at.
+///
+/// One bad delta never voids the batch (spec addendum rule 4): a delta whose
+/// payload cannot be built at the location it addresses — a scalar where the
+/// range is a class, a slot the resolved element's class does not declare — is
+/// reported the same way, with the tree untouched, and the remaining deltas
+/// still apply. `Err` is reserved for infrastructure failure; callers wanting
+/// "all or nothing" check `trace.failed` and discard the result themselves.
 ///
 /// **List segments are resolved against the list's CURRENT state**, as the
 /// deltas are applied in order — not against a snapshot of the list the deltas
@@ -753,6 +811,27 @@ where
     builder(value, schema_view, &conv)
 }
 
+/// Build a delta's replacement value, turning a build failure into "this delta
+/// did not apply" (spec addendum rule 4, D2b).
+///
+/// A delta carries a JSON payload that may be nonsense at the location it
+/// addresses: a scalar where the slot's range is a class, a slot the resolved
+/// element's class does not declare, an enum value outside the permissible set.
+/// Propagating the builder's `Err` voided the entire batch — one stale or
+/// hand-written delta and every other delta in the same patch was lost, with no
+/// record of which one was at fault. The delta's path goes to
+/// [`PatchTrace::failed`] instead and the tree is left untouched; `Err` from
+/// `patch` is reserved for infrastructure failure.
+///
+/// Called before any mutation at every apply site, so "failed" always means
+/// "nothing happened", never "half happened".
+fn build_or_fail<F>(build: F) -> Option<LinkMLInstance>
+where
+    F: FnOnce() -> LResult<LinkMLInstance>,
+{
+    build().ok()
+}
+
 fn current_class_and_slot(current: &LinkMLInstance) -> (Option<ClassView>, Option<SlotView>) {
     match current {
         LinkMLInstance::Object { class, .. } => (Some(class.clone()), None),
@@ -813,9 +892,24 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
     // labels (e.g. a year as unique key) unambiguous: they resolve as
     // labels, never as positions.
     let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
+    // Exact label equality first, everywhere. Two reasons, one line:
+    // *correctness* — a segment that IS an element's label must address that
+    // element, never a sibling whose differently-spelled label happens to
+    // normalise to the same string (only reachable in a heterogeneous list,
+    // where siblings draw their labels from different slots); and *cost* — the
+    // normalising comparison re-derives the label slot per element, walking the
+    // class's merged `unique_keys`, so the common case (segments diff emitted,
+    // which equal the labels outright) should never pay for it.
+    let exact = |from: usize| {
+        labels[from..]
+            .iter()
+            .position(|l| l.as_deref() == Some(key))
+            .map(|i| i + from)
+    };
     let matches = |i: usize| segment_matches_label(&values[i], labels[i].as_deref(), key);
     if list_is_keyed_shaped(values) {
-        return (0..values.len()).find(|i| matches(*i));
+        // Labels are unique here, so an exact hit is the only exact hit.
+        return exact(0).or_else(|| (0..values.len()).find(|i| matches(*i)));
     }
     // Positional list: numeric index first (the segments diff produces for
     // these lists), then a single unambiguous label hit for drift tolerance.
@@ -823,6 +917,14 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
         if idx < values.len() {
             return Some(idx);
         }
+    }
+    if let Some(first) = exact(0) {
+        // Ambiguity is refused, not guessed at — but only exact hits compete
+        // with an exact hit.
+        return match exact(first + 1) {
+            Some(_) => None,
+            None => Some(first),
+        };
     }
     let mut hit: Option<usize> = None;
     for i in 0..values.len() {
@@ -894,7 +996,9 @@ where
 {
     match op {
         DeltaOp::Add | DeltaOp::Update => {
-            let new_child = build_child()?;
+            let Some(new_child) = build_or_fail(build_child) else {
+                return Ok(false);
+            };
             match values.entry(key.to_string()) {
                 Entry::Occupied(mut entry) => {
                     let existing = entry.get_mut();
@@ -959,7 +1063,9 @@ where
             if idx_opt.is_none() && matches!(op, DeltaOp::Update) {
                 return Ok(false);
             }
-            let new_child = build_child()?;
+            let Some(new_child) = build_or_fail(build_child) else {
+                return Ok(false);
+            };
             if let Some(idx) = idx_opt {
                 let existing = &mut values[idx];
                 if should_skip_update(existing, &new_child, opts) {
@@ -1088,10 +1194,14 @@ fn apply_delta_root(
             let (class_opt, slot_opt) = current_class_and_slot(current);
             if let Some(cls) = class_opt {
                 let slot_clone = slot_opt.clone();
-                let new_node = with_converter(schema_view, v, move |value, sv, conv| {
-                    LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
-                        .into_instance_tolerate_errors()
-                })?;
+                let Some(new_node) = build_or_fail(|| {
+                    with_converter(schema_view, v, move |value, sv, conv| {
+                        LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
+                            .into_instance_tolerate_errors()
+                    })
+                }) else {
+                    return Ok(false);
+                };
                 mark_added_subtree(&new_node, trace);
                 *current = new_node;
                 Ok(true)
@@ -1105,10 +1215,14 @@ fn apply_delta_root(
                 let (class_opt, slot_opt) = current_class_and_slot(current);
                 if let Some(cls) = class_opt {
                     let slot_clone = slot_opt.clone();
-                    let new_node = with_converter(schema_view, v, move |value, sv, conv| {
-                        LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
-                            .into_instance_tolerate_errors()
-                    })?;
+                    let Some(new_node) = build_or_fail(|| {
+                        with_converter(schema_view, v, move |value, sv, conv| {
+                            LinkMLInstance::from_json(value, cls, slot_clone, sv, conv, false)
+                                .into_instance_tolerate_errors()
+                        })
+                    }) else {
+                        return Ok(false);
+                    };
                     if should_skip_update(current, &new_node, opts) {
                         return Ok(true);
                     }
