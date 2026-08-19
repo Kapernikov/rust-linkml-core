@@ -614,15 +614,125 @@ fn schema_lint_counts_unique_keys_entries_across_the_range_class_descendants() {
         "the warning must name every candidate, wherever it is declared: {}",
         boxes[0].detail
     );
-    // guard rails: a descendant declaring nothing, and one whose key outranks
-    // its entries, leave the range class as unambiguous as it was
+    // guard rail: a descendant declaring nothing of its own leaves the range
+    // class as unambiguous as it was
     let flagged: Vec<String> = warnings.iter().map(|w| w.subject[1].clone()).collect();
-    for silent in ["crates", "keyed"] {
+    assert!(
+        !flagged.contains(&"crates".to_string()),
+        "crates must stay silent, got {warnings:#?}"
+    );
+    // `StampedPlate`'s key outranks its own `unique_keys`, so its entries never
+    // widen the candidate set: this rule has nothing to say about `keyed`. (The
+    // divergence rule does — the key is its own label space.)
+    let keyed_candidates: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.subject[1] == "keyed")
+        .filter(|w| w.detail.contains("candidate entries"))
+        .collect();
+    assert!(
+        keyed_candidates.is_empty(),
+        "a key-labelled descendant does not widen the candidate set: \
+         {keyed_candidates:#?}"
+    );
+}
+
+#[test]
+fn schema_lint_splits_a_label_space_between_a_key_and_a_unique_keys_entry() {
+    // A descendant that declares a `key` does not widen the candidate set — its
+    // own `unique_keys` stop being load-bearing — but it very much occupies its
+    // own label space: `Plate` elements are labelled by `plate_identity` and
+    // `StampedPlate` elements by `stampId`, in one list. A path written against
+    // one cannot address an element of the other, and a `stampId` colliding
+    // with a `plate_identity` value breaks neither class's constraint. Counting
+    // a key-labelled class as its own group is what sees that.
+    let sv = schema_view("identity_descendant_unique_keys.yaml");
+    let warnings = lint_element_identity(&sv);
+    let keyed: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.subject == vec!["Depot".to_string(), "keyed".to_string()])
+        .collect();
+    assert_eq!(
+        keyed.len(),
+        1,
+        "the divergence warning, and only it, speaks for `keyed`: {warnings:#?}"
+    );
+    for needle in ["'Plate'", "'plate_identity'", "'StampedPlate'", "'stampId'"] {
         assert!(
-            !flagged.contains(&silent.to_string()),
-            "{silent} must stay silent, got {warnings:#?}"
+            keyed[0].detail.contains(needle),
+            "the warning must name both labellings and the class each belongs \
+             to; missing {needle}: {}",
+            keyed[0].detail
         );
     }
+    assert!(
+        keyed[0].detail.contains("key 'stampId'"),
+        "the warning must say that one of the two labellings is a key, not a \
+         unique_keys entry: {}",
+        keyed[0].detail
+    );
+}
+
+#[test]
+fn schema_lint_reports_a_retargeted_slot_the_parent_never_warned_about() {
+    // The introduces-gate asks "is the parent's slot flagged for the same
+    // reason?". For the two unique_keys rules that question has to subtract the
+    // designator case, exactly as the identity-less rule's gate does: a
+    // designator-keyed range class satisfies both raw shapes (the key no longer
+    // shadows the entries), but the designator rule is asked first and is the
+    // slot's ONLY voice, so the parent never emitted either warning. Without
+    // the subtraction a subclass that `slot_usage`-retargets the slot onto a
+    // class those rules really do speak for is suppressed by a parent warning
+    // that does not exist, and the ambiguity is reported nowhere.
+    let sv = schema_view("identity_descendant_unique_keys.yaml");
+    let warnings = lint_element_identity(&sv);
+    let subject = |c: &str| vec![c.to_string(), "stamps".to_string()];
+
+    let base: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.subject == subject("Base"))
+        .collect();
+    assert_eq!(
+        base.len(),
+        1,
+        "the designator rule speaks alone: {warnings:#?}"
+    );
+    assert!(
+        base[0].detail.contains("designates_type"),
+        "and it is the designator rule: {}",
+        base[0].detail
+    );
+
+    let retargeted: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.subject == subject("Retargeted"))
+        .collect();
+    assert_eq!(
+        retargeted.len(),
+        1,
+        "a retarget onto a keyless two-entry class must be reported here: \
+         {warnings:#?}"
+    );
+    assert!(
+        retargeted[0].detail.contains("'by_alpha'")
+            && retargeted[0].detail.contains("'zz_by_beta'"),
+        "and by the several-entries rule: {}",
+        retargeted[0].detail
+    );
+
+    let split: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.subject == subject("SplitRetargeted"))
+        .collect();
+    assert_eq!(
+        split.len(),
+        2,
+        "a retarget onto a split family must get both warnings here: \
+         {warnings:#?}"
+    );
+    assert!(
+        split.iter().any(|w| w.detail.contains("label space")),
+        "one of them being the divergence rule: {split:#?}"
+    );
 }
 
 #[test]

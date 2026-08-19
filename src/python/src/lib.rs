@@ -1567,12 +1567,22 @@ fn py_patch(
 
 // ── Identity lints ──────────────────────────────────────────────────────────
 
-/// Schema-level lint: warn for every multivalued inlined slot whose element
-/// identity comes from nowhere.
+/// Schema-level lint: warn where a multivalued inlined slot's element identity
+/// is absent, ambiguous, or cannot address the list.
+///
+/// Five rules: (1) no identity declared at all; (2) the declared identity is
+/// the element class's type designator, whose value describes the class rather
+/// than the element; (3) several ``unique_keys`` entries to choose from across
+/// the range class and its descendants, of which only the name-sorted first is
+/// load-bearing; (4) those classes labelled in different ways, so one list
+/// carries two label spaces; (5) two classes of one ``is_a`` hierarchy
+/// declaring the same ``class_uri`` while the hierarchy designates its type.
 ///
 /// Warnings only — the schema stays usable. Results are deterministic: sorted
 /// by subject, deduplicated across class URIs, and an inherited slot is
-/// reported once, at the class that introduces the problem.
+/// reported once, at the class that introduces the problem. Rules 1-4 are
+/// per-slot and their ``subject`` is ``[class_name, slot_name]``; rule 5 is
+/// class-level and its ``subject`` is the list of classes sharing the URI.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "lint_element_identity")]
 fn py_lint_element_identity(
@@ -1582,8 +1592,17 @@ fn py_lint_element_identity(
     validation_results_to_py(py, lint_element_identity(schema_view.as_rust()))
 }
 
-/// Data-level lint: warn for every list whose elements repeat a declared
-/// identity (key/identifier or ``unique_keys`` value).
+/// Data-level lint: warn where loaded data defeats a declared element identity.
+///
+/// Two rules: a list whose elements repeat a declared identity — key/identifier
+/// or ``unique_keys`` value — reported as ``duplicate_element_identity``; and a
+/// list addressed positionally *despite* a declared identity, because some
+/// element leaves the slot that identity names empty, reported as
+/// ``ambiguous_element_identity``. Neither is visible in the schema: an
+/// identity slot that is not ``required`` may be absent, and repeated or
+/// missing values are alike valid data.
+///
+/// Warnings only. ``subject`` is the container's instance path.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "lint_instance_identity")]
 fn py_lint_instance_identity(

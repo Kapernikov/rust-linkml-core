@@ -25,8 +25,8 @@
 //!
 //! # The rules
 //!
-//! [`lint_element_identity`] asks four questions of a schema, and
-//! [`lint_instance_identity`] two of a loaded instance. All six warn; none
+//! [`lint_element_identity`] asks five questions of a schema, and
+//! [`lint_instance_identity`] two of a loaded instance. All seven warn; none
 //! errors, and none changes what the engine does.
 //!
 //! ## Schema rules
@@ -54,13 +54,17 @@
 //!    candidates are counted across the range class **and every class
 //!    descending from it**, since a list ranged on a class holds elements of
 //!    all of them.
-//! 4. **A split label space.** Those same classes resolve *different*
-//!    load-bearing entries: `Gadget` elements labelled by one entry and
-//!    `Widget is_a Gadget` elements by another, in one list. A path written
-//!    against one label space cannot address an element of the other, and two
-//!    elements resolving different entries can carry the same label without
-//!    violating either class's uniqueness constraint. Reported in addition to
-//!    rule 3, which such a family always also matches.
+//! 4. **A split label space.** Those same classes are labelled *different
+//!    ways*: `Gadget` elements by one `unique_keys` entry and
+//!    `Widget is_a Gadget` elements by another, in one list — or one of them by
+//!    a `key` and the other by an entry, which splits the space just as
+//!    thoroughly. A path written against one label space cannot address an
+//!    element of the other, and two elements labelled different ways can carry
+//!    the same label without violating either class's uniqueness constraint.
+//!    Rule 3 and this one ask different questions of the same family: rule 3 is
+//!    about which *entry* is chosen, so a key-labelled class is outside it,
+//!    while this one is about which *declaration* labels each element, so a
+//!    key-labelled class is one of the groups.
 //! 5. **A shared `class_uri` under a designator.** Two classes of one `is_a`
 //!    hierarchy declare the same `class_uri` while the hierarchy designates its
 //!    type. A designator value is a class URI, so it names both classes at
@@ -72,8 +76,11 @@
 //! flagged slot inherited unchanged by a descendant is not repeated there,
 //! since the declaration the author would edit lives on the ancestor. Each rule
 //! gates on its own predicate, so a subclass whose `slot_usage` changes one
-//! rule's answer is judged on its own merits for that rule. Rule 5 is
-//! class-level and has no slot to attribute, so it is emitted once per
+//! rule's answer is judged on its own merits for that rule — and each of rules
+//! 1, 3 and 4 subtracts rule 2's cases from its gate, because a designator-keyed
+//! range class matches all three raw shapes while rule 2 is the slot's only
+//! voice: a parent that emitted no warning must not suppress a subclass's.
+//! Rule 5 is class-level and has no slot to attribute, so it is emitted once per
 //! (hierarchy, shared URI) instead.
 //!
 //! ## Instance rules
@@ -246,14 +253,38 @@ fn slot_has_ambiguous_unique_keys(slot: &SlotView) -> Option<(String, Vec<String
     Some((rc.name().to_string(), names.into_iter().collect(), own))
 }
 
-/// Per distinct load-bearing `unique_keys` entry, the classes of one range
-/// class's family that resolve to it. Entry-sorted, each class list name-sorted.
+/// How one class labels its elements, as the divergence rule compares it: the
+/// rendered description of the declaration `element_identity_label` reads.
+///
+/// `None` for a class whose elements carry no label at all — that is the
+/// identity-less rule's business, and an unlabelled class does not occupy a
+/// label space to be split from anyone.
+///
+/// A key and a `unique_keys` entry are *different* labellings even when they
+/// read the same slot, so they are rendered differently and never collide as
+/// group names. This mirrors `element_identity_label`'s precedence exactly: the
+/// key first, the name-sorted first entry otherwise.
+fn identity_labelling(rc: &ClassView) -> Option<String> {
+    if let Some(key) = identity_key_slot(rc) {
+        let kind = if key.definition().identifier == Some(true) {
+            "identifier"
+        } else {
+            "key"
+        };
+        return Some(format!("{kind} '{}'", key.name));
+    }
+    let entry = identity_unique_key_names(rc).into_iter().next()?;
+    Some(format!("unique_keys entry '{entry}'"))
+}
+
+/// Per distinct identity labelling, the classes of one range class's family
+/// that resolve to it. Labelling-sorted, each class list name-sorted.
 type LabelSpaceGroups = Vec<(String, Vec<String>)>;
 
 /// Whether the classes a list ranged on this slot can hold resolve **different**
-/// load-bearing `unique_keys` entries: one list, two label spaces (spike D4b/d).
+/// identity labellings: one list, two label spaces (spike D4b/d).
 ///
-/// Returns the range class name and, per distinct entry, the name-sorted
+/// Returns the range class name and, per distinct labelling, the name-sorted
 /// classes resolving to it.
 ///
 /// This is a sharper defect than the several-entries one and is reported *in
@@ -266,26 +297,32 @@ type LabelSpaceGroups = Vec<(String, Vec<String>)>;
 /// that produced them is the deep fix and is out of scope for this branch, so
 /// the author is told instead.
 ///
-/// Family members whose identity is a key are excluded, as everywhere: their
-/// entries are not load-bearing and so cannot split anything.
+/// A family member whose identity is a `key` is counted as its own group, not
+/// skipped. Its `unique_keys` entries are indeed never load-bearing — which is
+/// why the several-entries rule ignores them — but the key itself labels its
+/// elements, and it splits the list's label space exactly as a second entry
+/// would: `Plate` elements addressed by a `plate_identity` value and
+/// `StampedPlate` elements by a `stampId` collide across the two spaces without
+/// breaking either class's constraint. The two rules ask different questions of
+/// the same family, and only one of them is about entry *choice*.
 fn slot_has_split_identity_label_space(slot: &SlotView) -> Option<(String, LabelSpaceGroups)> {
     if !slot_addresses_elements_by_position_or_label(slot) {
         return None;
     }
     let rc = slot.get_range_class()?;
-    let mut by_entry: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut by_labelling: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for cv in identity_class_family(&rc) {
-        if let Some(entry) = load_bearing_unique_key(&cv) {
-            by_entry
-                .entry(entry)
+        if let Some(labelling) = identity_labelling(&cv) {
+            by_labelling
+                .entry(labelling)
                 .or_default()
                 .push(cv.name().to_string());
         }
     }
-    if by_entry.len() < 2 {
+    if by_labelling.len() < 2 {
         return None;
     }
-    let mut groups: LabelSpaceGroups = by_entry.into_iter().collect();
+    let mut groups: LabelSpaceGroups = by_labelling.into_iter().collect();
     for (_, classes) in groups.iter_mut() {
         classes.sort();
         classes.dedup();
@@ -334,6 +371,32 @@ fn slot_identity_is_type_designator(slot: &SlotView) -> Option<(String, String)>
 /// merits.
 fn slot_is_identity_less_only(slot: &SlotView) -> bool {
     slot_lacks_element_identity(slot) && slot_identity_is_type_designator(slot).is_none()
+}
+
+/// The several-entries rule as the reporting loop applies it.
+///
+/// Same subtraction, same reason as [`slot_is_identity_less_only`], and needed
+/// for the same reason it is: the designator key stopped shadowing its class's
+/// `unique_keys` (spec addendum rule 1), so a designator-keyed range class with
+/// several entries satisfies the raw shape while the designator rule remains
+/// the slot's only voice.
+///
+/// Used only as [`introduces_flagged_slot`]'s predicate, where the omission
+/// loses a real warning: a parent whose slot fires the designator rule would
+/// otherwise suppress a subclass that `slot_usage`-retargets the slot onto a
+/// keyless multi-entry class, and the ambiguity would be reported nowhere. The
+/// reporting loop's own call site does not need it — a designator-keyed slot
+/// has already `continue`d by then.
+fn slot_has_ambiguous_unique_keys_only(slot: &SlotView) -> bool {
+    slot_has_ambiguous_unique_keys(slot).is_some()
+        && slot_identity_is_type_designator(slot).is_none()
+}
+
+/// The divergence rule as the reporting loop applies it, subtracted exactly as
+/// [`slot_has_ambiguous_unique_keys_only`] is and for the same reason.
+fn slot_has_split_identity_label_space_only(slot: &SlotView) -> bool {
+    slot_has_split_identity_label_space(slot).is_some()
+        && slot_identity_is_type_designator(slot).is_none()
 }
 
 /// The warning text for a list whose identity is its element class's type
@@ -422,10 +485,10 @@ fn ambiguous_unique_keys_detail(
 }
 
 /// The warning text for a range class family whose members resolve different
-/// load-bearing `unique_keys` entries.
+/// identity labellings.
 ///
-/// `groups` is entry-sorted, and each group's classes are name-sorted, so the
-/// text is stable across runs.
+/// `groups` is labelling-sorted, and each group's classes are name-sorted, so
+/// the text is stable across runs.
 fn split_label_space_detail(
     class_name: &str,
     slot_name: &str,
@@ -434,7 +497,7 @@ fn split_label_space_detail(
 ) -> String {
     let described: Vec<String> = groups
         .iter()
-        .map(|(entry, classes)| {
+        .map(|(labelling, classes)| {
             // Bounded: a wide hierarchy must not turn one warning into a wall.
             // Three names name the split; the rest are counted.
             let shown: Vec<String> = classes.iter().take(3).map(|c| format!("'{c}'")).collect();
@@ -444,19 +507,19 @@ fn split_label_space_detail(
             } else {
                 String::new()
             };
-            format!("'{entry}' ({}{})", shown.join(", "), more)
+            format!("{labelling} ({}{})", shown.join(", "), more)
         })
         .collect();
     format!(
         "elements of '{}.{}' do not share one identity label space: a list \
          ranged on '{}' holds elements of every class descending from it, and \
-         they resolve {} different load-bearing unique_keys entries — {}. Each \
-         element is labelled by the entry its own class resolves to, so a delta \
-         path written against one of them cannot address an element of another, \
-         and two elements resolving different entries can produce the same \
-         label without either class's uniqueness constraint being violated. \
-         Declare the identity once, on '{}', so every element of the list is \
-         labelled the same way.",
+         they are labelled {} different ways — {}. Each element is labelled by \
+         the declaration its own class resolves to, so a delta path written \
+         against one of them cannot address an element of another, and two \
+         elements labelled different ways can produce the same label without \
+         either class's uniqueness constraint being violated. Declare the \
+         identity once, on '{}', so every element of the list is labelled the \
+         same way.",
         class_name,
         slot_name,
         range_class,
@@ -528,13 +591,12 @@ fn missing_labels_detail(
 }
 
 /// How the range class declares element identity, for the warning above.
+///
+/// The same question [`identity_labelling`] answers for the divergence rule —
+/// "which declaration does `element_identity_label` read?" — so it is the same
+/// function, and `None` means the same thing in both: no identity is declared.
 fn declared_identity_description(rc: &ClassView) -> Option<String> {
-    if let Some(key) = identity_key_slot(rc) {
-        return Some(format!("its key/identifier '{}'", key.name));
-    }
-    let names = identity_unique_key_names(rc);
-    let first = names.first()?;
-    Some(format!("its unique_keys entry '{first}'"))
+    Some(format!("its {}", identity_labelling(rc)?))
 }
 
 /// Schema-level, class-level rule: two classes of one `is_a` hierarchy declare
@@ -652,9 +714,11 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
             }
             if !slot_is_identity_less_only(slot) {
                 if let Some((rc_name, names, own)) = slot_has_ambiguous_unique_keys(slot) {
-                    if introduces_flagged_slot(&class, &slot.name, |s| {
-                        slot_has_ambiguous_unique_keys(s).is_some()
-                    }) {
+                    if introduces_flagged_slot(
+                        &class,
+                        &slot.name,
+                        slot_has_ambiguous_unique_keys_only,
+                    ) {
                         sink.push_warning(
                             ValidationProblemType::AmbiguousElementIdentity,
                             vec![class.name().to_string(), slot.name.clone()],
@@ -675,9 +739,11 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
                 // leaving the candidate set as wide as it was (and the other
                 // way round).
                 if let Some((rc_name, groups)) = slot_has_split_identity_label_space(slot) {
-                    if introduces_flagged_slot(&class, &slot.name, |s| {
-                        slot_has_split_identity_label_space(s).is_some()
-                    }) {
+                    if introduces_flagged_slot(
+                        &class,
+                        &slot.name,
+                        slot_has_split_identity_label_space_only,
+                    ) {
                         sink.push_warning(
                             ValidationProblemType::AmbiguousElementIdentity,
                             vec![class.name().to_string(), slot.name.clone()],

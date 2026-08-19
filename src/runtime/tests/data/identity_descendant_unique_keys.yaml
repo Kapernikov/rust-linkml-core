@@ -18,9 +18,25 @@ description: |-
     collide with a `Gadget` code without either class's constraint being
     violated. That is the split the second warning names.
 
-  Guard rails: `crates` (a descendant that declares no entries of its own) and
-  `keyed` (a descendant whose `key` outranks `unique_keys`, so its entries are
-  never load-bearing and cannot split anything) must both stay silent.
+  - `keyed` (range `Plate`) — `StampedPlate` declares a `key`, which outranks
+    its `unique_keys` entirely. Its entries are therefore never load-bearing
+    and do not widen the candidate set — but the key itself is a label space:
+    `Plate` elements are labelled by `plate_identity` and `StampedPlate`
+    elements by `stampId`, and the two can collide exactly as two entries can.
+    The divergence rule counts a key-labelled class as its own group, so this
+    slot gets the divergence warning and *not* the several-entries one.
+
+  Guard rail: `crates` (a descendant that declares no entries of its own) must
+  stay silent.
+
+  `Base.stamps` is the gate-subtraction case. Its range class is
+  designator-keyed, so the designator rule is its only voice — but the raw
+  several-entries and divergence shapes also match it (the designator key no
+  longer shadows `DesignatorMarker`'s entries, and `AaaSubMarker` adds an
+  earlier-sorting one). A subclass that `slot_usage`-retargets the slot to a
+  class those rules really do speak for must therefore not be suppressed by a
+  parent that never emitted their warning: `Retargeted` and `SplitRetargeted`
+  are the two halves of that.
 license: https://creativecommons.org/publicdomain/zero/1.0/
 imports:
   - linkml:types
@@ -50,11 +66,38 @@ classes:
         range: Crate
         multivalued: true
         inlined_as_list: true
-      # the descendant's key outranks its unique_keys entirely
+      # the descendant's key outranks its own unique_keys, so the candidate set
+      # is unchanged — but the key is a second label space -> divergence only
       keyed:
         range: Plate
         multivalued: true
         inlined_as_list: true
+
+  # the gate-subtraction cases: this slot's range class is designator-keyed, so
+  # the designator rule is its sole voice, even though the raw several-entries
+  # and divergence shapes both match it
+  Base:
+    attributes:
+      stamps:
+        range: DesignatorMarker
+        multivalued: true
+        inlined_as_list: true
+
+  # retargets the inherited slot onto a keyless two-entry class: the
+  # several-entries rule speaks for it HERE, and the parent — which only ever
+  # emitted the designator warning — cannot stand in for that
+  Retargeted:
+    is_a: Base
+    slot_usage:
+      stamps:
+        range: TwoEntry
+
+  # the same, for the divergence rule
+  SplitRetargeted:
+    is_a: Base
+    slot_usage:
+      stamps:
+        range: Gadget
 
   Box:
     unique_keys:
@@ -113,3 +156,34 @@ classes:
     attributes:
       stampId: {range: string, key: true}
       stamp: {range: string, required: true}
+
+  DesignatorMarker:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+      zz_by_label:
+        unique_key_slots: [label]
+    attributes:
+      typeURI: {range: uriorcurie, key: true, designates_type: true}
+      code: {range: string, required: true}
+      label: {range: string, required: true}
+
+  # an earlier-sorting entry, so `DesignatorMarker`'s family also matches the
+  # divergence shape raw — the second half of the gate-subtraction case
+  AaaSubMarker:
+    is_a: DesignatorMarker
+    unique_keys:
+      aaa_sub_identity:
+        unique_key_slots: [sub]
+    attributes:
+      sub: {range: string, required: true}
+
+  TwoEntry:
+    unique_keys:
+      by_alpha:
+        unique_key_slots: [alpha]
+      zz_by_beta:
+        unique_key_slots: [beta]
+    attributes:
+      alpha: {range: string, required: true}
+      beta: {range: string, required: true}
