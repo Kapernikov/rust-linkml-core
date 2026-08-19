@@ -91,9 +91,12 @@ classes:
   # `find_scalar_slot_for_inlined_map` picks the first non-key scalar slot —
   # here the designator — so `{"w1": "canon:FancyWidget"}` is a legal compact
   # dict entry that names its own class.
+  # `wid` is `required` on purpose: the dict-key injection of spec addendum
+  # rule 5 is what satisfies it for both the object and the compact form, so a
+  # loader that stopped injecting fails here rather than quietly.
   Widget:
     attributes:
-      wid: {range: string, key: true}
+      wid: {range: string, key: true, required: true}
       typeURI:
         range: uriorcurie
         designates_type: true

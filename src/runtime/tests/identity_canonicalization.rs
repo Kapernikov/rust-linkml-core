@@ -190,6 +190,11 @@ fn compact_dict_entry_naming_a_subclass_is_not_rewritten_to_the_range_class() {
         "canonicalised, and to the *subclass* the entry named: {out:#?}"
     );
     assert_eq!(widgets["w2"]["typeURI"], json!(FANCY_CURIE), "in {out:#?}");
+    // `Widget.wid` is `required`, and the compact form supplies no payload for
+    // it at all — the dict-key injection of rule 5 is the only thing that can
+    // satisfy it. The `issues.is_empty()` assertion above is the guard.
+    assert_eq!(widgets["w1"]["wid"], json!("w1"), "in {out:#?}");
+    assert_eq!(widgets["w2"]["wid"], json!("w2"), "in {out:#?}");
 }
 
 /// The guard for `ClassView::get_uri(native, expand)`: `BareLeaf` declares a

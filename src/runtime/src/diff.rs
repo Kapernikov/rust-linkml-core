@@ -58,7 +58,7 @@ pub(crate) fn slot_is_opaque(slot: &SlotView) -> bool {
 /// verbatim: `Identifier::to_uri` refuses them, and inventing an expansion
 /// against the default prefix would rename identities the schema never claimed
 /// were IRIs.
-fn canonical_identity_component(raw: &str, slot: &SlotView) -> String {
+pub(crate) fn canonical_identity_component(raw: &str, slot: &SlotView) -> String {
     if !slot.is_range_iri() {
         return raw.to_string();
     }
@@ -1344,6 +1344,11 @@ fn apply_delta_mapping(
     if path.len() == 1 {
         let value = newv.cloned().unwrap_or(JsonValue::Null);
         let slot_clone = slot.clone();
+        // The delta's own path segment is the entry's dict key, and rule 5
+        // makes that key the element's key-slot value: a delta that adds an
+        // entry must build the same object the loader would have built for the
+        // same key.
+        let key_clone = key.clone();
         return apply_hashmap_leaf_delta(
             values,
             key,
@@ -1356,6 +1361,7 @@ fn apply_delta_mapping(
                     let mut diags = ValidationResultSink::default();
                     let value = LinkMLInstance::build_mapping_entry_for_slot(
                         &slot_clone,
+                        &key_clone,
                         val,
                         sv,
                         conv,

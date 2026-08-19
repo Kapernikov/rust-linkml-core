@@ -949,6 +949,110 @@ impl LinkMLInstance {
         *value = JsonValue::String(canonical);
     }
 
+    /// Hear what an inlined-dict entry's key says when the payload also states
+    /// it (spec addendum rule 5, finding D5).
+    ///
+    /// Called only when the payload *did* supply the key slot — the omitted
+    /// case is filled from the dict key by the caller, and any complaint about
+    /// that injected value is then [`Self::canonicalize_type_designator`]'s to
+    /// make, in its own words, on the value that was actually stored.
+    ///
+    /// Two things are checked, and both are warnings, never errors: the
+    /// document loads, because the LinkML `inlined` contract makes both halves
+    /// legal on their own and only their *combination* is contradictory.
+    ///
+    /// 1. **Divergence.** The dict key and the payload value say different
+    ///    things about the same slot. The payload value is the element's data
+    ///    and is what gets stored; the dict key is the address and is what the
+    ///    mapping stays keyed by (`parse_mapping_slot` inserts under the raw
+    ///    key). Neither can be dropped without losing information the document
+    ///    contains, so both are named and the author decides.
+    ///
+    ///    Compared through [`crate::diff::canonical_identity_component`], the
+    ///    same function every identity label is built from, so a CURIE key and
+    ///    its expanded payload are one identity (rule 2) rather than a
+    ///    divergence. Class-level equivalence is deliberately *not* applied to
+    ///    a designator key: `{"<native URI>": {"typeURI": "<class_uri>"}}` names
+    ///    one class twice, but the payload is canonicalised at load and the dict
+    ///    key never is, so the loaded document still contradicts itself. That is
+    ///    asset360's committed `SpotLocation_coordinates` shape.
+    ///
+    /// 2. **An unaccepted designator key.** When the key slot *is* the class's
+    ///    type designator the dict key names the entry's class, and a key that
+    ///    is no accepted designator value of the class actually selected names
+    ///    nothing. Before this rule the case was silent twice over: nothing read
+    ///    the key, and `populate_type_designator` filled the slot from the range
+    ///    class, so the entry looked complete.
+    fn reconcile_dict_key_with_payload(
+        entry_key: &str,
+        key_slot: &SlotView,
+        payload: &JsonValue,
+        selected: &ClassView,
+        conv: &Converter,
+        path: &[String],
+        validation_issues: &mut ValidationResultSink,
+    ) {
+        let mut p = path.to_vec();
+        p.push(key_slot.name.clone());
+
+        if key_slot.definition().designates_type == Some(true) {
+            // `Err` means the accepted set is unknown, not empty — the same
+            // posture `canonicalize_type_designator` takes: do not punish the
+            // data for a schema the view cannot resolve.
+            if let Some(td) = selected.get_type_designator_slot() {
+                if let Ok(accepted) = selected.get_accepted_type_designator_values(td, conv) {
+                    if !accepted.iter().any(|v| v.to_string() == entry_key) {
+                        validation_issues.push_warning(
+                            ValidationProblemType::SlotRangeViolation,
+                            p.clone(),
+                            format!(
+                                "inlined-dict key `{entry_key}` is not an accepted designator \
+                                 value for class `{}`",
+                                selected.name()
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+
+        // An explicit `null` and a structurally wrong value (list, object) are
+        // left for the range checks that already ran to describe; calling them
+        // a divergence would say the wrong thing about the wrong problem.
+        let supplied = match payload {
+            JsonValue::String(s) => s.clone(),
+            JsonValue::Null | JsonValue::Array(_) | JsonValue::Object(_) => return,
+            other => other.to_string(),
+        };
+        if crate::diff::canonical_identity_component(entry_key, key_slot)
+            == crate::diff::canonical_identity_component(&supplied, key_slot)
+        {
+            return;
+        }
+        validation_issues.push_warning(
+            ValidationProblemType::SlotRangeViolation,
+            p,
+            format!(
+                "inlined-dict key `{entry_key}` disagrees with the payload value `{supplied}` of \
+                 key slot `{}`; the payload value is stored as the element's data and the entry \
+                 stays addressed by its dict key",
+                key_slot.name
+            ),
+        );
+    }
+
+    /// The dict key of an inlined mapping entry, as the value its key slot
+    /// takes when the payload omitted it (spec addendum rule 5).
+    ///
+    /// A JSON object key is a string and is injected as one. A numerically
+    /// ranged key slot therefore receives the string spelling of its key: the
+    /// loader runs no scalar type check (see [`crate::constraints`] — enum,
+    /// regex and min/max only), and inventing a second, untested numeric parse
+    /// here would be a coercion path of its own rather than this rule.
+    fn dict_key_value(entry_key: &str) -> JsonValue {
+        JsonValue::String(entry_key.to_string())
+    }
+
     /// If the class has a `designates_type` slot and the values map does not
     /// already contain it, insert a Scalar value with the class's type
     /// designator value. This ensures round-trip fidelity for formats like
@@ -1122,6 +1226,7 @@ impl LinkMLInstance {
                 for (k, v) in map.into_iter() {
                     let child = Self::build_mapping_entry_for_slot(
                         sl,
+                        &k,
                         v,
                         sv,
                         conv,
@@ -1494,8 +1599,21 @@ impl LinkMLInstance {
         )
     }
 
+    /// Build one entry of an inlined mapping.
+    ///
+    /// `entry_key` is the entry's dict key, which the LinkML `inlined` contract
+    /// makes the element's key/identifier *value* — real data, not just an
+    /// address (spec addendum rule 5, finding D5). It is injected into the key
+    /// slot when the payload omits it, which happens before class selection (so
+    /// a designator-keyed dict selects the class its key names), before the
+    /// object constraints run (so a `required` key slot is satisfied by the key
+    /// the document did supply, instead of erroring on legal data), and before
+    /// [`Self::canonicalize_type_designator`] (so an injected designator value
+    /// is canonicalised exactly as a payload-supplied one is). When the payload
+    /// does supply it, [`Self::reconcile_dict_key_with_payload`] speaks.
     pub(crate) fn build_mapping_entry_for_slot(
         map_slot: &SlotView,
+        entry_key: &str,
         value: JsonValue,
         sv: &SchemaView,
         conv: &Converter,
@@ -1518,8 +1636,34 @@ impl LinkMLInstance {
                 )
             })?;
         match value {
-            JsonValue::Object(m) => {
+            JsonValue::Object(mut m) => {
+                let key_slot = range_cv.key_or_identifier_slot().cloned();
+                // Alias-aware, because the payload may spell the slot by any
+                // name `slot_matches_key` accepts — the same lookup the child
+                // loop below uses, so "did the payload supply it?" and "which
+                // entry is it?" cannot disagree.
+                let payload_key: Option<JsonValue> = key_slot.as_ref().and_then(|ks| {
+                    m.iter()
+                        .find(|(ck, _)| slot_matches_key(ks, ck))
+                        .map(|(_, cv)| cv.clone())
+                });
+                if let Some(ks) = &key_slot {
+                    if payload_key.is_none() {
+                        m.insert(ks.name.clone(), Self::dict_key_value(entry_key));
+                    }
+                }
                 let selected = Self::select_class(&m, &range_cv, sv, conv);
+                if let (Some(ks), Some(pv)) = (key_slot.as_ref(), payload_key.as_ref()) {
+                    Self::reconcile_dict_key_with_payload(
+                        entry_key,
+                        ks,
+                        pv,
+                        &selected,
+                        conv,
+                        &path,
+                        validation_issues,
+                    );
+                }
                 let mut child_values = HashMap::new();
                 for (ck, cv) in m.into_iter() {
                     let slot_tmp = selected
@@ -1571,10 +1715,8 @@ impl LinkMLInstance {
                 })
             }
             other => {
-                let key_slot_name = range_cv
-                    .key_or_identifier_slot()
-                    .map(|s| s.name.as_str())
-                    .unwrap_or("");
+                let key_slot = range_cv.key_or_identifier_slot().cloned();
+                let key_slot_name = key_slot.as_ref().map(|s| s.name.as_str()).unwrap_or("");
                 let scalar_slot = Self::find_scalar_slot_for_inlined_map(&range_cv, key_slot_name)
                     .ok_or_else(|| {
                         LinkMLError::single(
@@ -1586,23 +1728,33 @@ impl LinkMLInstance {
                             ),
                         )
                     })?;
+                // The compact form states exactly two things: the dict key and
+                // one scalar. Both are named here, because either can be the
+                // class's *designator* and so name the entry's class.
+                //
                 // `find_scalar_slot_for_inlined_map` picks the first non-key
-                // scalar slot, which can be the class's *designator*: then
+                // scalar slot, which can be the designator: then
                 // `{"w1": "canon:FancyWidget"}` says "widget w1 is a
-                // FancyWidget", and the entry names its own class exactly as
-                // the object form's `{"typeURI": ...}` does. This arm otherwise
+                // FancyWidget", exactly as the object form's `{"typeURI": ...}`
+                // does. The dict key is the designator whenever the key slot
+                // and the designator slot are one — the asset360
+                // `PositioningSystemCoordinate` shape. This arm otherwise
                 // hardwires the slot's range class, so without selecting here
                 // canonicalisation would rewrite that designator to the *range*
                 // class's value and warn about data that was right — the
-                // misclassification spec rule 2 exists to prevent. Selection is
-                // scoped to this one shape: a compact entry whose scalar is an
-                // ordinary slot names no class and keeps the range class.
-                let entry_class = if scalar_slot.definition().designates_type.unwrap_or(false) {
-                    let mut named = serde_json::Map::new();
-                    named.insert(scalar_slot.name.clone(), other.clone());
-                    Self::select_class(&named, &range_cv, sv, conv)
-                } else {
-                    range_cv.clone()
+                // misclassification spec rule 2 exists to prevent. Selection
+                // stays scoped to that one question: a compact entry that names
+                // no designator at all names no class and keeps the range class.
+                let mut named = serde_json::Map::new();
+                named.insert(scalar_slot.name.clone(), other.clone());
+                if let Some(ks) = &key_slot {
+                    named.insert(ks.name.clone(), Self::dict_key_value(entry_key));
+                }
+                let entry_class = match range_cv.get_type_designator_slot() {
+                    Some(td) if named.contains_key(&td.name) => {
+                        Self::select_class(&named, &range_cv, sv, conv)
+                    }
+                    _ => range_cv.clone(),
                 };
                 let mut child_values = HashMap::new();
                 child_values.insert(
@@ -1615,6 +1767,21 @@ impl LinkMLInstance {
                         sv: sv.clone(),
                     },
                 );
+                // Rule 5: the compact form has no payload for the key slot at
+                // all, so the dict key is the only thing that can fill it —
+                // there is nothing here to diverge from.
+                if let Some(ks) = &key_slot {
+                    child_values.insert(
+                        ks.name.clone(),
+                        LinkMLInstance::Scalar {
+                            node_id: new_node_id(),
+                            value: Self::dict_key_value(entry_key),
+                            slot: ks.clone(),
+                            class: Some(entry_class.clone()),
+                            sv: sv.clone(),
+                        },
+                    );
+                }
                 run_object_constraints(
                     &entry_class,
                     &child_values,
