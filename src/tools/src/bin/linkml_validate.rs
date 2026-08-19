@@ -1,13 +1,13 @@
 use clap::Parser;
 use linkml_runtime::{
-    lint_instance_identity, load_json_file, load_yaml_file, ValidationResult, ValidationSeverity,
-    ValidationValue,
+    lint_instance_identity, load_json_file, load_yaml_file, ValidationResult, ValidationValue,
 };
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io::from_yaml;
 #[cfg(feature = "resolve")]
 use linkml_schemaview::resolve::resolve_schemas_from;
 use linkml_schemaview::schemaview::SchemaView;
+use linkml_tools::validation_utils::{format_path, identity_warnings_json, severity_label};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -56,15 +56,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         load_yaml_file(data_path, &sv, &class_view, &conv)?
     };
+    // Validity is decided by ERRORS, not by diagnostics. Until the spec
+    // addendum the loader could only produce errors, so `issues.is_empty()`
+    // and "no errors" were one predicate; rules 2 and 5 made the loader emit
+    // warnings, and the two parted company. A document whose only finding is a
+    // warning is valid: it exits 0, and the warning is reported rather than
+    // being dressed up as the reason for a failure.
+    let is_valid = !load_result.has_errors();
     let instance = load_result.instance;
     let validation_issues = load_result.validation_issues;
-    let is_valid = validation_issues.is_empty();
     // Opt-in instance-identity lint, deliberately skipped when the data does
     // not validate — the same stance `linkml-schema-validate` takes towards a
     // schema with errors. The lint asks how a list's elements are addressed,
     // and answering that over a tree whose loading already went wrong produces
     // answers about the damage rather than about the data. Reporting the
-    // validation issues first is also the only useful output in that case.
+    // validation errors first is also the only useful output in that case.
+    //
+    // The gate is errors alone: a warning says the document is unusual, not
+    // that it failed to load, and the lint's answers over it are exactly as
+    // sound as over a silent one.
     //
     // Warnings never change the exit code: it stays whatever validation made it.
     let identity_warnings = match (args.lint_identity, is_valid, &instance) {
@@ -85,49 +95,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else if is_valid {
         println!("valid");
+        // Non-error diagnostics, which a valid document may now carry. Marked
+        // with their severity, in front of the shape the error list below uses:
+        // the same line without the marker is what this binary prints for an
+        // error, and a warning must not be mistakable for one.
+        for issue in &validation_issues {
+            println!(
+                "{}: {:?} at {}: {}",
+                severity_label(&issue.severity),
+                issue.problem_type,
+                format_path(&issue.subject),
+                issue.detail
+            );
+        }
         for w in &identity_warnings {
             println!("warning[{}]: {}", w.subject.join("."), w.detail);
         }
         Ok(())
     } else {
+        // Deliberately unmarked, and deliberately including the non-error
+        // issues: this list is a published output shape of the binary, and
+        // re-spelling every line of it would move the output of every document
+        // that has ever failed to validate, to say something about the few that
+        // also carry a warning. The marker above is where the distinction is
+        // needed — there, an unmarked line would read as an error on a document
+        // that has none.
         for issue in &validation_issues {
-            let location = if issue.subject.is_empty() {
-                "<root>".to_string()
-            } else {
-                issue.subject.join(".")
-            };
-            println!("{:?} at {}: {}", issue.problem_type, location, issue.detail);
+            println!(
+                "{:?} at {}: {}",
+                issue.problem_type,
+                format_path(&issue.subject),
+                issue.detail
+            );
         }
         if args.lint_identity {
             println!("note: --lint-identity skipped: fix the validation errors above first");
         }
         std::process::exit(1);
     }
-}
-
-/// The identity warnings, in the shape `linkml-schema-validate` already emits
-/// them, so the two CLIs report one lint the same way.
-///
-/// Uses `ValidationProblemType::label()` rather than this binary's older
-/// `Debug` spelling for validation issues: the label is the shared
-/// machine-readable name (the Python binding reports the same one), and a
-/// variant rename cannot change it behind the CLI's back. The existing
-/// `issues` shape is left exactly as it was — its `Debug` spelling is a
-/// published contract of this binary.
-fn identity_warnings_json(warnings: &[ValidationResult]) -> serde_json::Value {
-    serde_json::Value::Array(
-        warnings
-            .iter()
-            .map(|w| {
-                json!({
-                    "type": w.problem_type.label(),
-                    "severity": severity_label(&w.severity),
-                    "subject": w.subject,
-                    "detail": w.detail,
-                })
-            })
-            .collect(),
-    )
 }
 
 fn emit_json(
@@ -178,18 +183,9 @@ fn emit_json(
             "issues": issues_json,
             "identity_warnings": serde_json::Value::Null,
             "identity_lint_skipped": true,
-            "identity_lint_skipped_reason": "data has validation issues; fix them and re-run",
+            "identity_lint_skipped_reason": "data has validation errors; fix them and re-run",
         })
     };
     println!("{}", serde_json::to_string_pretty(&output)?);
     Ok(())
-}
-
-fn severity_label(severity: &ValidationSeverity) -> &'static str {
-    match severity {
-        ValidationSeverity::Fatal => "fatal",
-        ValidationSeverity::Error => "error",
-        ValidationSeverity::Warning => "warning",
-        ValidationSeverity::Info => "info",
-    }
 }

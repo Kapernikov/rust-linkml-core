@@ -1,0 +1,53 @@
+id: https://w3id.org/linkml/examples/validate_warning_only
+name: validate_warning_only
+description: |-
+  Fixture for the `linkml-validate` warning/error contract (spec addendum
+  rules 5 and 6, and the exit-code fix that followed them).
+
+  Deliberately lives under `src/tools/tests/data` rather than
+  `src/runtime/tests/data`: the differential harness treats every file of the
+  runtime fixture directory as corpus, so a fixture added there to pin a CLI
+  contract would move harness output that has nothing to do with the change.
+
+  Two shapes, so one document can carry a load-time warning *and* a finding
+  from the opt-in instance lint at the same time:
+
+  * `Container.people` — an ordinary keyed class in inlined-dict form. A
+    payload key that contradicts the dict key is a load-time **warning**
+    (rule 5); the document is still valid.
+  * `Container.readings` — a list whose element class declares its identity
+    through `unique_keys`. Repeating a value there is what
+    `--lint-identity` reports.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  vwo: https://w3id.org/linkml/examples/validate_warning_only/
+  linkml: https://w3id.org/linkml/
+default_prefix: vwo
+default_range: string
+
+classes:
+  Container:
+    attributes:
+      people:
+        range: Person
+        multivalued: true
+        inlined: true
+      readings:
+        range: Reading
+        multivalued: true
+        inlined: true
+
+  Person:
+    attributes:
+      pid: {range: string, key: true, required: true}
+      name: {range: string}
+
+  Reading:
+    unique_keys:
+      main:
+        unique_key_slots: [code]
+    attributes:
+      code: {range: string}
+      value: {range: string}
