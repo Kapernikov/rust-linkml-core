@@ -62,13 +62,20 @@ value = load_no_errors(lr, lr.load_yaml, data_path, sv, cls)
 assert 'objects' in value.keys()
 assert value.navigate(['objects']) is not None
 
-# Navigate list index then nested keys to scalar
-name = value.navigate(['objects','2','has_medical_history','0','diagnosis','name'])
+# Navigate a list by element identity label, then nested keys to a scalar.
+# `objects` ranges on NamedThing, which declares an `id` identifier, so the
+# list is addressed by that label, never by position. `has_medical_history`
+# declares no identity and stays numeric.
+name = value.navigate(['objects','P:002','has_medical_history','0','diagnosis','name'])
 assert name is not None
 assert name.as_python() == 'headache'
 
 # Non-existent path -> None
-assert value.navigate(['objects','1000']) is None
+assert value.navigate(['objects','P:404']) is None
+
+# A numeric segment aimed at a label-addressed list resolves to nothing
+# rather than to that position: it never guesses an element.
+assert value.navigate(['objects','2']) is None
 "#
         );
     });

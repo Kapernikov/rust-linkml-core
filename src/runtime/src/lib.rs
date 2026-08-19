@@ -572,8 +572,9 @@ impl LinkMLInstance {
     /// the range class's `unique_keys`) for a list whose elements all carry
     /// unique labels, and a numeric index otherwise.
     ///
-    /// List segments resolve through the same rule [`crate::diff`] emits and
-    /// [`crate::patch`] applies, so a delta path is navigable by construction.
+    /// List segments resolve through the same rule [`diff()`](crate::diff())
+    /// emits and [`patch()`](crate::patch()) applies, so a delta path is
+    /// navigable by construction.
     /// In particular a numeric segment aimed at a label-addressed list resolves
     /// to nothing rather than to that position: when a label happens to be
     /// `"0"`, position and label name different elements, and guessing which

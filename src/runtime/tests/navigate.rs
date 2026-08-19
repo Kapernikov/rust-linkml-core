@@ -38,6 +38,10 @@ fn navigate_basic() {
             // `objects` is inlined as a list of NamedThing, which declares an
             // `id` identifier: it is addressed by that label, not by position.
             // `has_medical_history` declares no identity, so it stays numeric.
+            // Mirrors src/python/tests/python_navigate.rs one-to-one:
+            // `PyLinkMLInstance::navigate` delegates straight to this method,
+            // and that test's assertions live inside a `py_run!` string that
+            // cannot be executed where the python crate does not link.
             let inner = v.navigate_path([
                 "objects",
                 "P:002",
@@ -46,10 +50,17 @@ fn navigate_basic() {
                 "diagnosis",
                 "name",
             ]);
-            assert!(inner.is_some());
+            assert_eq!(
+                inner.map(|n| n.to_json()),
+                Some(serde_json::json!("headache"))
+            );
             assert!(
                 v.navigate_path(["objects", "2"]).is_none(),
                 "a numeric segment must not address a label-addressed list"
+            );
+            assert!(
+                v.navigate_path(["objects", "P:404"]).is_none(),
+                "a label matching no element resolves to nothing"
             );
         }
         _ => panic!("expected map at root"),
