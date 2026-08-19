@@ -60,6 +60,12 @@ pub(crate) fn scalar_slot_string(
 /// may well declare, and which the designator key used to shadow — else the
 /// list is positional. [`crate::lint_element_identity`] is the author-facing
 /// voice for the same shape; this is the engine agreeing with it.
+///
+/// This governs *labelling* — how an element is addressed among its siblings —
+/// and so is used by every resolve site (diff emission, `resolve_list_segment`
+/// for patch and navigate, the instance lint). It is deliberately **not** used
+/// by `diff`'s changed-key check, which asks a different question: see the
+/// comment at `treat_changed_identifier_as_new_object`.
 pub(crate) fn identity_key_slot(class: &ClassView) -> Option<&SlotView> {
     let slot = class.key_or_identifier_slot()?;
     if slot.definition().designates_type == Some(true) {
@@ -290,6 +296,14 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                 // If objects have an identifier or key slot and it changed, treat as whole-object replacement
                 // This applies for single-valued and list-valued inlined objects.
                 if opts.treat_changed_identifier_as_new_object {
+                    // Deliberately the metamodel's key, not [`identity_key_slot`]:
+                    // this asks "is this still the same thing?", not "how is it
+                    // labelled among its siblings". A changed key value means a
+                    // different element, and for a *designator* key a changed
+                    // value means a different class — which is a whole-element
+                    // replacement too (spec addendum rule 3). Routing this
+                    // through `identity_key_slot` would drop that replacement
+                    // and recurse field-by-field across two classes.
                     let key_slot_name = sc
                         .key_or_identifier_slot()
                         .or_else(|| tc.key_or_identifier_slot())

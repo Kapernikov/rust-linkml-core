@@ -199,8 +199,9 @@ fn type_designator_identity_detail(
          of the element: constant across a homogeneous list, and one value per \
          subtype across a polymorphic one. It is therefore never element \
          identity, and the diff engine ignores the key outright — the list is \
-         addressed by the element class's unique_keys if it declares any, \
-         positionally otherwise. Declare an identity that varies per element: a \
+         addressed by the element class's unique_keys if it declares any and \
+         those labels are unique within the list, positionally otherwise. \
+         Declare an identity that varies per element: a \
          discriminating key/identifier or unique_keys on '{range_class}', or \
          range the list on a bare element class that does not declare the \
          designator as its key — or use the dict form instead, if \

@@ -1,11 +1,13 @@
 id: https://w3id.org/linkml/examples/identity_type_designator_key
 name: identity_type_designator_key
 description: |-
-  Element identity derived from a key that is also the class's type designator.
-  In a homogeneous inlined list (a vertex ring) every element carries the same
-  designator value, so the declared key labels every element identically and the
-  diff engine falls back to positional addressing. The dict (mapping) form of
-  the same class is legitimate: it means at-most-one-element-per-subtype.
+  Element identity declared as a key that is also the class's type designator.
+  A designator's value describes the element's class, never the element, so it
+  is never element identity: the diff engine ignores such a key outright and
+  addresses the list by the element class's unique_keys when it declares any
+  (and their labels are unique within the list), positionally otherwise. The
+  dict (mapping) form of the same class is legitimate: it means
+  at-most-one-element-per-subtype.
 license: https://creativecommons.org/publicdomain/zero/1.0/
 imports:
   - linkml:types
@@ -18,14 +20,17 @@ default_range: string
 classes:
   Ring:
     attributes:
-      # a homogeneous vertex ring: every element's key is the same designator
-      # value, so the declared identity collapses the ring to one element
+      # a homogeneous vertex ring whose element class declares nothing but the
+      # designator key: the engine ignores that key, no identity is left, and
+      # the ring is addressed positionally (even at length one)
       vertices:
         range: Coordinate
         multivalued: true
         inlined_as_list: true
-      # the designator key outranks unique_keys, so this is flagged by the
-      # designator rule and NOT by the several-unique_keys rule
+      # the shadow case: the designator key used to outrank unique_keys and no
+      # longer does, so `by_code` (name-sorted first) is the real identity the
+      # engine matches on. Still flagged by the designator rule only — the
+      # sharpest diagnosis, and the sole voice for a designator-keyed slot
       markers:
         range: Marker
         multivalued: true
@@ -54,6 +59,9 @@ classes:
       # is declared on a base class and a subclass promotes it to the key with
       # `slot_usage`. The rule only sees this because `SlotView::definition()`
       # merges the is_a chain; without that it is a silent false negative.
+      # Also the polymorphic case: with `SpecialKeyedTypedThing` in the list the
+      # designator values differ per element, which is a fact about the classes
+      # present, not an element identity — positional too.
       inheritedVertices:
         range: KeyedTypedThing
         multivalued: true
