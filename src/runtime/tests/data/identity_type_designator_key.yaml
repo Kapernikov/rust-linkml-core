@@ -107,6 +107,11 @@ classes:
       typeURI:
         key: true
 
+  # a second concrete subtype, so a list ranged on `KeyedTypedThing` can be
+  # polymorphic: one element per subtype, each carrying its own designator value
+  SpecialKeyedTypedThing:
+    is_a: KeyedTypedThing
+
   Point:
     attributes:
       pointId: {range: string, key: true}

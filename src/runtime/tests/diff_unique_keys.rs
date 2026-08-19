@@ -457,3 +457,162 @@ fn duplicated_source_to_keyed_target_stays_positional_and_round_trips() {
         patched.to_json()
     );
 }
+
+// ---------------------------------------------------------------------------
+// D3 — a type designator is never an element identity (spec addendum rule 1).
+//
+// A designator's value is a function of the element's class, so it cannot tell
+// two elements of one class apart. The engine skips a designator key entirely:
+// identity falls through to `unique_keys`, else the list is positional.
+
+struct DesignatorFixture {
+    sv: SchemaView,
+    conv: Converter,
+    ring: ClassView,
+}
+
+fn designator_fixture() -> DesignatorFixture {
+    let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    p.push("tests/data/identity_type_designator_key.yaml");
+    let schema = from_yaml(&p).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let ring = sv
+        .get_class(&Identifier::new("Ring"), &conv)
+        .unwrap()
+        .expect("class not found");
+    DesignatorFixture { sv, conv, ring }
+}
+
+impl DesignatorFixture {
+    fn load(&self, v: JsonValue) -> LinkMLInstance {
+        load_json_str(&v.to_string(), &self.sv, &self.ring, &self.conv)
+            .unwrap()
+            .into_instance()
+            .unwrap()
+    }
+
+    fn diff2(&self, before: JsonValue, after: JsonValue) -> Vec<Delta> {
+        diff(
+            &self.load(before),
+            &self.load(after),
+            DiffOptions::new(true),
+        )
+    }
+}
+
+fn m1() -> JsonValue {
+    json!({"code": "M1", "label": "one"})
+}
+fn m2() -> JsonValue {
+    json!({"code": "M2", "label": "two"})
+}
+
+#[test]
+fn designator_key_does_not_shadow_unique_keys() {
+    // `Marker` declares BOTH a designator key (`typeURI`) and `unique_keys`.
+    // The designator labels every marker alike; the real identity is `by_code`
+    // (the name-sorted first entry). Reordering the list must be a no-op.
+    let f = designator_fixture();
+    let deltas = f.diff2(
+        json!({"markers": [m1(), m2()]}),
+        json!({"markers": [m2(), m1()]}),
+    );
+    assert!(
+        deltas.is_empty(),
+        "a reorder of unique_keys-identified markers is not a change: {deltas:#?}"
+    );
+}
+
+#[test]
+fn designator_key_shadow_field_edit_is_addressed_by_the_unique_key_label() {
+    let f = designator_fixture();
+    let mut edited = m2();
+    edited["label"] = json!("TWO");
+    let before = json!({"markers": [m1(), m2()]});
+    let after = json!({"markers": [m1(), edited]});
+    let deltas = f.diff2(before.clone(), after.clone());
+    let delta = only(&deltas);
+    assert_eq!(
+        delta.path,
+        vec!["markers".to_string(), "M2".to_string(), "label".to_string()],
+        "the unique_keys label addresses the edit, not the constant designator"
+    );
+    assert_eq!(delta.op, DeltaOp::Update);
+
+    // diff ↔ patch ↔ navigate stay symmetric: the emitted label resolves
+    // through `resolve_list_segment` for both consumers.
+    let loaded = f.load(before);
+    assert!(
+        loaded
+            .navigate_path(["markers", "M2", "label"])
+            .is_some_and(|v| v.to_json() == json!("two")),
+        "navigate must resolve the label diff emitted"
+    );
+    let (patched, trace) = patch(&loaded, &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(after), true),
+        "patch(a, diff(a,b)) must equal b: {}",
+        patched.to_json()
+    );
+}
+
+#[test]
+fn designator_keyed_class_without_unique_keys_is_positional() {
+    // `Coordinate` is keyed by its designator and declares no `unique_keys`, so
+    // it has no element identity at all: even a one-element list — where the
+    // constant designator would pass the uniqueness guard — is positional.
+    let f = designator_fixture();
+    let before = json!({"vertices": [{"x": 1.0, "y": 2.0}]});
+    let after = json!({"vertices": [{"x": 1.0, "y": 9.0}]});
+    let deltas = f.diff2(before.clone(), after.clone());
+    let delta = only(&deltas);
+    assert_eq!(
+        delta.path,
+        vec!["vertices".to_string(), "0".to_string(), "y".to_string()],
+        "a designator key yields no label, so the list is addressed by index"
+    );
+
+    let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(after), true),
+        "{}",
+        patched.to_json()
+    );
+}
+
+#[test]
+fn polymorphic_designator_keyed_list_is_positional() {
+    // One element per subtype: the designator values differ, so they used to
+    // pass as a per-element identity ("at most one element per subtype").
+    // A designator still describes the class, never the element — positional.
+    let f = designator_fixture();
+    let base = json!({"typeURI": "identity:KeyedTypedThing", "label": "base"});
+    let special = json!({"typeURI": "identity:SpecialKeyedTypedThing", "label": "special"});
+    let mut edited = base.clone();
+    edited["label"] = json!("BASE");
+    let before = json!({"inheritedVertices": [base, special.clone()]});
+    let after = json!({"inheritedVertices": [edited, special]});
+    let deltas = f.diff2(before.clone(), after.clone());
+    let delta = only(&deltas);
+    assert_eq!(
+        delta.path,
+        vec![
+            "inheritedVertices".to_string(),
+            "0".to_string(),
+            "label".to_string()
+        ],
+        "a polymorphic designator-keyed list is addressed by index too"
+    );
+
+    let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(after), true),
+        "{}",
+        patched.to_json()
+    );
+}

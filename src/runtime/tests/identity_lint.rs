@@ -265,6 +265,41 @@ fn schema_lint_flags_a_list_whose_identity_is_the_type_designator() {
 }
 
 #[test]
+fn schema_lint_fires_once_per_designator_keyed_slot_and_names_the_designator() {
+    // The engine no longer accepts a designator as element identity (spec
+    // addendum rule 1), so a designator-keyed class declaring no `unique_keys`
+    // is *also* the shape the identity-less rule looks for, and one whose real
+    // `unique_keys` were shadowed is the shape the several-unique_keys rule
+    // looks for. The designator rule is the sharper diagnosis of both and
+    // stays their only voice: exactly one warning per slot, naming the
+    // designator that cannot discriminate.
+    let sv = schema_view("identity_type_designator_key.yaml");
+    let warnings = lint_element_identity(&sv);
+    for (slot, why) in [
+        ("vertices", "a designator-keyed class with no unique_keys"),
+        (
+            "markers",
+            "a designator-keyed class whose unique_keys it shadowed",
+        ),
+    ] {
+        let fired: Vec<_> = warnings
+            .iter()
+            .filter(|w| w.subject == vec!["Ring".to_string(), slot.to_string()])
+            .collect();
+        assert_eq!(
+            fired.len(),
+            1,
+            "{why} must produce exactly one warning for '{slot}': {warnings:#?}"
+        );
+        assert!(
+            fired[0].detail.contains("designates_type") && fired[0].detail.contains("typeURI"),
+            "the designator rule must be the voice for '{slot}': {}",
+            fired[0].detail
+        );
+    }
+}
+
+#[test]
 fn schema_lint_leaves_designator_dicts_and_ordinary_keys_alone() {
     // Guard rails for the designator rule: the dict form keyed by the designator
     // means at-most-one-element-per-subtype and is legitimate; an ordinary key

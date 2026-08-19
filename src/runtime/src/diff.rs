@@ -50,10 +50,28 @@ pub(crate) fn scalar_slot_string(
     None
 }
 
+/// The class's key/identifier slot, when it can identify an *element*.
+///
+/// A key (or identifier) that is also the class's type designator is skipped: a
+/// designator's value is a function of the element's *class*, not of the
+/// element, so it is constant across any homogeneous list by construction and
+/// says "one element per subtype" across a polymorphic one. Neither is element
+/// identity. Identity then falls through to `unique_keys` — which such a class
+/// may well declare, and which the designator key used to shadow — else the
+/// list is positional. [`crate::lint_element_identity`] is the author-facing
+/// voice for the same shape; this is the engine agreeing with it.
+pub(crate) fn identity_key_slot(class: &ClassView) -> Option<&SlotView> {
+    let slot = class.key_or_identifier_slot()?;
+    if slot.definition().designates_type == Some(true) {
+        return None;
+    }
+    Some(slot)
+}
+
 /// The key/identifier value identifying `v` among its list siblings, if any.
 pub(crate) fn element_key_label(v: &LinkMLInstance) -> Option<String> {
     if let LinkMLInstance::Object { values, class, .. } = v {
-        let id_slot = class.key_or_identifier_slot()?;
+        let id_slot = identity_key_slot(class)?;
         return scalar_slot_string(values, &id_slot.name);
     }
     None
@@ -88,7 +106,8 @@ pub(crate) fn element_unique_key_label(v: &LinkMLInstance) -> Option<String> {
 }
 
 /// Identity for keyed list matching: a key/identifier slot outranks a
-/// `unique_keys` claim.
+/// `unique_keys` claim — unless that key is the class's type designator, which
+/// is never element identity (see [`identity_key_slot`]).
 pub(crate) fn element_identity_label(v: &LinkMLInstance) -> Option<String> {
     element_key_label(v).or_else(|| element_unique_key_label(v))
 }
@@ -135,7 +154,9 @@ pub enum DeltaOp {
 /// by identity — the element's identity label: its identifier/key slot value, or
 /// failing that a value derived from the range class's `unique_keys`. Lists whose
 /// elements do not all carry a *unique* identity label are addressed by numeric
-/// index instead.
+/// index instead. A key/identifier that is the class's type designator does not
+/// count: it labels the class, not the element, so identity falls through to
+/// `unique_keys` or to the index (see [`identity_key_slot`]).
 ///
 /// For a `unique_keys`-derived segment, a single-slot key contributes the bare
 /// value of that slot, while a composite key contributes the JSON array encoding
