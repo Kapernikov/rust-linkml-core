@@ -26,6 +26,28 @@ fn schema_view(file: &str) -> SchemaView {
     sv
 }
 
+/// Loads `data` as an instance of `class` against a schema from `tests/data`.
+///
+/// The shared [`Fixture`] is pinned to `identity.yaml`'s `Service`; the rules
+/// below each get their own schema, so they need the same service generically.
+fn load_into(file: &str, class: &str, data: JsonValue) -> LinkMLInstance {
+    let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    p.push("tests/data");
+    p.push(file);
+    let schema = from_yaml(&p).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schema(&schema);
+    let cv = sv
+        .get_class(&Identifier::new(class), &conv)
+        .unwrap()
+        .expect("class not found");
+    load_json_str(&data.to_string(), &sv, &cv, &conv)
+        .unwrap()
+        .into_instance()
+        .unwrap()
+}
+
 fn fixture() -> Fixture {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.push("tests/data/identity.yaml");
@@ -207,9 +229,12 @@ fn schema_lint_warning_order_is_deterministic() {
 #[test]
 fn schema_lint_flags_a_list_whose_identity_is_the_type_designator() {
     // A key that is also the type designator is constant across a homogeneous
-    // list: every vertex of a ring carries the same value, so keyed matching
-    // would collapse an N-vertex ring to one element. The class "has a key", so
-    // the identity-less rule passes it — this rule is what sees it.
+    // list — every vertex of a ring carries the same value — and one value per
+    // subtype across a polymorphic one. Neither is element identity, so the
+    // engine looks past such a key entirely (spec addendum rule 1) and the list
+    // falls back to the class's unique_keys, or to positional addressing. This
+    // rule is the author-facing voice for exactly that shape, and the only one:
+    // it is asked first and the other unique_keys rules never see the slot.
     let sv = schema_view("identity_type_designator_key.yaml");
     let warnings = lint_element_identity(&sv);
     let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
@@ -220,8 +245,10 @@ fn schema_lint_flags_a_list_whose_identity_is_the_type_designator() {
             // the subclass promotes it to the key with `slot_usage`, so the
             // rule sees it only through `SlotView::definition()`'s chain merge
             vec!["Ring".to_string(), "inheritedVertices".to_string()],
-            // the designator key outranks `unique_keys`, so `markers` is flagged
-            // by this rule, once, and not by the several-unique_keys rule
+            // `Marker` declares two `unique_keys` the designator key used to
+            // shadow and no longer does, so the several-entries rule matches it
+            // too; the designator rule is asked first and is its sole voice, so
+            // `markers` is flagged once, by this rule
             vec!["Ring".to_string(), "markers".to_string()],
             vec!["Ring".to_string(), "vertices".to_string()],
         ],
@@ -446,4 +473,245 @@ fn schema_lint_leaves_single_entry_and_keyed_classes_alone() {
             "{silent} must stay silent, got {flagged:?}"
         );
     }
+}
+
+#[test]
+fn data_lint_flags_a_list_addressed_positionally_despite_a_declared_identity() {
+    // The element class declares an identity, but the data leaves the slot it
+    // names empty: the element yields no label, the list stops being
+    // keyed-shaped, and every delta addressing it goes back to being positional
+    // — silently, because nothing here is invalid. A `key` that is not
+    // `required` may legitimately be absent, so only the data can show it.
+    let inst = load_into(
+        "identity_missing_labels.yaml",
+        "Registry",
+        json!({
+            "name": "reg",
+            // all elements unlabelled: the absent-optional-key case
+            "entries": [{"note": "a"}, {"note": "b"}],
+            // half-labelled: one element carries the unique_keys slot, one does not
+            "records": [{"serial": "S1"}, {"note": "b"}],
+            // D9: the designator override left the key with nothing to fill it
+            "unfillable": [{"note": "a"}, {"note": "b"}],
+        }),
+    );
+    let warnings = lint_instance_identity(&inst);
+    let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+    assert_eq!(
+        subjects,
+        vec![
+            vec!["entries".to_string()],
+            vec!["records".to_string()],
+            vec!["unfillable".to_string()],
+        ],
+        "one warning per container, at the container's path: {warnings:#?}"
+    );
+    for w in &warnings {
+        assert_eq!(
+            w.problem_type,
+            ValidationProblemType::AmbiguousElementIdentity
+        );
+        assert!(!w.severity.is_error(), "the linter warns, never errors");
+        assert!(
+            w.detail.contains("positional"),
+            "the warning must say what the engine falls back to: {}",
+            w.detail
+        );
+    }
+    let detail = |slot: &str| {
+        warnings
+            .iter()
+            .find(|w| w.subject[0] == slot)
+            .map(|w| w.detail.clone())
+            .unwrap_or_default()
+    };
+    assert!(
+        detail("entries").contains("2 of 2") && detail("entries").contains("'OptKey'"),
+        "the warning must count the unlabelled elements and name the class \
+         whose identity is unfilled: {}",
+        detail("entries")
+    );
+    assert!(
+        detail("records").contains("1 of 2"),
+        "a half-labelled list is the same defect, and its count says so: {}",
+        detail("records")
+    );
+}
+
+#[test]
+fn data_lint_positional_despite_identity_only_speaks_for_inlined_addressable_lists() {
+    // Guard rails, each for a different reason.
+    //
+    // A class that declares no identity is *meant* to be positional: the schema
+    // lint already speaks for it, and repeating that once per container in the
+    // data would drown the rule that matters. Scalars have no element class at
+    // all. `opaque` and `ignore` answer the addressing question themselves, so
+    // "this list is addressed positionally" is not true of them — the duplicate
+    // rule ignores both annotations because a repeated identity contradicts the
+    // class's own constraint, which is a different claim.
+    //
+    // The reference list is the one that matters in practice: its elements are
+    // identifier strings, which can never carry an inlined element's identity
+    // label, so without this guard the rule fires on every reference list ranged
+    // on a keyed class. asset360's `NetElement.ports` is that shape, and it is
+    // the ONLY list in the downstream corpus the unguarded rule fired on.
+    let inst = load_into(
+        "identity_missing_labels.yaml",
+        "Registry",
+        json!({
+            "name": "reg",
+            "vertices": [{"x": 1.0, "y": 2.0}, {"x": 1.0, "y": 2.0}],
+            "tags": ["a", "b"],
+            "archivedEntries": [{"note": "a"}],
+            "draftEntries": [{"note": "a"}],
+            "references": ["urn:a", "urn:b"],
+        }),
+    );
+    let warnings = lint_instance_identity(&inst);
+    assert!(warnings.is_empty(), "{warnings:#?}");
+}
+
+#[test]
+fn data_lint_positional_despite_identity_is_silent_on_fully_labelled_lists() {
+    // The rule must not fire on the lists it was written to leave alone: every
+    // element labelled is exactly the keyed shape.
+    let inst = load_into(
+        "identity_missing_labels.yaml",
+        "Registry",
+        json!({
+            "name": "reg",
+            "entries": [{"code": "a"}, {"code": "b"}],
+            "records": [{"serial": "S1"}, {"serial": "S2"}],
+            // an empty list has no unlabelled element to complain about
+            "unfillable": [],
+        }),
+    );
+    let warnings = lint_instance_identity(&inst);
+    assert!(warnings.is_empty(), "{warnings:#?}");
+}
+
+#[test]
+fn schema_lint_counts_unique_keys_entries_across_the_range_class_descendants() {
+    // A list ranged on a class holds elements of every class descending from it,
+    // and each element is labelled by its OWN merged `unique_keys`. Inspecting
+    // only the range class misses a descendant's entry entirely: `Box` alone
+    // declares one entry and looks unambiguous, while `BigBox` adds a second
+    // that any element of the list may be labelled by.
+    let sv = schema_view("identity_descendant_unique_keys.yaml");
+    let warnings = lint_element_identity(&sv);
+    let boxes: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.subject == vec!["Depot".to_string(), "boxes".to_string()])
+        .collect();
+    assert_eq!(
+        boxes.len(),
+        1,
+        "a later-sorting descendant entry widens the candidate set without \
+         splitting the label space: one warning: {warnings:#?}"
+    );
+    assert!(
+        boxes[0].detail.contains("'by_id'") && boxes[0].detail.contains("'zz_by_volume'"),
+        "the warning must name every candidate, wherever it is declared: {}",
+        boxes[0].detail
+    );
+    // guard rails: a descendant declaring nothing, and one whose key outranks
+    // its entries, leave the range class as unambiguous as it was
+    let flagged: Vec<String> = warnings.iter().map(|w| w.subject[1].clone()).collect();
+    for silent in ["crates", "keyed"] {
+        assert!(
+            !flagged.contains(&silent.to_string()),
+            "{silent} must stay silent, got {warnings:#?}"
+        );
+    }
+}
+
+#[test]
+fn schema_lint_flags_descendants_that_resolve_different_load_bearing_entries() {
+    // The split label space: `Gadget` elements are labelled by `gadget_identity`
+    // and `Widget` elements by the earlier-sorting `aaa_widget_identity` it
+    // adds. One list, two label spaces — navigating by a base label misses a
+    // Widget, and a Widget serial colliding with a Gadget code violates neither
+    // class's constraint. This is an ADDITIONAL warning: the several-entries
+    // rule still fires, because the candidate set is ambiguous too.
+    let sv = schema_view("identity_descendant_unique_keys.yaml");
+    let warnings = lint_element_identity(&sv);
+    let gadgets: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.subject == vec!["Depot".to_string(), "gadgets".to_string()])
+        .collect();
+    assert_eq!(
+        gadgets.len(),
+        2,
+        "the split gets its own warning on top of the several-entries one: \
+         {warnings:#?}"
+    );
+    let split = gadgets
+        .iter()
+        .find(|w| w.detail.contains("Widget"))
+        .expect("one of the two must name the diverging descendant");
+    assert_eq!(
+        split.problem_type,
+        ValidationProblemType::AmbiguousElementIdentity
+    );
+    assert!(!split.severity.is_error(), "the linter warns, never errors");
+    for needle in [
+        "'Gadget'",
+        "'gadget_identity'",
+        "'Widget'",
+        "'aaa_widget_identity'",
+    ] {
+        assert!(
+            split.detail.contains(needle),
+            "the warning must name each diverging class and the entry it \
+             resolves to; missing {needle}: {}",
+            split.detail
+        );
+    }
+    // `boxes` agrees on `by_id` throughout, so it must NOT get this warning
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|w| w.subject[1] == "boxes")
+            .filter(|w| w.detail.contains("zz_by_volume") && w.detail.contains("'BigBox'"))
+            .count(),
+        0,
+        "a widened candidate set is not a split label space: {warnings:#?}"
+    );
+}
+
+#[test]
+fn schema_lint_flags_a_shared_class_uri_within_a_designator_hierarchy() {
+    // Two classes of one hierarchy answering to one `class_uri`, in a hierarchy
+    // whose designator is dispatched by exactly that URI: the loader picks one
+    // of them, stably but by an ordering the schema never states.
+    let sv = schema_view("identity_shared_uri_designator.yaml");
+    let warnings = lint_element_identity(&sv);
+    let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+    assert_eq!(
+        subjects,
+        vec![vec!["Alpha".to_string(), "Beta".to_string()]],
+        "the sharing classes are the subject, and the controls stay silent: \
+         {warnings:#?}"
+    );
+    let w = &warnings[0];
+    assert_eq!(
+        w.problem_type,
+        ValidationProblemType::AmbiguousElementIdentity
+    );
+    assert!(!w.severity.is_error(), "the linter warns, never errors");
+    assert!(
+        w.detail.contains("Alpha") && w.detail.contains("Beta"),
+        "the warning must name both classes: {}",
+        w.detail
+    );
+    assert!(
+        w.detail.contains("designates_type") && w.detail.contains("class_uri"),
+        "the warning must name both halves of the condition: {}",
+        w.detail
+    );
+    assert!(
+        w.detail.contains("typeURI"),
+        "the warning must name the designator the URI is dispatched by: {}",
+        w.detail
+    );
 }

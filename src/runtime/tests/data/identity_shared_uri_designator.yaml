@@ -1,0 +1,77 @@
+id: https://w3id.org/linkml/examples/identity_shared_uri_designator
+name: identity_shared_uri_designator
+description: |-
+  Two classes of one `is_a` hierarchy declaring the SAME `class_uri`, while the
+  hierarchy carries a type designator (spike D8).
+
+  The designator's value is what the loader dispatches on, and it is looked up
+  by class URI. When two classes of one hierarchy answer to the same URI, the
+  loader picks one of them — stably, but by an ordering nothing in the schema
+  states and nothing promises to keep. Every instance carrying that designator
+  value loads as the winner, whatever the author meant; a diff then pairs two
+  elements that "are" different classes but compare equal by URI.
+
+  The loader behaviour is deliberately left alone here: this is a warning, so
+  the author learns that the two declarations are not distinguishable at load
+  time and can rename one.
+
+  The controls are the two halves of the condition, each removed in turn:
+  `PlainA`/`PlainB` share a URI in a hierarchy with no designator (nothing
+  dispatches on the URI, so nothing is arbitrary), and `LoneA`/`LoneB` carry
+  designators and share a URI but belong to two unrelated hierarchies (no
+  single designated slot ever has to choose between them).
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  shared: https://w3id.org/linkml/examples/identity_shared_uri_designator/
+  linkml: https://w3id.org/linkml/
+default_prefix: shared
+default_range: string
+
+classes:
+  Container:
+    attributes:
+      things:
+        range: TypedThing
+        multivalued: true
+        inlined_as_list: true
+
+  TypedThing:
+    attributes:
+      typeURI: {range: uriorcurie, designates_type: true}
+      thingId: {range: string, key: true}
+
+  Alpha:
+    is_a: TypedThing
+    class_uri: shared:Same
+
+  Beta:
+    is_a: TypedThing
+    class_uri: shared:Same
+
+  # control: same-URI siblings, no designator anywhere in the hierarchy
+  Plain:
+    attributes:
+      plainId: {range: string, key: true}
+
+  PlainA:
+    is_a: Plain
+    class_uri: shared:PlainSame
+
+  PlainB:
+    is_a: Plain
+    class_uri: shared:PlainSame
+
+  # control: designators and a shared URI, but two unrelated hierarchies
+  LoneA:
+    class_uri: shared:LoneSame
+    attributes:
+      typeURI: {range: uriorcurie, designates_type: true}
+      loneId: {range: string, key: true}
+
+  LoneB:
+    class_uri: shared:LoneSame
+    attributes:
+      typeURI: {range: uriorcurie, designates_type: true}
+      loneId: {range: string, key: true}

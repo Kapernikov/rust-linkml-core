@@ -23,25 +23,87 @@
 //! removing the slot from diff's scope; `opaque` silences it by answering the
 //! question with "nowhere — replace the value as a whole".
 //!
-//! A second, narrower question is asked of slots that pass: **which** of the
-//! range class's `unique_keys` provides the identity? Only the name-sorted
-//! first entry does (declaration order is not preserved by the metamodel), so a
-//! class declaring several has an alphabetically-decided identity and adding an
-//! earlier-sorting entry silently re-addresses every delta path for every slot
-//! ranged on it. That is warned about too, naming the load-bearing entry.
+//! # The rules
 //!
-//! A third rule catches a declared identity that cannot discriminate: a list
-//! whose element class is keyed by its own type designator, whose value
-//! describes the class rather than the element (the dict form of the same
-//! class, meaning at-most-one-per-subtype, is left alone). The engine ignores
-//! such a key entirely, so the slot also matches the first rule's shape (no
-//! other identity is declared) or the second's (the `unique_keys` the key used
-//! to shadow); this rule is the sharpest diagnosis and is asked first, so a
-//! designator-keyed slot yields exactly one warning — this one.
+//! [`lint_element_identity`] asks four questions of a schema, and
+//! [`lint_instance_identity`] two of a loaded instance. All six warn; none
+//! errors, and none changes what the engine does.
 //!
-//! Warnings are reported at the class that **introduces** the slot: a flagged
-//! slot inherited unchanged by a descendant is not repeated there, since the
-//! declaration the author would edit lives on the ancestor.
+//! ## Schema rules
+//!
+//! 1. **No declared identity.** A multivalued inlined list whose element class
+//!    declares no key/identifier and no `unique_keys` (or whose range is not a
+//!    class at all). Its deltas are positional, and positional deltas are
+//!    ambiguous when several sources produce deltas for one object
+//!    concurrently. This is the rule the four options above answer.
+//! 2. **The identity is the type designator.** The element class's key (or
+//!    identifier) is its own `designates_type` slot, whose value describes the
+//!    class and not the element: constant across a homogeneous list, one value
+//!    per subtype across a polymorphic one. The engine ignores such a key
+//!    outright (spec addendum rule 1), so the slot also matches rule 1's shape
+//!    (nothing else is declared) or rule 3's (the `unique_keys` the key used to
+//!    shadow). This is the sharpest diagnosis and is asked first, so a
+//!    designator-keyed slot yields exactly one warning — this one. The dict
+//!    form of the same class is left alone: a mapping keyed by the designator
+//!    legitimately says at-most-one-element-per-subtype.
+//! 3. **Several `unique_keys` to choose from.** Which of them provides the
+//!    identity? Only the name-sorted first does (declaration order is not
+//!    preserved by the metamodel), so a class offering several has an
+//!    alphabetically-decided identity, and adding an earlier-sorting entry
+//!    silently re-addresses every delta path for every slot ranged on it. The
+//!    candidates are counted across the range class **and every class
+//!    descending from it**, since a list ranged on a class holds elements of
+//!    all of them.
+//! 4. **A split label space.** Those same classes resolve *different*
+//!    load-bearing entries: `Gadget` elements labelled by one entry and
+//!    `Widget is_a Gadget` elements by another, in one list. A path written
+//!    against one label space cannot address an element of the other, and two
+//!    elements resolving different entries can carry the same label without
+//!    violating either class's uniqueness constraint. Reported in addition to
+//!    rule 3, which such a family always also matches.
+//! 5. **A shared `class_uri` under a designator.** Two classes of one `is_a`
+//!    hierarchy declare the same `class_uri` while the hierarchy designates its
+//!    type. A designator value is a class URI, so it names both classes at
+//!    once and the loader resolves it to one of them — stably, but by an
+//!    ordering the schema does not state. Warning only: the loader's choice is
+//!    deliberately unchanged.
+//!
+//! Slot warnings are reported at the class that **introduces** the slot: a
+//! flagged slot inherited unchanged by a descendant is not repeated there,
+//! since the declaration the author would edit lives on the ancestor. Each rule
+//! gates on its own predicate, so a subclass whose `slot_usage` changes one
+//! rule's answer is judged on its own merits for that rule. Rule 5 is
+//! class-level and has no slot to attribute, so it is emitted once per
+//! (hierarchy, shared URI) instead.
+//!
+//! ## Instance rules
+//!
+//! 6. **Repeated identity.** Two elements of one list carry the same identity
+//!    label: a delta addressing it cannot say which is meant.
+//! 7. **Positional despite a declared identity.** Some element of an inlined
+//!    list yields no label — the element class declares an identity, and the
+//!    data leaves the slot it names empty — so the list is not keyed-shaped and
+//!    is addressed positionally after all. Nothing here is invalid (a `key`
+//!    that is not `required` may legitimately be absent), so no schema rule and
+//!    no validation can see it; only the data can.
+//!
+//! Rule 6 does not consult `diff.linkml.io/opaque` or `ignore`: a repeated
+//! identity contradicts the element class's own constraint, which is
+//! class-level truth that diff vocabulary on the slot cannot suppress. Rule 7
+//! does honour both, and skips reference lists, because it claims only that the
+//! list is addressed positionally — a claim those slots make false rather than
+//! excused.
+//!
+//! # Sharp edge, deliberately not its own rule
+//!
+//! A subclass may switch the designator off with
+//! `slot_usage: { theSlot: { designates_type: false } }` while the slot stays
+//! (or becomes) the class's `key`. The override is respected, so the designator
+//! machinery stops filling the slot — and nothing else fills it either. The
+//! class then declares a key that no element ever carries a value for, which is
+//! not a schema defect the schema can be read for: the declaration is
+//! well-formed, and only the data shows that the key is always empty. It
+//! collapses into instance rule 7, which is where it is reported.
 
 use crate::diff::{
     element_identity_label, identity_key_slot, slot_is_ignored, slot_is_opaque, OPAQUE_ANNOTATION,
@@ -50,7 +112,23 @@ use crate::{LinkMLInstance, ValidationProblemType, ValidationResult, ValidationR
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
 use linkml_schemaview::slotview::SlotView;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+/// The shape every schema rule below is asked of: an inlined list whose
+/// per-element delta paths are diff's to address, and which therefore has to
+/// answer "where does element identity come from?".
+///
+/// A dict is addressed by its keys, a reference list by the referents' own
+/// identifiers, an `opaque` slot by nothing (the value is replaced whole) and
+/// an `ignore`d slot not at all. None of them can be mis-addressed by a
+/// mis-declared element identity, so none of them is any rule's business.
+fn slot_addresses_elements_by_position_or_label(slot: &SlotView) -> bool {
+    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
+    slot.determine_slot_container_mode() == SlotContainerMode::List
+        && slot.determine_slot_inline_mode() != SlotInlineMode::Reference
+        && !slot_is_opaque(slot)
+        && !slot_is_ignored(slot)
+}
 
 /// Whether this is a multivalued inlined slot whose element identity comes from
 /// nowhere — the engine's answer, from which the reporting loop subtracts the
@@ -60,18 +138,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 /// of an inherited slot on its parent class, to decide which class introduced
 /// the problem.
 fn slot_lacks_element_identity(slot: &SlotView) -> bool {
-    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
-    if slot.determine_slot_container_mode() != SlotContainerMode::List {
+    if !slot_addresses_elements_by_position_or_label(slot) {
         return false;
-    }
-    if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
-        return false; // elements are references, not inlined
-    }
-    if slot_is_opaque(slot) {
-        return false; // identity declared: nowhere, replace the value as a whole
-    }
-    if slot_is_ignored(slot) {
-        return false; // outside diff's scope entirely: no deltas, no identity
     }
     if let Some(rc) = slot.get_range_class() {
         // The engine's notion of a key, not the metamodel's: a key that is the
@@ -99,41 +167,130 @@ fn identity_unique_key_names(rc: &ClassView) -> Vec<String> {
         .collect()
 }
 
-/// Whether this slot's element identity is *ambiguous* rather than absent: its
-/// range class offers several `unique_keys` entries to derive it from, and only
-/// the name-sorted first is load-bearing.
+/// The classes whose `unique_keys` can label an element of a list ranged on
+/// `rc`: `rc` itself, and every class descending from it.
 ///
-/// Returns the range class name and the candidate entry names (sorted, so the
-/// load-bearing one is first). This flags slots the identity-less rule passes:
-/// the identity exists, but which of the declarations provides it was decided
-/// alphabetically rather than by the author.
+/// A list ranged on a class holds elements of every class descending from it,
+/// and each element is labelled by its **own** merged `unique_keys` — so both
+/// `unique_keys` rules below are questions about the whole family, not about
+/// the one declaration the slot's range happens to name (spike D4d).
 ///
-/// A class with a `key`/`identifier` slot is not ambiguous however many
-/// `unique_keys` it declares: the key outranks them all, so none of them is
-/// load-bearing and adding one changes nothing. A key that is the class's type
-/// designator outranks nothing — the engine looks past it — so such a class is
-/// judged on its `unique_keys` like any other; the designator rule speaks for
-/// it first regardless, since that is the defect worth reporting.
-fn slot_has_ambiguous_unique_keys(slot: &SlotView) -> Option<(String, Vec<String>)> {
-    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
-    if slot.determine_slot_container_mode() != SlotContainerMode::List {
-        return None;
+/// Mixin users are excluded (`include_mixins: false`): applying a mixin does
+/// not make a class an instance of it, so it cannot put that class into a list
+/// ranged on the mixin.
+///
+/// A failure to resolve the descendants degrades to "no descendants" rather
+/// than to a panic or a swallowed rule: the family always contains `rc`, so the
+/// rules keep the pre-D4d answer instead of disappearing.
+fn identity_class_family(rc: &ClassView) -> Vec<ClassView> {
+    let mut family = vec![rc.clone()];
+    if let Ok(descendants) = rc.get_descendants(true, false) {
+        family.extend(descendants);
     }
-    if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
-        return None; // elements are references, not inlined
-    }
-    if slot_is_opaque(slot) || slot_is_ignored(slot) {
-        return None; // no per-element delta paths to re-address
-    }
-    let rc = slot.get_range_class()?;
-    if identity_key_slot(&rc).is_some() {
+    family
+}
+
+/// The `unique_keys` entry this class's elements are actually labelled by:
+/// the name-sorted first entry that names any slots, mirroring
+/// `crate::diff::element_unique_key_label`.
+///
+/// `None` when the class's identity does not come from `unique_keys` at all —
+/// either it has a (non-designator) key/identifier, which outranks every entry,
+/// or it declares no usable entry and its elements go unlabelled.
+fn load_bearing_unique_key(rc: &ClassView) -> Option<String> {
+    if identity_key_slot(rc).is_some() {
         return None; // the key outranks unique_keys entirely
     }
-    let names = identity_unique_key_names(&rc);
+    identity_unique_key_names(rc).into_iter().next()
+}
+
+/// Whether this slot's element identity is *ambiguous* rather than absent:
+/// the range class and its descendants offer several `unique_keys` entries to
+/// derive it from, and only the name-sorted first is load-bearing.
+///
+/// Returns the range class name, the name-sorted candidate entries, and the one
+/// the range class *itself* resolves to — which is the first candidate unless a
+/// descendant declares an earlier-sorting entry, the split case the divergence
+/// rule is the voice for. This flags slots the identity-less rule passes: the
+/// identity exists, but which of the declarations provides it was decided
+/// alphabetically rather than by the author.
+///
+/// The candidates are unioned over [`identity_class_family`], because an entry
+/// a descendant adds is an entry some element of the list is really labelled by
+/// (spike D4d). Family members whose identity is a key are skipped: their
+/// entries are never load-bearing, so adding one to them re-addresses nothing.
+///
+/// A range class with a `key`/`identifier` slot is not ambiguous however many
+/// `unique_keys` it declares, for the same reason. A key that is the class's
+/// type designator outranks nothing — the engine looks past it — so such a
+/// class is judged on its `unique_keys` like any other; the designator rule
+/// speaks for it first regardless, since that is the defect worth reporting.
+fn slot_has_ambiguous_unique_keys(slot: &SlotView) -> Option<(String, Vec<String>, String)> {
+    if !slot_addresses_elements_by_position_or_label(slot) {
+        return None;
+    }
+    let rc = slot.get_range_class()?;
+    // The range class's own answer. `None` means its elements carry no label at
+    // all, which is the identity-less rule's business, not this one's.
+    let own = load_bearing_unique_key(&rc)?;
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    for cv in identity_class_family(&rc) {
+        if identity_key_slot(&cv).is_some() {
+            continue;
+        }
+        names.extend(identity_unique_key_names(&cv));
+    }
     if names.len() < 2 {
         return None;
     }
-    Some((rc.name().to_string(), names))
+    Some((rc.name().to_string(), names.into_iter().collect(), own))
+}
+
+/// Per distinct load-bearing `unique_keys` entry, the classes of one range
+/// class's family that resolve to it. Entry-sorted, each class list name-sorted.
+type LabelSpaceGroups = Vec<(String, Vec<String>)>;
+
+/// Whether the classes a list ranged on this slot can hold resolve **different**
+/// load-bearing `unique_keys` entries: one list, two label spaces (spike D4b/d).
+///
+/// Returns the range class name and, per distinct entry, the name-sorted
+/// classes resolving to it.
+///
+/// This is a sharper defect than the several-entries one and is reported *in
+/// addition* to it. `Gadget{gadget_identity:[code]}` with
+/// `Widget is_a Gadget{aaa_widget_identity:[serial]}` labels its `Gadget`
+/// elements by `code` and its `Widget` elements by `serial`, in one list:
+/// navigating by a base-class label never finds a `Widget`, and a `Widget`
+/// serial colliding with a `Gadget` code produces two elements with one label
+/// while violating neither class's constraint. Namespacing labels by the entry
+/// that produced them is the deep fix and is out of scope for this branch, so
+/// the author is told instead.
+///
+/// Family members whose identity is a key are excluded, as everywhere: their
+/// entries are not load-bearing and so cannot split anything.
+fn slot_has_split_identity_label_space(slot: &SlotView) -> Option<(String, LabelSpaceGroups)> {
+    if !slot_addresses_elements_by_position_or_label(slot) {
+        return None;
+    }
+    let rc = slot.get_range_class()?;
+    let mut by_entry: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for cv in identity_class_family(&rc) {
+        if let Some(entry) = load_bearing_unique_key(&cv) {
+            by_entry
+                .entry(entry)
+                .or_default()
+                .push(cv.name().to_string());
+        }
+    }
+    if by_entry.len() < 2 {
+        return None;
+    }
+    let mut groups: LabelSpaceGroups = by_entry.into_iter().collect();
+    for (_, classes) in groups.iter_mut() {
+        classes.sort();
+        classes.dedup();
+    }
+    Some((rc.name().to_string(), groups))
 }
 
 /// Whether this slot's element identity, though declared, cannot discriminate
@@ -152,15 +309,10 @@ fn slot_has_ambiguous_unique_keys(slot: &SlotView) -> Option<(String, Vec<String
 /// shape (the entries the key used to shadow), and only this rule names the
 /// declaration the author would actually edit.
 fn slot_identity_is_type_designator(slot: &SlotView) -> Option<(String, String)> {
-    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
-    if slot.determine_slot_container_mode() != SlotContainerMode::List {
-        return None; // the dict form keyed by the designator is legitimate
-    }
-    if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
-        return None; // elements are references, not inlined
-    }
-    if slot_is_opaque(slot) || slot_is_ignored(slot) {
-        return None; // no per-element identity is being claimed
+    // Includes "not the dict form": a mapping keyed by the designator is
+    // legitimate, and says at-most-one-element-per-subtype.
+    if !slot_addresses_elements_by_position_or_label(slot) {
+        return None;
     }
     let rc = slot.get_range_class()?;
     // Asked of the metamodel's key, not the engine's: this rule exists to
@@ -235,37 +387,217 @@ where
     !flagged(&parent_slot)
 }
 
-/// The warning text for a range class offering several `unique_keys`.
+/// The warning text for a range class family offering several `unique_keys`.
 ///
-/// `names` is name-sorted, so `names[0]` is the load-bearing entry.
+/// `names` is the name-sorted union over the family; `own` is the entry the
+/// range class itself resolves to, which is `names[0]` unless a descendant
+/// declares an earlier-sorting entry — the split case, which the divergence
+/// warning is the voice for.
 fn ambiguous_unique_keys_detail(
     class_name: &str,
     slot_name: &str,
     range_class: &str,
     names: &[String],
+    own: &str,
 ) -> String {
     let quoted: Vec<String> = names.iter().map(|n| format!("'{n}'")).collect();
     format!(
         "elements of '{}.{}' take their identity from the unique_keys of \
-         element class '{}', which declares {}: {}. Only {} is load-bearing — \
-         the metamodel does not preserve declaration order, so the name-sorted \
-         first entry is used, and every delta path for this slot is addressed \
-         by it. Adding an earlier-sorting entry silently re-addresses them all. \
-         Keep one entry, or rename deliberately.",
+         element class '{}' and of the classes descending from it, which \
+         between them declare {} candidate entries: {}. Only one of them can be \
+         load-bearing for a given element — the metamodel does not preserve \
+         declaration order, so the name-sorted first entry that element's own \
+         class offers is used, which for '{}' itself is '{}'. Every delta path \
+         for this slot is addressed by it, and adding an earlier-sorting entry \
+         anywhere in the family silently re-addresses them. Keep one entry, or \
+         rename deliberately.",
         class_name,
         slot_name,
         range_class,
         names.len(),
         quoted.join(", "),
-        quoted.first().map(String::as_str).unwrap_or("none"),
+        range_class,
+        own,
     )
 }
 
-/// Schema-level lint: warn for every multivalued inlined slot whose element
-/// identity comes from nowhere; for every list whose identity is the range
-/// class's type designator, which cannot tell the elements of a homogeneous
-/// list apart; and for every one whose identity is derived from a class
-/// offering more than one `unique_keys` entry to derive it from.
+/// The warning text for a range class family whose members resolve different
+/// load-bearing `unique_keys` entries.
+///
+/// `groups` is entry-sorted, and each group's classes are name-sorted, so the
+/// text is stable across runs.
+fn split_label_space_detail(
+    class_name: &str,
+    slot_name: &str,
+    range_class: &str,
+    groups: &[(String, Vec<String>)],
+) -> String {
+    let described: Vec<String> = groups
+        .iter()
+        .map(|(entry, classes)| {
+            // Bounded: a wide hierarchy must not turn one warning into a wall.
+            // Three names name the split; the rest are counted.
+            let shown: Vec<String> = classes.iter().take(3).map(|c| format!("'{c}'")).collect();
+            let rest = classes.len().saturating_sub(shown.len());
+            let more = if rest > 0 {
+                format!(" and {rest} more")
+            } else {
+                String::new()
+            };
+            format!("'{entry}' ({}{})", shown.join(", "), more)
+        })
+        .collect();
+    format!(
+        "elements of '{}.{}' do not share one identity label space: a list \
+         ranged on '{}' holds elements of every class descending from it, and \
+         they resolve {} different load-bearing unique_keys entries — {}. Each \
+         element is labelled by the entry its own class resolves to, so a delta \
+         path written against one of them cannot address an element of another, \
+         and two elements resolving different entries can produce the same \
+         label without either class's uniqueness constraint being violated. \
+         Declare the identity once, on '{}', so every element of the list is \
+         labelled the same way.",
+        class_name,
+        slot_name,
+        range_class,
+        groups.len(),
+        described.join("; "),
+        range_class,
+    )
+}
+
+/// How deep the linter walks an `is_a` chain looking for a hierarchy root.
+///
+/// A valid schema's `is_a` graph is a tree, so the bound is never reached; it
+/// exists so that a cyclic one fails schema validation rather than hanging the
+/// linter that was asked to explain it.
+const MAX_IS_A_DEPTH: usize = 100;
+
+/// The topmost `is_a` ancestor of `class` — the class that names its hierarchy.
+fn hierarchy_root(class: &ClassView) -> ClassView {
+    let mut current = class.clone();
+    for _ in 0..MAX_IS_A_DEPTH {
+        match current.parent_class() {
+            Ok(Some(parent)) => current = parent,
+            _ => break,
+        }
+    }
+    current
+}
+
+/// The warning text for two classes of one hierarchy sharing a `class_uri`.
+fn shared_class_uri_detail(root: &str, uri: &str, classes: &[String], designator: &str) -> String {
+    let quoted: Vec<String> = classes.iter().map(|c| format!("'{c}'")).collect();
+    format!(
+        "{} declare the same class_uri '{}' and belong to one is_a hierarchy, \
+         rooted at '{}', which designates its type through '{}' \
+         (designates_type). A designator value is a class URI, so '{}' names \
+         every one of them at once: the loader resolves it to a single class, \
+         stably but by an ordering the schema does not state and nothing \
+         promises to keep. Instances meaning any of the others load as the \
+         winner without a diagnostic, and diff then pairs elements of different \
+         classes as if they were one. Give each class a distinct class_uri. The \
+         loader's choice is deliberately unchanged — this is a warning about \
+         the declarations, not a behavioural fix.",
+        quoted.join(" and "),
+        uri,
+        root,
+        designator,
+        uri,
+    )
+}
+
+/// The warning text for a list addressed positionally although its element
+/// class declares an identity: some element leaves the identity slot empty.
+fn missing_labels_detail(
+    missing: usize,
+    total: usize,
+    range_class: &str,
+    identity: &str,
+) -> String {
+    format!(
+        "{missing} of {total} elements of this list carry no identity label, \
+         although their element class '{range_class}' declares one ({identity}). \
+         A list is addressed by identity only when every element yields a label, \
+         so this one is addressed positionally — ambiguous under multi-sourced \
+         operation, and silently so, since an optional identity slot left empty \
+         is valid data. Fill the identity slot on every element, make it \
+         required, or declare the slot {OPAQUE_ANNOTATION} if the value is meant \
+         to be replaced as a whole."
+    )
+}
+
+/// How the range class declares element identity, for the warning above.
+fn declared_identity_description(rc: &ClassView) -> Option<String> {
+    if let Some(key) = identity_key_slot(rc) {
+        return Some(format!("its key/identifier '{}'", key.name));
+    }
+    let names = identity_unique_key_names(rc);
+    let first = names.first()?;
+    Some(format!("its unique_keys entry '{first}'"))
+}
+
+/// Schema-level, class-level rule: two classes of one `is_a` hierarchy declare
+/// the same `class_uri`, and the hierarchy carries a type designator (spike D8).
+///
+/// Unlike the slot rules, this one has no "introducing class" to report at:
+/// there is no slot, and the defect belongs to the pair of declarations rather
+/// than to either of them. Emitting once per (hierarchy, shared URI) buys the
+/// same thing [`introduces_flagged_slot`] buys the others — one warning per
+/// thing the author would edit — so no gate predicate is needed.
+///
+/// The URI compared is the class's canonical one, which is the `class_uri` when
+/// declared and the schema-derived default otherwise. Two defaults can never
+/// collide (they are derived from the class name), so a collision always means
+/// at least one explicit declaration.
+fn lint_shared_class_uris(classes: &[ClassView], sink: &mut ValidationResultSink) {
+    let mut hierarchies: BTreeMap<(String, String), Vec<&ClassView>> = BTreeMap::new();
+    for class in classes {
+        let root = hierarchy_root(class);
+        hierarchies
+            .entry((root.schema_id().to_string(), root.name().to_string()))
+            .or_default()
+            .push(class);
+    }
+    for ((_, root_name), mut members) in hierarchies {
+        members.sort_by_key(|c| c.name().to_string());
+        // The designator is declared once and inherited, so the first member
+        // carrying one names it for the whole hierarchy.
+        let Some(designator) = members
+            .iter()
+            .find_map(|c| c.get_type_designator_slot())
+            .map(|d| d.name.clone())
+        else {
+            continue; // nothing dispatches on a class URI here: not this defect
+        };
+        let mut by_uri: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for member in &members {
+            by_uri
+                .entry(member.canonical_uri().to_string())
+                .or_default()
+                .push(member.name().to_string());
+        }
+        for (uri, mut names) in by_uri {
+            names.dedup();
+            if names.len() < 2 {
+                continue;
+            }
+            sink.push_warning(
+                ValidationProblemType::AmbiguousElementIdentity,
+                names.clone(),
+                shared_class_uri_detail(&root_name, &uri, &names, &designator),
+            );
+        }
+    }
+}
+
+/// Schema-level lint: the module's rules 1–5 — an element identity that comes
+/// from nowhere, one that is the range class's type designator and so cannot
+/// tell the elements of a homogeneous list apart, one derived from a family of
+/// classes offering more than one `unique_keys` entry, one where that family
+/// resolves *different* entries, and two classes of a designator-carrying
+/// hierarchy answering to the same `class_uri`.
+///
 /// Warnings only — the schema stays usable.
 pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
     let mut sink = ValidationResultSink::default();
@@ -273,6 +605,9 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
     let mut class_ids = sv.get_class_ids();
     class_ids.sort();
     let mut seen: HashSet<(String, String)> = HashSet::new();
+    // Kept for the class-level rule below, which is not about any one slot and
+    // so cannot be answered inside the slot loop.
+    let mut visited: Vec<ClassView> = Vec::new();
     for class_id in class_ids {
         let Ok(Some(class)) = sv.get_class(&Identifier::new(&class_id), &conv) else {
             continue;
@@ -316,7 +651,7 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
                 continue;
             }
             if !slot_is_identity_less_only(slot) {
-                if let Some((rc_name, names)) = slot_has_ambiguous_unique_keys(slot) {
+                if let Some((rc_name, names, own)) = slot_has_ambiguous_unique_keys(slot) {
                     if introduces_flagged_slot(&class, &slot.name, |s| {
                         slot_has_ambiguous_unique_keys(s).is_some()
                     }) {
@@ -328,7 +663,25 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
                                 &slot.name,
                                 &rc_name,
                                 &names,
+                                &own,
                             ),
+                        );
+                    }
+                }
+                // A split label space is a sharper defect than an ambiguous
+                // candidate set, and an additional one: both warnings fire, and
+                // each gets its own introduces-gate predicate, because a
+                // subclass can narrow the range to a non-diverging class while
+                // leaving the candidate set as wide as it was (and the other
+                // way round).
+                if let Some((rc_name, groups)) = slot_has_split_identity_label_space(slot) {
+                    if introduces_flagged_slot(&class, &slot.name, |s| {
+                        slot_has_split_identity_label_space(s).is_some()
+                    }) {
+                        sink.push_warning(
+                            ValidationProblemType::AmbiguousElementIdentity,
+                            vec![class.name().to_string(), slot.name.clone()],
+                            split_label_space_detail(class.name(), &slot.name, &rc_name, &groups),
                         );
                     }
                 }
@@ -370,7 +723,9 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
                 detail,
             );
         }
+        visited.push(class);
     }
+    lint_shared_class_uris(&visited, &mut sink);
     let mut warnings = sink.into_vec();
     // The classes are visited in sorted id order, but a class's own slots come
     // from `ClassView::slots()`, which is HashMap-backed, so the warnings for a
@@ -380,11 +735,18 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
     warnings
 }
 
-/// Data-level lint: warn for every list container whose elements repeat a
-/// declared identity (key/identifier or unique_keys value).
+/// Data-level lint: the module's rules 6 and 7 — a list whose elements repeat a
+/// declared identity (key/identifier or `unique_keys` value), and one addressed
+/// positionally although its element class declares an identity, because some
+/// element leaves the slot that identity names empty.
 ///
-/// Deliberately does NOT consult `diff.linkml.io/opaque`: a schema constraint
-/// is class-level truth, and diff vocabulary never suppresses it.
+/// Both are things only the data can show: repeated and absent values are
+/// alike valid against a schema that declares a non-`required` identity.
+///
+/// The duplicate rule deliberately does NOT consult `diff.linkml.io/opaque`:
+/// a schema constraint is class-level truth, and diff vocabulary never
+/// suppresses it. The positional rule does honour it, for the reason spelled
+/// out at [`check_missing_labels`].
 pub fn lint_instance_identity(value: &LinkMLInstance) -> Vec<ValidationResult> {
     let mut sink = ValidationResultSink::default();
     let mut path = Vec::new();
@@ -394,8 +756,9 @@ pub fn lint_instance_identity(value: &LinkMLInstance) -> Vec<ValidationResult> {
 
 fn walk(v: &LinkMLInstance, path: &mut Vec<String>, sink: &mut ValidationResultSink) {
     match v {
-        LinkMLInstance::List { values, .. } => {
+        LinkMLInstance::List { values, slot, .. } => {
             check_duplicates(values, path, sink);
+            check_missing_labels(values, slot, path, sink);
             for (i, child) in values.iter().enumerate() {
                 path.push(i.to_string());
                 walk(child, path, sink);
@@ -414,6 +777,69 @@ fn walk(v: &LinkMLInstance, path: &mut Vec<String>, sink: &mut ValidationResultS
         }
         LinkMLInstance::Scalar { .. } | LinkMLInstance::Null { .. } => {}
     }
+}
+
+/// Warns when this list is addressed positionally *although* its element class
+/// declares an identity: some element leaves the identity slot empty and yields
+/// no label, so the keyed shape fails (spike D7).
+///
+/// The duplicate rule above is the other half of the same question. Together
+/// they cover both ways a declared identity fails to address a list — repeated
+/// labels and missing ones — and neither is visible in the schema: a `key` that
+/// is not `required` may legitimately be absent, so only the data can show it.
+/// The half-labelled list is the same defect at a smaller scale and is counted
+/// the same way.
+///
+/// Silent when nothing is declared: a class with no identity is *meant* to be
+/// positional, the schema lint has already said so, and repeating it once per
+/// container in the data would bury the rule that matters. Silent for a range
+/// that is not a class, for the same reason. A key that is the class's type
+/// designator does not count as a declaration either — the engine looks past it
+/// (spec addendum rule 1), so the class declares no element identity at all and
+/// the schema-level designator rule is its voice.
+///
+/// Unlike the duplicate rule, this one **does** honour `opaque` and `ignore`,
+/// and skips reference lists — it asks
+/// [`slot_addresses_elements_by_position_or_label`] exactly as the schema rules
+/// do. The two rules differ because they claim different things. A repeated
+/// `unique_keys` value contradicts the class's own constraint whatever the slot
+/// is annotated with, so diff vocabulary cannot silence it. This rule claims
+/// only that the list *is addressed positionally*, and for a slot answering
+/// "replaced as a whole" or "outside diff's scope" that claim is simply false.
+/// A reference list is the sharper case: its elements are identifier strings
+/// and can never carry an inlined element's identity label, so the rule would
+/// fire on every such slot of every document — the shipped downstream corpus
+/// has exactly one list matching it, and it is a reference list.
+fn check_missing_labels(
+    values: &[LinkMLInstance],
+    slot: &SlotView,
+    path: &[String],
+    sink: &mut ValidationResultSink,
+) {
+    if values.is_empty() {
+        return; // nothing to label, nothing to address
+    }
+    if !slot_addresses_elements_by_position_or_label(slot) {
+        return; // references, dicts, opaque and ignored slots: see above
+    }
+    let Some(rc) = slot.get_range_class() else {
+        return; // scalars and enums have no class to declare an identity on
+    };
+    let Some(identity) = declared_identity_description(&rc) else {
+        return; // no identity declared: positional is what was asked for
+    };
+    let missing = values
+        .iter()
+        .filter(|v| element_identity_label(v).is_none())
+        .count();
+    if missing == 0 {
+        return;
+    }
+    sink.push_warning(
+        ValidationProblemType::AmbiguousElementIdentity,
+        path.to_vec(),
+        missing_labels_detail(missing, values.len(), rc.name(), &identity),
+    );
 }
 
 fn check_duplicates(values: &[LinkMLInstance], path: &[String], sink: &mut ValidationResultSink) {

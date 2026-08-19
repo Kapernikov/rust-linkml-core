@@ -158,8 +158,11 @@ pub enum ValidationProblemType {
     SlotRangeViolation,
     MaxCountViolation,
     ParsingError,
-    /// A multivalued inlined slot whose elements have no declared identity
-    /// (opt-in, [`crate::lint_element_identity`]).
+    /// Element identity that cannot address a list unambiguously: none is
+    /// declared, several declarations compete, two classes answer to one URI
+    /// (opt-in, [`crate::lint_element_identity`]) — or one is declared but the
+    /// data leaves it empty, so the list is positional after all (opt-in,
+    /// [`crate::lint_instance_identity`]).
     AmbiguousElementIdentity,
     /// Elements of one list repeat a declared identity (opt-in,
     /// [`crate::lint_instance_identity`]).

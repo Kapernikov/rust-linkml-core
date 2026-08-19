@@ -1,0 +1,115 @@
+id: https://w3id.org/linkml/examples/identity_descendant_unique_keys
+name: identity_descendant_unique_keys
+description: |-
+  `unique_keys` ambiguity across an inheritance hierarchy (spike D4d).
+
+  A list ranged on a class holds elements of that class *and of every class
+  descending from it*, and each element's label comes from the name-sorted
+  first entry of its OWN merged `unique_keys`. Inspecting only the range class
+  therefore answers the wrong question twice over:
+
+  - `boxes` (range `Box`) — `Box` declares one entry, so the range class alone
+    looks unambiguous; `BigBox` adds a later-sorting one. Two entries are now
+    reachable through this slot, and the load-bearing one is still `by_id` for
+    every class: the candidate set is ambiguous, the label space is not.
+  - `gadgets` (range `Gadget`) — `Gadget` declares one entry, `Widget` adds an
+    earlier-sorting one. `Gadget` elements are labelled by `code` and `Widget`
+    elements by `serial`: one list, two label spaces, and a `Widget` serial can
+    collide with a `Gadget` code without either class's constraint being
+    violated. That is the split the second warning names.
+
+  Guard rails: `crates` (a descendant that declares no entries of its own) and
+  `keyed` (a descendant whose `key` outranks `unique_keys`, so its entries are
+  never load-bearing and cannot split anything) must both stay silent.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  identity: https://w3id.org/linkml/examples/identity_descendant_unique_keys/
+  linkml: https://w3id.org/linkml/
+default_prefix: identity
+default_range: string
+
+classes:
+  Depot:
+    attributes:
+      # descendant adds a LATER-sorting entry: ambiguous candidate set, one
+      # label space -> the several-entries warning only
+      boxes:
+        range: Box
+        multivalued: true
+        inlined_as_list: true
+      # descendant adds an EARLIER-sorting entry: split label space -> the
+      # several-entries warning AND the divergence warning
+      gadgets:
+        range: Gadget
+        multivalued: true
+        inlined_as_list: true
+      # descendant declares nothing of its own: one entry, one label space
+      crates:
+        range: Crate
+        multivalued: true
+        inlined_as_list: true
+      # the descendant's key outranks its unique_keys entirely
+      keyed:
+        range: Plate
+        multivalued: true
+        inlined_as_list: true
+
+  Box:
+    unique_keys:
+      by_id:
+        unique_key_slots: [boxId]
+    attributes:
+      boxId: {range: string, required: true}
+
+  BigBox:
+    is_a: Box
+    unique_keys:
+      zz_by_volume:
+        unique_key_slots: [volume]
+    attributes:
+      volume: {range: string, required: true}
+
+  Gadget:
+    unique_keys:
+      gadget_identity:
+        unique_key_slots: [code]
+    attributes:
+      code: {range: string, required: true}
+
+  Widget:
+    is_a: Gadget
+    unique_keys:
+      aaa_widget_identity:
+        unique_key_slots: [serial]
+    attributes:
+      serial: {range: string, required: true}
+
+  Crate:
+    unique_keys:
+      crate_identity:
+        unique_key_slots: [crateId]
+    attributes:
+      crateId: {range: string, required: true}
+
+  BigCrate:
+    is_a: Crate
+    attributes:
+      capacity: {range: string}
+
+  Plate:
+    unique_keys:
+      plate_identity:
+        unique_key_slots: [code]
+    attributes:
+      code: {range: string, required: true}
+
+  StampedPlate:
+    is_a: Plate
+    unique_keys:
+      aaa_stamp_identity:
+        unique_key_slots: [stamp]
+    attributes:
+      stampId: {range: string, key: true}
+      stamp: {range: string, required: true}

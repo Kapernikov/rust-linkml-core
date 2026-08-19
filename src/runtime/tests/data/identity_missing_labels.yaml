@@ -1,0 +1,121 @@
+id: https://w3id.org/linkml/examples/identity_missing_labels
+name: identity_missing_labels
+description: |-
+  Data whose lists are addressed *positionally despite a declared identity*:
+  the element class declares a key or `unique_keys`, but the data leaves the
+  slot it names empty, so the element yields no identity label and the whole
+  list falls back to positional addressing.
+
+  The declaration is not wrong and the data is not invalid — a `key` slot that
+  is not `required` may legitimately be absent — so neither the schema lint nor
+  validation has anything to say. Only the instance lint can see it, and only
+  by looking at the data.
+
+  `UnfillableKey` is the spike's D9 shape: a base class declares the type
+  designator, a subclass promotes it to `key` and then turns the designator
+  off with `slot_usage`. Nothing fills the key afterwards — the designator
+  machinery no longer recognises the slot — so every element of such a list is
+  unlabelled. It is deliberately not detected as its own schema-lint rule; it
+  collapses into this one, which is what the linter rustdoc says.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  identity: https://w3id.org/linkml/examples/identity_missing_labels/
+  linkml: https://w3id.org/linkml/
+default_prefix: identity
+default_range: string
+
+classes:
+  Registry:
+    attributes:
+      name: {range: string}
+      # optional key: data may omit it, and then the list is positional
+      entries:
+        range: OptKey
+        multivalued: true
+        inlined_as_list: true
+      # the same shape declared with unique_keys instead of a key
+      records:
+        range: OptUnique
+        multivalued: true
+        inlined_as_list: true
+      # D9: a key that the designator override left nothing to fill
+      unfillable:
+        range: UnfillableKey
+        multivalued: true
+        inlined_as_list: true
+      # no identity is declared at all: the identity-less schema rule already
+      # speaks for this slot, and a positional list is exactly what was asked
+      # for. The instance lint must stay silent.
+      vertices:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+      # scalars have no element class to declare identity on
+      tags:
+        range: string
+        multivalued: true
+      # `opaque` answers the addressing question already ("replaced as a
+      # whole"), so "this list is addressed positionally" is not true of it.
+      # Unlike the duplicate rule, which reports a violated class constraint
+      # whatever the slot says, this one stays quiet here.
+      archivedEntries:
+        range: OptKey
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+      # outside diff's scope entirely
+      draftEntries:
+        range: OptKey
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/ignore: true
+      # a REFERENCE list: the elements are identifier strings, which can never
+      # carry an inlined element's identity label. asset360's `NetElement.ports`
+      # is exactly this shape, and it is the only list in the whole downstream
+      # corpus the rule would otherwise have fired on — every one of those
+      # warnings would be noise.
+      references:
+        range: Referenced
+        multivalued: true
+        inlined: false
+
+  OptKey:
+    attributes:
+      code: {range: string, key: true}
+      note: {range: string}
+
+  OptUnique:
+    unique_keys:
+      by_serial:
+        unique_key_slots: [serial]
+    attributes:
+      serial: {range: string}
+      note: {range: string}
+
+  # base declares the designator; the subclass promotes it to the key and
+  # switches the designator off, leaving a key nothing fills
+  DesignatorBase:
+    attributes:
+      typeURI: {range: uriorcurie, designates_type: true}
+      note: {range: string}
+
+  UnfillableKey:
+    is_a: DesignatorBase
+    slot_usage:
+      typeURI:
+        key: true
+        designates_type: false
+
+  Referenced:
+    attributes:
+      id: {range: string, identifier: true}
+      note: {range: string}
+
+  Vertex:
+    attributes:
+      x: {range: float}
+      y: {range: float}
