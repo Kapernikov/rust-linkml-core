@@ -164,6 +164,57 @@ fn dict_form_designator_is_canonicalised() {
     assert_eq!(widgets["w2"]["typeURI"], json!(FANCY_CURIE), "in {out:#?}");
 }
 
+/// The *compact* dict entry — a bare scalar rather than an object — is built by
+/// a second arm of `build_mapping_entry_for_slot` that hardwires the slot's
+/// range class. When the scalar slot it fills is the class's designator, the
+/// entry names its own class, and canonicalising against the range class would
+/// rewrite `FancyWidget` to `Widget` and warn about data that was right.
+#[test]
+fn compact_dict_entry_naming_a_subclass_is_not_rewritten_to_the_range_class() {
+    let f = fixture();
+    let (inst, issues) = f.load_result(json!({
+        "widgets": {
+            "w1": "https://w3id.org/linkml/examples/identity_canonical/FancyWidget",
+            "w2": FANCY_CURIE
+        }
+    }));
+    assert!(
+        issues.is_empty(),
+        "the entry names an accepted designator value of a real subclass: {issues:#?}"
+    );
+    let out = inst.to_json();
+    let widgets = out.get("widgets").unwrap();
+    assert_eq!(
+        widgets["w1"]["typeURI"],
+        json!(FANCY_CURIE),
+        "canonicalised, and to the *subclass* the entry named: {out:#?}"
+    );
+    assert_eq!(widgets["w2"]["typeURI"], json!(FANCY_CURIE), "in {out:#?}");
+}
+
+/// The guard for `ClassView::get_uri(native, expand)`: `BareLeaf` declares a
+/// `class_uri` and no distinguishing slot, so its schema-native URI is the only
+/// thing that can name it. If that spelling ever drops out of the accepted set
+/// the element silently becomes a `Node` and its designator is rewritten to
+/// `Node`'s value — this test is what makes that loud.
+#[test]
+fn a_subclass_is_selected_by_its_native_uri_alone() {
+    let f = fixture();
+    let (inst, issues) = f.load_result(json!({
+        "nodes": [{
+            "kind": "https://w3id.org/linkml/examples/identity_canonical/BareLeaf",
+            "name": "b1"
+        }]
+    }));
+    assert!(issues.is_empty(), "an accepted spelling: {issues:#?}");
+    let out = inst.to_json();
+    assert_eq!(
+        out["nodes"][0]["kind"],
+        json!("https://example.org/canon/BareLeaf"),
+        "selected as BareLeaf and canonicalised to its class_uri: {out:#?}"
+    );
+}
+
 /// A designator value matching *no* accepted designator value is data the
 /// loader cannot honour. Following the loader-tolerance precedent it is a
 /// warning, not an error: the instance still loads, and the slot is filled
@@ -323,6 +374,42 @@ fn patch_locates_the_element_under_spelling_drift() {
     let (patched, trace) = patch(&drifted, &deltas, PatchOptions::default()).unwrap();
     assert!(trace.failed.is_empty(), "delta must locate: {trace:#?}");
     assert_eq!(patched.to_json()["systems"][0]["value"], json!("two"));
+}
+
+/// The symmetric half: a segment that arrives already spelled as a CURIE — a
+/// stored delta, a hand-written patch — must address the element whose label
+/// expanded to the IRI. Labels are normalised on the way out; the incoming
+/// segment is normalised through the same slot on the way in.
+#[test]
+fn a_curie_spelled_segment_applies_against_expanded_labels() {
+    let f = fixture();
+    let doc = systems(vec![
+        json!({"systemType": WGS84_URI, "value": "one"}),
+        json!({"systemType": ETRS89_URI, "value": "two"}),
+    ]);
+    let hand_written = vec![Delta {
+        path: vec![
+            "systems".to_string(),
+            WGS84_CURIE.to_string(),
+            "value".to_string(),
+        ],
+        op: DeltaOp::Update,
+        old: Some(json!("one")),
+        new: Some(json!("two")),
+    }];
+    let src = f.load(doc);
+    let (patched, trace) = patch(&src, &hand_written, PatchOptions::default()).unwrap();
+    assert!(
+        trace.failed.is_empty(),
+        "a curie segment and an expanded label are one identity: {trace:#?}"
+    );
+    assert_eq!(patched.to_json()["systems"][0]["value"], json!("two"));
+    // …and the same segment navigates.
+    assert_eq!(
+        src.navigate_path(["systems", WGS84_CURIE, "value"])
+            .map(LinkMLInstance::to_json),
+        Some(json!("one"))
+    );
 }
 
 /// `navigate_path` shares the resolver, so either spelling addresses the

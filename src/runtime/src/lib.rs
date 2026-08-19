@@ -904,27 +904,38 @@ impl LinkMLInstance {
         let Some(type_slot_def) = class.get_type_designator_slot() else {
             return;
         };
-        let slot_name = type_slot_def.name.clone();
-        let Ok(canonical) = class.get_type_designator_value(type_slot_def, conv) else {
-            return;
-        };
-        let canonical = canonical.to_string();
-        let accepted = class
-            .get_accepted_type_designator_values(type_slot_def, conv)
-            .unwrap_or_default();
-        let Some(LinkMLInstance::Scalar { value, .. }) = values.get_mut(&slot_name) else {
+        // Cheapest checks first: the two commonest cases — the designator is
+        // absent (the RDF-shaped and the omit-it-and-let-the-loader-fill-it
+        // documents), or it is already canonical (every document a previous
+        // load emitted) — must not pay for a URI computation. Neither
+        // `get_type_designator_value` nor `get_accepted_type_designator_values`
+        // is cached: each walks `type_ancestors` and expands URIs through the
+        // converter, and this runs once per object built.
+        let Some(LinkMLInstance::Scalar { value, .. }) = values.get_mut(&type_slot_def.name) else {
             return;
         };
         let supplied = match &*value {
             JsonValue::String(s) => s.clone(),
             other => other.to_string(),
         };
+        let Ok(canonical) = class.get_type_designator_value(type_slot_def, conv) else {
+            return;
+        };
+        let canonical = canonical.to_string();
         if supplied == canonical {
             return;
         }
+        // Only a value that differs from the canonical one is worth the second
+        // walk. An `Err` here means the accepted set is unknown, not empty:
+        // warning-and-rewriting on it would punish the data for a schema the
+        // view cannot resolve, so leave the value alone — the same posture the
+        // canonical-value line above takes.
+        let Ok(accepted) = class.get_accepted_type_designator_values(type_slot_def, conv) else {
+            return;
+        };
         if !accepted.iter().any(|v| v.to_string() == supplied) {
             let mut p = path.to_vec();
-            p.push(slot_name);
+            p.push(type_slot_def.name.clone());
             validation_issues.push_warning(
                 ValidationProblemType::SlotRangeViolation,
                 p,
@@ -1575,6 +1586,24 @@ impl LinkMLInstance {
                             ),
                         )
                     })?;
+                // `find_scalar_slot_for_inlined_map` picks the first non-key
+                // scalar slot, which can be the class's *designator*: then
+                // `{"w1": "canon:FancyWidget"}` says "widget w1 is a
+                // FancyWidget", and the entry names its own class exactly as
+                // the object form's `{"typeURI": ...}` does. This arm otherwise
+                // hardwires the slot's range class, so without selecting here
+                // canonicalisation would rewrite that designator to the *range*
+                // class's value and warn about data that was right — the
+                // misclassification spec rule 2 exists to prevent. Selection is
+                // scoped to this one shape: a compact entry whose scalar is an
+                // ordinary slot names no class and keeps the range class.
+                let entry_class = if scalar_slot.definition().designates_type.unwrap_or(false) {
+                    let mut named = serde_json::Map::new();
+                    named.insert(scalar_slot.name.clone(), other.clone());
+                    Self::select_class(&named, &range_cv, sv, conv)
+                } else {
+                    range_cv.clone()
+                };
                 let mut child_values = HashMap::new();
                 child_values.insert(
                     scalar_slot.name.clone(),
@@ -1582,31 +1611,29 @@ impl LinkMLInstance {
                         node_id: new_node_id(),
                         value: Self::coerce_scalar_to_range(other, Some(&scalar_slot)),
                         slot: scalar_slot.clone(),
-                        class: Some(range_cv.clone()),
+                        class: Some(entry_class.clone()),
                         sv: sv.clone(),
                     },
                 );
                 run_object_constraints(
-                    &range_cv,
+                    &entry_class,
                     &child_values,
                     &HashMap::new(),
                     path.clone(),
                     validation_issues,
                 );
-                // `find_scalar_slot_for_inlined_map` picks the first non-key
-                // scalar slot, which can be the designator itself.
                 Self::canonicalize_type_designator(
                     &mut child_values,
-                    &range_cv,
+                    &entry_class,
                     conv,
                     &path,
                     validation_issues,
                 );
-                Self::populate_type_designator(&mut child_values, &range_cv, sv, conv);
+                Self::populate_type_designator(&mut child_values, &entry_class, sv, conv);
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
                     values: child_values,
-                    class: range_cv,
+                    class: entry_class,
                     sv: sv.clone(),
                     unknown_fields: HashMap::new(),
                 })

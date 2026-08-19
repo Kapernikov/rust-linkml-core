@@ -152,6 +152,57 @@ pub(crate) fn element_identity_label(v: &LinkMLInstance) -> Option<String> {
     element_key_label(v).or_else(|| element_unique_key_label(v))
 }
 
+/// The single slot `v`'s identity label was read from, when the label *is* one
+/// scalar: a key/identifier, or a one-slot `unique_keys` entry. A composite
+/// `unique_keys` entry encodes a JSON array and has no single source slot.
+///
+/// Mirrors [`element_identity_label`]'s precedence exactly, including its
+/// fall-through when the key slot carries no value — the point is to name the
+/// slot that produced the label, so that a path segment can be normalised the
+/// same way the label was.
+fn identity_label_slot(v: &LinkMLInstance) -> Option<&SlotView> {
+    let LinkMLInstance::Object { values, class, .. } = v else {
+        return None;
+    };
+    if let Some(slot) = identity_key_slot(class) {
+        if scalar_slot_string(values, &slot.name).is_some() {
+            return Some(slot);
+        }
+    }
+    let uks = class.unique_keys();
+    let (_, uk) = uks.iter().find(|(_, uk)| !uk.unique_key_slots.is_empty())?;
+    let [only] = uk.unique_key_slots.as_slice() else {
+        return None;
+    };
+    class.slots().iter().find(|s| s.name == *only)
+}
+
+/// Does the path segment `key` address the element `v`, whose identity label is
+/// `label`?
+///
+/// The other half of spec addendum rule 2's "a curie and its expansion are one
+/// identity". Labels are already IRI-expanded on the way out
+/// ([`canonical_identity_component`]); a segment arriving from outside — a
+/// stored delta, a hand-written patch, a caller's `navigate_path` — has been
+/// through no such thing. Normalising it through the *same* slot the label came
+/// from makes the comparison symmetric, so `ex:WGS84` addresses an element
+/// whose label expanded to `https://example.org/canon/WGS84` and vice versa.
+///
+/// Segments diff itself emits already equal the label outright and never reach
+/// the expansion.
+fn segment_matches_label(v: &LinkMLInstance, label: Option<&str>, key: &str) -> bool {
+    let Some(label) = label else {
+        return false;
+    };
+    if label == key {
+        return true;
+    }
+    match identity_label_slot(v) {
+        Some(slot) => canonical_identity_component(key, slot) == label,
+        None => false,
+    }
+}
+
 fn labels_are_unique<F>(elements: &[LinkMLInstance], label: F) -> bool
 where
     F: Fn(&LinkMLInstance) -> Option<String>,
@@ -762,8 +813,9 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
     // labels (e.g. a year as unique key) unambiguous: they resolve as
     // labels, never as positions.
     let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
+    let matches = |i: usize| segment_matches_label(&values[i], labels[i].as_deref(), key);
     if list_is_keyed_shaped(values) {
-        return labels.iter().position(|l| l.as_deref() == Some(key));
+        return (0..values.len()).find(|i| matches(*i));
     }
     // Positional list: numeric index first (the segments diff produces for
     // these lists), then a single unambiguous label hit for drift tolerance.
@@ -773,8 +825,8 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
         }
     }
     let mut hit: Option<usize> = None;
-    for (i, l) in labels.iter().enumerate() {
-        if l.as_deref() == Some(key) {
+    for i in 0..values.len() {
+        if matches(i) {
             if hit.is_some() {
                 return None;
             }

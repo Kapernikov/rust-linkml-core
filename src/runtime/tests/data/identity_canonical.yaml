@@ -78,9 +78,22 @@ classes:
     attributes:
       depth: {range: integer}
 
+  # the guard for `ClassView::get_uri(native, expand)`: a `class_uri` and no
+  # distinguishing slot at all, so the ONLY thing that can select this class is
+  # its designator value. Spelled with its schema-native URI it is reachable
+  # only if that spelling is in the accepted set; if `get_uri(true, true)` ever
+  # returns the `class_uri` again, this class silently becomes `Node` and the
+  # designator gets rewritten to `Node`'s value.
+  BareLeaf:
+    is_a: Node
+    class_uri: ex:BareLeaf
+
+  # `find_scalar_slot_for_inlined_map` picks the first non-key scalar slot —
+  # here the designator — so `{"w1": "canon:FancyWidget"}` is a legal compact
+  # dict entry that names its own class.
   Widget:
     attributes:
-      wid: {range: string, key: true, required: true}
+      wid: {range: string, key: true}
       typeURI:
         range: uriorcurie
         designates_type: true
