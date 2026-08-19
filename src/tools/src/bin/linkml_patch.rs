@@ -78,6 +78,34 @@ fn write_value(
     Ok(())
 }
 
+/// Report the deltas the patch could not apply.
+///
+/// `patch` never hard-errors on an unappliable delta: it records the delta's
+/// path and applies the rest of the batch. Dropping the trace made that
+/// invisible here — a patch that silently skipped half its deltas exited 0 and
+/// wrote a file that looked clean. The lines go to stderr, so the patched
+/// document on stdout is byte-identical to before for a fully applied patch.
+fn report_failed_deltas(path: &Path, failed: &[Vec<String>]) {
+    if failed.is_empty() {
+        return;
+    }
+    eprintln!(
+        "{} of the deltas in '{}' could not be applied; the rest were applied.",
+        failed.len(),
+        path.display()
+    );
+    for delta_path in failed {
+        eprintln!(
+            "  - {}",
+            if delta_path.is_empty() {
+                "<root>".to_string()
+            } else {
+                delta_path.join(".")
+            }
+        );
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     let schema = from_yaml(&args.schema)?;
@@ -105,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         serde_yaml::from_str(&delta_text)?
     };
-    let (patched, _trace) = patch(
+    let (patched, trace) = patch(
         &src,
         &deltas,
         linkml_runtime::diff::PatchOptions {
@@ -113,6 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             treat_missing_as_null: args.treat_missing_as_null,
         },
     )?;
+    report_failed_deltas(&args.delta, &trace.failed);
     write_value(args.output.as_deref(), &patched)?;
     Ok(())
 }
