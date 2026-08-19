@@ -955,9 +955,33 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
             .map(|i| i + from)
     };
     let matches = |i: usize| segment_matches_label(&values[i], labels[i].as_deref(), key);
+    // The one normalising hit, or nothing: two elements the segment could mean
+    // is a question, not an answer, and this function reports rather than
+    // guesses. Both branches below share it, so neither can drift into
+    // resolving an ambiguity the other refuses.
+    //
+    // In the keyed branch the second hit is barely reachable: labels are unique
+    // there, and two of them can only normalise to one string if they were
+    // normalised by *different converters* — a heterogeneous list whose element
+    // classes come from schemas that disagree about a prefix. It is left as a
+    // refusal rather than an assertion precisely because it is reachable at all:
+    // a `debug_assert` would turn "I cannot tell which element you mean" into a
+    // crash.
+    let unique_normalised = || {
+        let mut hit: Option<usize> = None;
+        for i in 0..values.len() {
+            if matches(i) {
+                if hit.is_some() {
+                    return None;
+                }
+                hit = Some(i);
+            }
+        }
+        hit
+    };
     if list_is_keyed_shaped_from_labels(&labels) {
         // Labels are unique here, so an exact hit is the only exact hit.
-        return exact(0).or_else(|| (0..values.len()).find(|i| matches(*i)));
+        return exact(0).or_else(unique_normalised);
     }
     // Positional list: numeric index first (the segments diff produces for
     // these lists), then a single unambiguous label hit for drift tolerance.
@@ -974,16 +998,7 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
             None => Some(first),
         };
     }
-    let mut hit: Option<usize> = None;
-    for i in 0..values.len() {
-        if matches(i) {
-            if hit.is_some() {
-                return None;
-            }
-            hit = Some(i);
-        }
-    }
-    hit
+    unique_normalised()
 }
 
 fn try_update_scalar_in_place(

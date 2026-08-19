@@ -998,6 +998,18 @@ impl LinkMLInstance {
     ///    the key, and `populate_type_designator` filled the slot from the range
     ///    class, so the entry looked complete.
     ///
+    /// The two checks compare **by different notions of equality**, and that is
+    /// deliberate rather than an oversight. Check 2 asks whether a value is in
+    /// the accepted designator set, and membership of that set is the raw string
+    /// match `canonicalize_type_designator` performs verbatim; deciding it here
+    /// on an IRI-equal-but-differently-spelled basis would wave a value through
+    /// that the canonicaliser then rewrites and reports itself — two voices for
+    /// one fact. Check 1 asks whether two spellings name the same element, which
+    /// is exactly what [`crate::diff::canonical_identity_component`] answers
+    /// everywhere else (spec addendum rule 2), so a CURIE key and an expanded
+    /// stored value are one identity here as they are in diff and patch. The
+    /// questions differ, so the equalities do.
+    ///
     /// The key slot itself is [`ClassView::key_or_identifier_slot`] on the
     /// slot's **range** class, not on the class finally selected: the key has to
     /// be read (and injected) before `select_class` can run, so a key declared
