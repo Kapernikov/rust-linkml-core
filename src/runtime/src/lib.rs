@@ -865,10 +865,87 @@ impl LinkMLInstance {
             .unwrap_or_else(|| base.clone())
     }
 
+    /// Rewrite an already-present type designator value to the canonical value
+    /// of the class that was actually selected — identity compares meaning, not
+    /// spelling (spec addendum rule 2, finding D1).
+    ///
+    /// A designator says "this element is a `Circle`", and a `uriorcurie`-ranged
+    /// one can say it as `canon:Circle`, as the expanded IRI, or not at all.
+    /// Stored verbatim, those are three different strings: the same element
+    /// authored by two producers diffs as a whole-element Remove + Add, and the
+    /// RDF loader — which never harvests the designator predicate and always
+    /// fills it from the class ([`Self::populate_type_designator`], called from
+    /// `turtle_import`) — disagrees with the JSON loader on every document.
+    /// Canonicalising at the boxing chokepoint, exactly as
+    /// [`Self::coerce_scalar_to_range`] does for the int/float ambiguity, makes
+    /// the representation canonical before any diff/equals/patch/`to_json` sees
+    /// it, and makes the two loaders agree by construction.
+    ///
+    /// It is also what makes `diff`'s changed-key check ("a changed designator
+    /// means a different class") unconditionally true rather than true only for
+    /// consistently-spelled data.
+    ///
+    /// A supplied value that is *no* accepted designator value of the selected
+    /// class (a bare class name against a `uri` range, a typo, a stale class
+    /// name) is data the loader cannot honour. Following the loader-tolerance
+    /// precedent it is a **warning**, not an error: the instance still loads and
+    /// the slot carries the canonical value of the class `select_class` picked.
+    ///
+    /// Only a `Scalar` is rewritten. An explicit `null` and a structurally wrong
+    /// value (list, object) are left for the range checks that already ran to
+    /// describe; replacing them would hide the shape of the offending data.
+    fn canonicalize_type_designator(
+        values: &mut HashMap<String, LinkMLInstance>,
+        class: &ClassView,
+        conv: &Converter,
+        path: &[String],
+        validation_issues: &mut ValidationResultSink,
+    ) {
+        let Some(type_slot_def) = class.get_type_designator_slot() else {
+            return;
+        };
+        let slot_name = type_slot_def.name.clone();
+        let Ok(canonical) = class.get_type_designator_value(type_slot_def, conv) else {
+            return;
+        };
+        let canonical = canonical.to_string();
+        let accepted = class
+            .get_accepted_type_designator_values(type_slot_def, conv)
+            .unwrap_or_default();
+        let Some(LinkMLInstance::Scalar { value, .. }) = values.get_mut(&slot_name) else {
+            return;
+        };
+        let supplied = match &*value {
+            JsonValue::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        if supplied == canonical {
+            return;
+        }
+        if !accepted.iter().any(|v| v.to_string() == supplied) {
+            let mut p = path.to_vec();
+            p.push(slot_name);
+            validation_issues.push_warning(
+                ValidationProblemType::SlotRangeViolation,
+                p,
+                format!(
+                    "type designator value `{supplied}` is not an accepted designator \
+                     value for class `{}`; stored as `{canonical}`",
+                    class.name()
+                ),
+            );
+        }
+        *value = JsonValue::String(canonical);
+    }
+
     /// If the class has a `designates_type` slot and the values map does not
     /// already contain it, insert a Scalar value with the class's type
     /// designator value. This ensures round-trip fidelity for formats like
     /// JSON that lack an intrinsic typing mechanism (unlike RDF's rdf:type).
+    ///
+    /// The complement of [`Self::canonicalize_type_designator`], which settles
+    /// the case where the data *did* supply a value; JSON boxing runs both, RDF
+    /// harvesting only ever needs this one (it skips the designator predicate).
     fn populate_type_designator(
         values: &mut HashMap<String, LinkMLInstance>,
         class: &ClassView,
@@ -943,6 +1020,7 @@ impl LinkMLInstance {
             path.clone(),
             validation_issues,
         );
+        Self::canonicalize_type_designator(&mut values, class, conv, &path, validation_issues);
         Self::populate_type_designator(&mut values, class, sv, conv);
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
@@ -1180,6 +1258,7 @@ impl LinkMLInstance {
             path.clone(),
             validation_issues,
         );
+        Self::canonicalize_type_designator(&mut values, &chosen, conv, &path, validation_issues);
         Self::populate_type_designator(&mut values, &chosen, sv, conv);
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
@@ -1464,6 +1543,13 @@ impl LinkMLInstance {
                     path.clone(),
                     validation_issues,
                 );
+                Self::canonicalize_type_designator(
+                    &mut child_values,
+                    &selected,
+                    conv,
+                    &path,
+                    validation_issues,
+                );
                 Self::populate_type_designator(&mut child_values, &selected, sv, conv);
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
@@ -1505,6 +1591,15 @@ impl LinkMLInstance {
                     &child_values,
                     &HashMap::new(),
                     path.clone(),
+                    validation_issues,
+                );
+                // `find_scalar_slot_for_inlined_map` picks the first non-key
+                // scalar slot, which can be the designator itself.
+                Self::canonicalize_type_designator(
+                    &mut child_values,
+                    &range_cv,
+                    conv,
+                    &path,
                     validation_issues,
                 );
                 Self::populate_type_designator(&mut child_values, &range_cv, sv, conv);

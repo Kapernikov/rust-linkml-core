@@ -1,6 +1,7 @@
 use crate::{LResult, LinkMLInstance, NodeId, ValidationResultSink};
 use linkml_schemaview::{
     converter::Converter,
+    identifier::Identifier,
     schemaview::{ClassView, SchemaView, SlotView},
 };
 use serde::{Deserialize, Serialize};
@@ -37,13 +38,46 @@ pub(crate) fn slot_is_opaque(slot: &SlotView) -> bool {
         .unwrap_or(false)
 }
 
+/// One component of an element's identity label, canonicalised so that
+/// identity compares meaning and not spelling (spec addendum rule 2, D6).
+///
+/// A slot whose range descends from `uri`/`uriorcurie` holds an IRI, and `ex:WGS84`
+/// and `https://example.org/canon/WGS84` are the same IRI. Compared as raw
+/// strings they are two identities: the same element re-spelled diffs as a
+/// Remove + Add, `navigate_path` by the expansion misses the CURIE-spelled
+/// element, and the instance lint calls a genuine duplicate unique.
+///
+/// The expansion lives here, in the one function every identity label is built
+/// from, so all four resolve sites move together: diff emission (via
+/// [`element_key_label`] / [`element_unique_key_label`]), [`resolve_list_segment`]
+/// for `patch` and `navigate_path`, and the instance lint. That is what keeps
+/// "the segments diff emits are exactly what the resolver computes" true by
+/// construction rather than by three coincidences.
+///
+/// A bare name (no `:` at all) and a CURIE with an unregistered prefix are left
+/// verbatim: `Identifier::to_uri` refuses them, and inventing an expansion
+/// against the default prefix would rename identities the schema never claimed
+/// were IRIs.
+fn canonical_identity_component(raw: &str, slot: &SlotView) -> String {
+    if !slot.is_range_iri() {
+        return raw.to_string();
+    }
+    let Some(conv) = slot.sv.converter_for_schema(slot.schema_id()) else {
+        return raw.to_string();
+    };
+    match Identifier::new(raw).to_uri(&conv) {
+        Ok(uri) => uri.0,
+        Err(_) => raw.to_string(),
+    }
+}
+
 pub(crate) fn scalar_slot_string(
     values: &std::collections::HashMap<String, LinkMLInstance>,
     slot_name: &str,
 ) -> Option<String> {
-    if let Some(LinkMLInstance::Scalar { value, .. }) = values.get(slot_name) {
+    if let Some(LinkMLInstance::Scalar { value, slot, .. }) = values.get(slot_name) {
         return match value {
-            JsonValue::String(s) => Some(s.clone()),
+            JsonValue::String(s) => Some(canonical_identity_component(s, slot)),
             other => Some(other.to_string()),
         };
     }

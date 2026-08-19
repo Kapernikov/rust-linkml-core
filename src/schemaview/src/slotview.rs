@@ -538,6 +538,18 @@ impl SlotView {
             .is_some_and(|ri| ri.is_integer())
     }
 
+    /// Returns `true` when the primary range's type hierarchy contains `uri` or
+    /// `uriorcurie` — the value denotes an IRI, whatever it is spelled as.
+    ///
+    /// RDF serialization uses this to emit a named node rather than a literal;
+    /// the runtime's identity machinery uses it to know that a CURIE and its
+    /// expansion are the same value and must compare equal.
+    pub fn is_range_iri(&self) -> bool {
+        self.get_range_info()
+            .first()
+            .is_some_and(|ri| ri.is_range_iri)
+    }
+
     /// Returns the resolved container shape for this slot.
     ///
     /// This resolves the interacting `multivalued`, `inlined`, and
