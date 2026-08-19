@@ -299,3 +299,28 @@ Recycled (near-verbatim, renamed to `opaque` where the branch says `array`):
 - From the spike: `opaque_*` tests, `coordinates_match_by_unique_keys_derived_key`, and the `unique_keys` ambiguity-warning pair.
 
 Not recycled: the `Set` content-matching diff/patch (`diff_set`, `apply_set_leaf_delta`, the drift-location trio) and the single-slot `shape_key` override — both replaced by `unique_keys`-declared identity.
+
+## Addendum (2026-08-19): designator and canonicalization hardening
+
+An empirical spike (typeURI × polymorphism × induced URIs, findings D1–D9) showed the shipped identity machinery honours *spellings* and *declarations* where it must honour *meaning*. Since this branch already carries a sanctioned compatibility break, the following rules are added to the design. Every behavioural change below must be attributable, output-line by output-line, in the downstream differential harness (consolidator-server corpus) before it merges.
+
+### Rules
+
+1. **A type designator is never an element identity (D3).** `element_key_label` skips a key/identifier slot whose merged definition has `designates_type: true`; identity falls through to `unique_keys`, else the list is positional. Rationale: a designator's value is a function of the element's class — constant across any homogeneous list by construction. The schema-level designator-key lint rule remains as the author-facing voice; this rule makes the engine agree with it. (Blast radius: homogeneous rings already fell back to positional via the uniqueness guard; the change moves polymorphic designator-keyed lists and classes whose real `unique_keys` was shadowed.)
+2. **Identity compares meaning, not spelling (D1 + D6).**
+   - Designator values are canonicalized at load (the boxing chokepoint, mirroring int/float coercion): once the element's class is selected, the stored designator value is the class's canonical designator value. JSON and RDF loaders then agree; `to_json` emits the canonical form.
+   - Identity-label components whose slot range descends from `uri`/`uriorcurie` are IRI-expanded before comparison, in **all** resolve sites at once: diff emission, `resolve_list_segment` (patch + navigate), and the instance lint. A curie and its expansion are one identity.
+3. **A class change is a whole-element replacement (D2a).** When diff pairs two objects whose classes differ, it emits a single whole-element `Update` — never field-level recursion across classes.
+4. **`patch` never hard-errors on an unappliable delta (D2b).** A delta whose value cannot be built or applied at its resolved location records its path in `trace.failed` and leaves the tree untouched; `Err` is reserved for infrastructure failures. One bad delta must not void a batch.
+5. **The inlined-dict key is real data (D5).** `build_mapping_entry_for_slot` injects the dict key into the element's key/identifier slot when the payload omits it (the LinkML `inlined` contract); a payload value that disagrees with the dict key is a load-time validation warning. For designator-keyed dicts, a dict key that is not an accepted designator value is a load-time validation warning.
+6. **Lint extensions (D7, D4d, D8, D9).**
+   - Instance lint: a list that is addressed positionally *despite* a declared identity (some element yields no label) is warned — missing labels get a voice, not only duplicates.
+   - Schema lint: the multi-`unique_keys` ambiguity check unions entries across the range class's descendants and warns when descendants resolve different load-bearing entries (split label space).
+   - Schema lint: warn when two classes within one `is_a` hierarchy share a `class_uri` and the hierarchy carries a designator (stable-but-arbitrary class selection); the loader behaviour itself is unchanged (deliberately out of scope — too hot for this branch).
+   - `slot_usage: designates_type: false` leaving an unfillable `key` is documented in the linter rustdoc, not specially detected.
+
+### Explicitly out of scope (recorded, not fixed here)
+
+- Loader preference of native-URI matches over shared `class_uri` matches (D8's fix half).
+- Namespacing identity labels by the `unique_keys` entry that produced them (D4's deep fix).
+- `key: true` implying `required: true` at validation time.
