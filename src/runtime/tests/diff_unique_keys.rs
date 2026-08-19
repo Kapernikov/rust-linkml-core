@@ -428,10 +428,10 @@ fn duplicated_source_to_keyed_target_stays_positional_and_round_trips() {
     // are exactly what patch resolves against it. Keep positional deltas.
     //
     // The second element differs from its target only in the key-bearing slot,
-    // so the whole edit is one delta. A multi-delta variant of this case is
-    // order-dependent for reasons unrelated to the source-keyed fallback (see
-    // the branch report): once the key edit lands the list becomes
-    // keyed-shaped, and any numeric segment still queued stops resolving.
+    // so the whole edit is one delta. A multi-delta variant is order-dependent
+    // for a reason unrelated to the source-keyed fallback, documented on
+    // `patch`: once the key edit lands the list becomes keyed-shaped, and any
+    // numeric segment still queued is reported failed rather than guessed.
     let dup = json!({"phoneNumber": "09/241.25.03", "hasNumberFunction": "Emergency_Number"});
     let before = phones(vec![e(), dup]);
     let after = phones(vec![e(), n()]);

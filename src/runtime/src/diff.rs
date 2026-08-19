@@ -525,6 +525,24 @@ impl Default for PatchOptions {
     }
 }
 
+/// Apply `deltas` to a clone of `source`, returning the result and a
+/// [`PatchTrace`]. A delta whose path cannot be resolved is reported in
+/// [`PatchTrace::failed`] rather than guessed at.
+///
+/// **List segments are resolved against the list's CURRENT state**, as the
+/// deltas are applied in order — not against a snapshot of the list the deltas
+/// were produced from. On a list whose elements carry *duplicate* identity
+/// labels this is observable: such a list is addressed numerically, but a delta
+/// that removes the duplication flips it to identity-addressed mid-sequence,
+/// and every numeric segment still queued in the same patch then resolves to
+/// nothing and is reported in `failed`. The patch stops short; it never lands
+/// an edit on a guessed element.
+///
+/// This is confined to lists whose element identity is already degenerate —
+/// exactly what [`crate::lint_element_identity`] (the schema declares no
+/// identity) and [`crate::lint_instance_identity`] (the data repeats one) exist
+/// to flag. Declaring an identity, or `diff.linkml.io/opaque`, removes the
+/// situation rather than working around it.
 pub fn patch(
     source: &LinkMLInstance,
     deltas: &[Delta],
