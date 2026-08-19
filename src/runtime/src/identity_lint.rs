@@ -30,6 +30,12 @@
 //! earlier-sorting entry silently re-addresses every delta path for every slot
 //! ranged on it. That is warned about too, naming the load-bearing entry.
 //!
+//! A third rule catches a declared identity that cannot discriminate: a list
+//! whose element class is keyed by its own type designator, whose value is
+//! constant across a homogeneous list, so the key labels every element alike
+//! (the dict form of the same class, meaning at-most-one-per-subtype, is left
+//! alone).
+//!
 //! Warnings are reported at the class that **introduces** the slot: a flagged
 //! slot inherited unchanged by a descendant is not repeated there, since the
 //! declaration the author would edit lives on the ancestor.
@@ -113,6 +119,58 @@ fn slot_has_ambiguous_unique_keys(slot: &SlotView) -> Option<(String, Vec<String
         return None;
     }
     Some((rc.name().to_string(), names))
+}
+
+/// Whether this slot's element identity, though declared, cannot discriminate
+/// between the elements of a list: the range class's key (or identifier) is its
+/// type designator, whose value is fixed per class.
+///
+/// Returns the range class name and the designator slot's name.
+///
+/// Only asked of the list form. The dict form of the same class is a different,
+/// legitimate model — a mapping keyed by the designator says at-most-one
+/// element per subtype — so it is deliberately left alone.
+fn slot_identity_is_type_designator(slot: &SlotView) -> Option<(String, String)> {
+    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
+    if slot.determine_slot_container_mode() != SlotContainerMode::List {
+        return None; // the dict form keyed by the designator is legitimate
+    }
+    if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
+        return None; // elements are references, not inlined
+    }
+    if slot_is_opaque(slot) || slot_is_ignored(slot) {
+        return None; // no per-element identity is being claimed
+    }
+    let rc = slot.get_range_class()?;
+    // The key outranks `unique_keys` in `element_identity_label`, so it is the
+    // key that diff would use however many unique_keys the class also declares.
+    let key = rc.key_or_identifier_slot()?;
+    if key.definition().designates_type != Some(true) {
+        return None;
+    }
+    Some((rc.name().to_string(), key.name.clone()))
+}
+
+/// The warning text for a list whose identity is its element class's type
+/// designator.
+fn type_designator_identity_detail(
+    class_name: &str,
+    slot_name: &str,
+    range_class: &str,
+    designator: &str,
+) -> String {
+    format!(
+        "elements of '{class_name}.{slot_name}' take their identity from \
+         '{range_class}.{designator}', which is the type designator \
+         (designates_type). Its value is fixed per class, so it is constant \
+         across a homogeneous list: N same-type elements yield N identical \
+         labels, the diff engine's uniqueness guard falls back to positional \
+         addressing, and the declared key is misleading rather than \
+         load-bearing. Remodel: move the discriminating identity a layer up and \
+         range the list on a bare element class that does not declare the \
+         designator as its key — or use the dict form instead, if \
+         at-most-one-element-per-subtype is what the key really means."
+    )
 }
 
 /// Whether `class` is where a flagged slot should be reported, rather than an
@@ -199,7 +257,27 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
             // inherited warning on every descendant buries the one declaration
             // the author would actually edit. Applies to both rules below.
             if !slot_lacks_element_identity(slot) {
-                if let Some((rc_name, names)) = slot_has_ambiguous_unique_keys(slot) {
+                // Precedence mirrors `element_identity_label`: a key outranks
+                // `unique_keys`, so a designator key is what diff would use and
+                // the several-unique_keys rule has nothing to say about the
+                // slot. The two are mutually exclusive by construction; the
+                // `else` states the order rather than relying on it.
+                if let Some((rc_name, designator)) = slot_identity_is_type_designator(slot) {
+                    if introduces_flagged_slot(&class, &slot.name, |s| {
+                        slot_identity_is_type_designator(s).is_some()
+                    }) {
+                        sink.push_warning(
+                            ValidationProblemType::AmbiguousElementIdentity,
+                            vec![class.name().to_string(), slot.name.clone()],
+                            type_designator_identity_detail(
+                                class.name(),
+                                &slot.name,
+                                &rc_name,
+                                &designator,
+                            ),
+                        );
+                    }
+                } else if let Some((rc_name, names)) = slot_has_ambiguous_unique_keys(slot) {
                     if introduces_flagged_slot(&class, &slot.name, |s| {
                         slot_has_ambiguous_unique_keys(s).is_some()
                     }) {

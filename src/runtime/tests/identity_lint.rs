@@ -205,6 +205,73 @@ fn schema_lint_warning_order_is_deterministic() {
 }
 
 #[test]
+fn schema_lint_flags_a_list_whose_identity_is_the_type_designator() {
+    // A key that is also the type designator is constant across a homogeneous
+    // list: every vertex of a ring carries the same value, so keyed matching
+    // would collapse an N-vertex ring to one element. The class "has a key", so
+    // the identity-less rule passes it — this rule is what sees it.
+    let sv = schema_view("identity_type_designator_key.yaml");
+    let warnings = lint_element_identity(&sv);
+    let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+    assert_eq!(
+        subjects,
+        vec![
+            // the designator key outranks `unique_keys`, so `markers` is flagged
+            // by this rule, once, and not by the several-unique_keys rule
+            vec!["Ring".to_string(), "markers".to_string()],
+            vec!["Ring".to_string(), "vertices".to_string()],
+        ],
+        "only the designator-keyed list slots are flagged, once each, at their \
+         introducing class: {warnings:#?}"
+    );
+    let w = warnings
+        .iter()
+        .find(|w| w.subject[1] == "vertices")
+        .expect("the ring slot must be flagged");
+    assert_eq!(
+        w.problem_type,
+        ValidationProblemType::AmbiguousElementIdentity
+    );
+    assert!(!w.severity.is_error(), "the linter warns, never errors");
+    assert!(
+        w.detail.contains("typeURI") && w.detail.contains("Coordinate"),
+        "the warning must name the designator slot and its class: {}",
+        w.detail
+    );
+    assert!(
+        w.detail.contains("designates_type"),
+        "the warning must say why the key is not discriminating: {}",
+        w.detail
+    );
+    assert!(
+        w.detail.contains("positional"),
+        "the warning must say what the diff engine actually does: {}",
+        w.detail
+    );
+}
+
+#[test]
+fn schema_lint_leaves_designator_dicts_and_ordinary_keys_alone() {
+    // Guard rails for the designator rule: the dict form keyed by the designator
+    // means at-most-one-element-per-subtype and is legitimate; an ordinary key
+    // discriminates per element; `opaque` / `ignore` answer the question already;
+    // and an unchanged inherited slot belongs to its introducing class.
+    let sv = schema_view("identity_type_designator_key.yaml");
+    let warnings = lint_element_identity(&sv);
+    let flagged: Vec<String> = warnings.iter().map(|w| w.subject[1].clone()).collect();
+    for silent in ["byType", "points", "archivedVertices", "draftVertices"] {
+        assert!(
+            !flagged.contains(&silent.to_string()),
+            "{silent} must stay silent, got {warnings:#?}"
+        );
+    }
+    assert!(
+        !warnings.iter().any(|w| w.subject[0] == "SubRing"),
+        "an unchanged inherited slot is reported at Ring only: {warnings:#?}"
+    );
+}
+
+#[test]
 fn data_lint_flags_duplicate_declared_identities() {
     let f = fixture();
     let dup = json!({"phoneNumber": "09/000.00.00", "hasNumberFunction": "Emergency_Number"});
