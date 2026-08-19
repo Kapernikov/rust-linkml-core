@@ -233,9 +233,15 @@ where
 /// front of it — `patch`'s segment resolver, `navigate_path`, and diff's
 /// keyed-source fallback — must agree, or a path one of them emits is a path
 /// another cannot resolve.
+///
+/// Derives labels lazily and stops at the first element that has none — the
+/// answer for an unlabelled list is settled by its first bare element, however
+/// long the list is. [`list_is_keyed_shaped_from_labels`] is the variant for a
+/// caller that has already paid for the labels.
 pub(crate) fn list_is_keyed_shaped(values: &[LinkMLInstance]) -> bool {
-    let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
-    list_is_keyed_shaped_from_labels(&labels)
+    !values.is_empty()
+        && values.iter().all(|v| element_identity_label(v).is_some())
+        && labels_are_unique(values, element_identity_label)
 }
 
 /// [`list_is_keyed_shaped`] for a caller that already has the labels.
@@ -373,7 +379,11 @@ impl DiffOptions {
 /// one tree typed by `…/schema/v1`, the other by `…/schema/v2`, or by two
 /// schemas that merely declare the same class name. Then no paired object is
 /// ever "the same class" and every one of them coarsens to a whole-element
-/// `Update`: correct and patchable, just coarse.
+/// `Update`: correct, and patchable where the two schemas still agree about the
+/// element's shape. Where they genuinely disagree, the `Update`'s payload will
+/// not build against the source schema and lands in [`PatchTrace::failed`] —
+/// still an improvement on the field-level recursion this replaced, which
+/// produced deltas that could not apply *and* had no single path to report.
 ///
 /// Lists are matched by element identity when both sides carry unique identity
 /// labels, and positionally otherwise — with one exception: when the *source*
