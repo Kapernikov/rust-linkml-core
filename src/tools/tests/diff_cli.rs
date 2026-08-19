@@ -49,7 +49,8 @@ fn cli_diff_and_patch_personinfo() {
 /// `patch` records an unappliable delta instead of voiding the batch, so the
 /// CLI has to say which delta was dropped — otherwise a half-applied patch
 /// writes a file that looks clean — and has to signal it in the exit status,
-/// which is `2`: partial application, not a failed run.
+/// which is `3`: partial application, not a failed run, and not `2`, which the
+/// argument parser has already claimed for usage errors.
 ///
 /// Both ways a delta can be unappliable are exercised: an address that resolves
 /// to nothing (soft before rule 4 as well) and a payload that cannot be BUILT
@@ -58,7 +59,7 @@ fn cli_diff_and_patch_personinfo() {
 /// propagate as an `Err` and void the whole batch; this test is what pins rule
 /// 4's soft path all the way out to the CLI surface.
 #[test]
-fn cli_patch_reports_failed_delta_paths_and_exits_2() {
+fn cli_patch_reports_failed_delta_paths_and_exits_3() {
     let schema = info_path("personinfo.yaml");
     let src = info_path("example_personinfo_data.yaml");
     let tmp = tempfile::tempdir().unwrap();
@@ -83,7 +84,7 @@ fn cli_patch_reports_failed_delta_paths_and_exits_2() {
         .arg(&delta)
         .arg("-o")
         .arg(&out);
-    let assert = cmd.assert().code(2);
+    let assert = cmd.assert().code(3);
     let stderr = String::from_utf8(assert.get_output().stderr.clone()).unwrap();
     assert!(
         stderr.contains("could not be applied")
@@ -136,4 +137,16 @@ fn cli_patch_exits_0_when_every_delta_applies() {
         !stderr.contains("could not be applied"),
         "a clean patch reports nothing: {stderr}"
     );
+}
+
+/// A usage error is `2`, the argument parser's own code — which is why partial
+/// application is `3`. A script that cannot tell a typo'd flag from a
+/// half-applied patch has no contract at all.
+#[test]
+fn cli_patch_usage_error_exits_2_not_the_partial_code() {
+    Command::cargo_bin("linkml-patch")
+        .unwrap()
+        .arg("--no-such-flag")
+        .assert()
+        .code(2);
 }

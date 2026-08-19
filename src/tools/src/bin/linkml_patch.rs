@@ -19,7 +19,12 @@ use linkml_tools::validation_utils::report_validation_issues;
 /// to notice, and the old builder-error `Err` at least gave it a non-zero
 /// status. A code of its own restores the machine signal without claiming the
 /// run failed.
-const EXIT_PARTIAL: i32 = 2;
+///
+/// **3, not 2**: clap exits `2` on a usage error (an unknown flag, a missing
+/// argument), which this tool does not get to choose. Claiming 2 would make a
+/// typo'd flag indistinguishable from a partially applied patch — the one
+/// reading a script could least afford to confuse.
+const EXIT_PARTIAL: i32 = 3;
 
 #[derive(Parser)]
 #[command(
@@ -29,9 +34,10 @@ const EXIT_PARTIAL: i32 = 2;
 
 Exit codes:
   0  every delta applied
-  2  partial application: some deltas could not be applied, and their paths are
-     listed on stderr; the patched document is still written
-  1  hard failure: bad arguments, unreadable files, schema or parse errors"
+  1  hard failure: unreadable files, schema, parse or write errors
+  2  argument or usage error (the command-line parser's convention)
+  3  partial application: some deltas could not be applied, and their paths are
+     listed on stderr; the patched document is still written"
 )]
 struct Args {
     /// LinkML schema YAML file
