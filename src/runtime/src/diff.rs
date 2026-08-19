@@ -140,6 +140,11 @@ pub enum DeltaOp {
 /// For a `unique_keys`-derived segment, a single-slot key contributes the bare
 /// value of that slot, while a composite key contributes the JSON array encoding
 /// of the values in `unique_key_slots` order, e.g. `["Emergency","02/111.11.11"]`.
+/// When the range class declares several `unique_keys`, the identity comes from
+/// the name-sorted first entry with a non-empty slot list — the metamodel does
+/// not preserve declaration order, and paths have to be stable. The hazard is
+/// schema evolution: adding an earlier-sorting entry re-addresses every path for
+/// that slot, so [`crate::lint_element_identity`] warns about any such class.
 ///
 /// Operations are expressed jointly via [`Delta::op`], `old`, and `new`:
 ///

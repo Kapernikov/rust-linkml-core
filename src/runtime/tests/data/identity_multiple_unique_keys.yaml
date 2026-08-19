@@ -1,0 +1,79 @@
+id: https://w3id.org/linkml/examples/identity_multiple_unique_keys
+name: identity_multiple_unique_keys
+description: |-
+  Element identity derived from `unique_keys` when a class declares more than
+  one entry: only the name-sorted first is load-bearing, so the schema author
+  has to be told which one every delta path is addressed by.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  identity: https://w3id.org/linkml/examples/identity_multiple_unique_keys/
+  linkml: https://w3id.org/linkml/
+default_prefix: identity
+default_range: string
+
+classes:
+  Catalog:
+    attributes:
+      # two candidate identities: the lint must name the load-bearing one
+      badges:
+        range: Badge
+        multivalued: true
+        inlined_as_list: true
+      # exactly one entry: unambiguous, stays silent
+      tickets:
+        range: Ticket
+        multivalued: true
+        inlined_as_list: true
+      # a key slot outranks unique_keys entirely: nothing to disambiguate
+      seats:
+        range: Seat
+        multivalued: true
+        inlined_as_list: true
+      # identity declared as "nowhere": no per-element paths to re-address
+      archivedBadges:
+        range: Badge
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+      # outside diff's scope entirely
+      draftBadges:
+        range: Badge
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/ignore: true
+
+  # inherits `badges` unchanged: reported at Catalog, not here
+  SubCatalog:
+    is_a: Catalog
+
+  Badge:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+      zz_by_label:
+        unique_key_slots: [label]
+    attributes:
+      code: {range: string, required: true}
+      label: {range: string, required: true}
+
+  Ticket:
+    unique_keys:
+      by_serial:
+        unique_key_slots: [serial]
+    attributes:
+      serial: {range: string, required: true}
+
+  Seat:
+    unique_keys:
+      by_number:
+        unique_key_slots: [number]
+      by_row:
+        unique_key_slots: [row]
+    attributes:
+      seatId: {range: string, key: true}
+      row: {range: string, required: true}
+      number: {range: string, required: true}

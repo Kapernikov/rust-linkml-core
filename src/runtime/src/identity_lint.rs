@@ -23,6 +23,13 @@
 //! removing the slot from diff's scope; `opaque` silences it by answering the
 //! question with "nowhere — replace the value as a whole".
 //!
+//! A second, narrower question is asked of slots that pass: **which** of the
+//! range class's `unique_keys` provides the identity? Only the name-sorted
+//! first entry does (declaration order is not preserved by the metamodel), so a
+//! class declaring several has an alphabetically-decided identity and adding an
+//! earlier-sorting entry silently re-addresses every delta path for every slot
+//! ranged on it. That is warned about too, naming the load-bearing entry.
+//!
 //! Warnings are reported at the class that **introduces** the slot: a flagged
 //! slot inherited unchanged by a descendant is not repeated there, since the
 //! declaration the author would edit lives on the ancestor.
@@ -62,6 +69,52 @@ fn slot_lacks_element_identity(slot: &SlotView) -> bool {
     true
 }
 
+/// The `unique_keys` entries a class offers as element identity, name-sorted.
+///
+/// An entry with no slots names nothing and can never be load-bearing, so it is
+/// not a candidate and does not make an otherwise-single-entry class ambiguous.
+fn identity_unique_key_names(rc: &ClassView) -> Vec<String> {
+    rc.unique_keys()
+        .into_iter()
+        .filter(|(_, uk)| !uk.unique_key_slots.is_empty())
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// Whether this slot's element identity is *ambiguous* rather than absent: its
+/// range class offers several `unique_keys` entries to derive it from, and only
+/// the name-sorted first is load-bearing.
+///
+/// Returns the range class name and the candidate entry names (sorted, so the
+/// load-bearing one is first). This flags slots the identity-less rule passes:
+/// the identity exists, but which of the declarations provides it was decided
+/// alphabetically rather than by the author.
+///
+/// A class with a `key`/`identifier` slot is not ambiguous however many
+/// `unique_keys` it declares: the key outranks them all, so none of them is
+/// load-bearing and adding one changes nothing.
+fn slot_has_ambiguous_unique_keys(slot: &SlotView) -> Option<(String, Vec<String>)> {
+    use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
+    if slot.determine_slot_container_mode() != SlotContainerMode::List {
+        return None;
+    }
+    if slot.determine_slot_inline_mode() == SlotInlineMode::Reference {
+        return None; // elements are references, not inlined
+    }
+    if slot_is_opaque(slot) || slot_is_ignored(slot) {
+        return None; // no per-element delta paths to re-address
+    }
+    let rc = slot.get_range_class()?;
+    if rc.key_or_identifier_slot().is_some() {
+        return None; // the key outranks unique_keys entirely
+    }
+    let names = identity_unique_key_names(&rc);
+    if names.len() < 2 {
+        return None;
+    }
+    Some((rc.name().to_string(), names))
+}
+
 /// Whether `class` is where a flagged slot should be reported, rather than an
 /// ancestor it merely inherits the problem from.
 ///
@@ -75,18 +128,49 @@ fn slot_lacks_element_identity(slot: &SlotView) -> bool {
 /// the class using the mixin as well as on the mixin itself: a mixin can be
 /// applied to unrelated classes, so there is no single owning declaration to
 /// point at, and chasing one is not worth the complexity.
-fn introduces_flagged_slot(class: &ClassView, slot_name: &str) -> bool {
+fn introduces_flagged_slot<F>(class: &ClassView, slot_name: &str, flagged: F) -> bool
+where
+    F: Fn(&SlotView) -> bool,
+{
     let Ok(Some(parent)) = class.parent_class() else {
         return true; // no is_a parent: this class is the declarer
     };
     let Some(parent_slot) = parent.slot(&Identifier::new(slot_name)) else {
         return true; // the parent does not have it: introduced here
     };
-    !slot_lacks_element_identity(&parent_slot)
+    !flagged(&parent_slot)
+}
+
+/// The warning text for a range class offering several `unique_keys`.
+///
+/// `names` is name-sorted, so `names[0]` is the load-bearing entry.
+fn ambiguous_unique_keys_detail(
+    class_name: &str,
+    slot_name: &str,
+    range_class: &str,
+    names: &[String],
+) -> String {
+    let quoted: Vec<String> = names.iter().map(|n| format!("'{n}'")).collect();
+    format!(
+        "elements of '{}.{}' take their identity from the unique_keys of \
+         element class '{}', which declares {}: {}. Only {} is load-bearing — \
+         the metamodel does not preserve declaration order, so the name-sorted \
+         first entry is used, and every delta path for this slot is addressed \
+         by it. Adding an earlier-sorting entry silently re-addresses them all. \
+         Keep one entry, or rename deliberately.",
+        class_name,
+        slot_name,
+        range_class,
+        names.len(),
+        quoted.join(", "),
+        quoted.first().map(String::as_str).unwrap_or("none"),
+    )
 }
 
 /// Schema-level lint: warn for every multivalued inlined slot whose element
-/// identity comes from nowhere. Warnings only — the schema stays usable.
+/// identity comes from nowhere, and for every one whose identity is derived
+/// from a class offering more than one `unique_keys` entry to derive it from.
+/// Warnings only — the schema stays usable.
 pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
     let mut sink = ValidationResultSink::default();
     let conv = sv.converter();
@@ -111,13 +195,29 @@ pub fn lint_element_identity(sv: &SchemaView) -> Vec<ValidationResult> {
             continue;
         }
         for slot in class.slots() {
-            if !slot_lacks_element_identity(slot) {
-                continue;
-            }
             // Report at the class that introduces the slot: repeating an
             // inherited warning on every descendant buries the one declaration
-            // the author would actually edit.
-            if !introduces_flagged_slot(&class, &slot.name) {
+            // the author would actually edit. Applies to both rules below.
+            if !slot_lacks_element_identity(slot) {
+                if let Some((rc_name, names)) = slot_has_ambiguous_unique_keys(slot) {
+                    if introduces_flagged_slot(&class, &slot.name, |s| {
+                        slot_has_ambiguous_unique_keys(s).is_some()
+                    }) {
+                        sink.push_warning(
+                            ValidationProblemType::AmbiguousElementIdentity,
+                            vec![class.name().to_string(), slot.name.clone()],
+                            ambiguous_unique_keys_detail(
+                                class.name(),
+                                &slot.name,
+                                &rc_name,
+                                &names,
+                            ),
+                        );
+                    }
+                }
+                continue;
+            }
+            if !introduces_flagged_slot(&class, &slot.name, slot_lacks_element_identity) {
                 continue;
             }
             let range_class = slot.get_range_class();

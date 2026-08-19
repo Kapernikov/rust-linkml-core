@@ -272,3 +272,62 @@ fn data_lint_does_not_let_opaque_suppress_a_schema_constraint() {
     assert_eq!(warnings.len(), 1, "{warnings:#?}");
     assert_eq!(warnings[0].subject, vec!["archivedContacts".to_string()]);
 }
+
+#[test]
+fn schema_lint_names_the_load_bearing_unique_key_when_a_class_declares_several() {
+    // Declaration order is not preserved by the metamodel, so element identity
+    // is derived from the name-sorted first `unique_keys` entry. A class with
+    // two entries therefore has a silent, alphabetically-decided identity:
+    // adding an earlier-sorting entry re-addresses every delta path for every
+    // slot ranged on it, with nothing to notice it by.
+    let sv = schema_view("identity_multiple_unique_keys.yaml");
+    let warnings = lint_element_identity(&sv);
+    let subjects: Vec<Vec<String>> = warnings.iter().map(|w| w.subject.clone()).collect();
+    assert_eq!(
+        subjects,
+        vec![vec!["Catalog".to_string(), "badges".to_string()]],
+        "only the ambiguous slot is flagged, once, at its introducing class: \
+         {warnings:#?}"
+    );
+    let w = &warnings[0];
+    assert_eq!(
+        w.problem_type,
+        ValidationProblemType::AmbiguousElementIdentity
+    );
+    assert!(!w.severity.is_error(), "the linter warns, never errors");
+    assert!(
+        w.detail.contains("'by_code'") && w.detail.contains("'zz_by_label'"),
+        "the warning must name every candidate: {}",
+        w.detail
+    );
+    assert!(
+        w.detail.contains("Badge"),
+        "the warning must name the element class the entries live on: {}",
+        w.detail
+    );
+    let winner = w.detail.find("'by_code'").unwrap_or(usize::MAX);
+    let other = w.detail.find("'zz_by_label'").unwrap_or(0);
+    assert!(
+        winner < other,
+        "the load-bearing entry must be named first, and identified as such: {}",
+        w.detail
+    );
+}
+
+#[test]
+fn schema_lint_leaves_single_entry_and_keyed_classes_alone() {
+    // Guard rails for the ambiguity rule: one entry is unambiguous, a key slot
+    // outranks `unique_keys` so the entries are not load-bearing at all, and
+    // `opaque` / `ignore` mean there are no per-element paths to re-address.
+    let sv = schema_view("identity_multiple_unique_keys.yaml");
+    let flagged: Vec<String> = lint_element_identity(&sv)
+        .iter()
+        .map(|w| w.subject[1].clone())
+        .collect();
+    for silent in ["tickets", "seats", "archivedBadges", "draftBadges"] {
+        assert!(
+            !flagged.contains(&silent.to_string()),
+            "{silent} must stay silent, got {flagged:?}"
+        );
+    }
+}
