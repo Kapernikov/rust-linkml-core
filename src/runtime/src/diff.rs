@@ -1104,6 +1104,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_list_leaf_delta<F>(
     values: &mut Vec<LinkMLInstance>,
     idx_opt: Option<usize>,
