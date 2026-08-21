@@ -1107,6 +1107,7 @@ where
 fn apply_list_leaf_delta<F>(
     values: &mut Vec<LinkMLInstance>,
     idx_opt: Option<usize>,
+    key: &str,
     owner_id: NodeId,
     trace: &mut PatchTrace,
     opts: PatchOptions,
@@ -1118,13 +1119,38 @@ where
 {
     match op {
         DeltaOp::Add | DeltaOp::Update => {
-            // An `Update` addressing an element that is not there is a stale
-            // address, not an invitation to append: report, never guess. Only
-            // `Add` treats "no such index" as "put it at the end". Checked
-            // before `build_child` so a failed address reports rather than
-            // surfacing a build error for a value that is never applied.
+            // An `Update` whose address resolves to no element is either a
+            // source re-asserting an element some other source dropped — the
+            // multi-source case, where appending is the intended merge — or a
+            // stale address, where appending would invent an element. The
+            // payload's own identity decides which: it must name the element
+            // the path addresses. `Add` always appends.
             if idx_opt.is_none() && matches!(op, DeltaOp::Update) {
-                return Ok(false);
+                // Build failure means the value could never be applied
+                // anyway: report the path instead of erroring the patch.
+                let Some(new_child) = build_or_fail(build_child) else {
+                    return Ok(false);
+                };
+                let allowed = match element_identity_label(&new_child) {
+                    // Identity present: only the address that names it may
+                    // append. Blocks stale positional Updates into a keyed
+                    // list, which used to overwrite the wrong element. The
+                    // comparison is the resolver's, so an address that WOULD
+                    // have resolved to this element had it still been there
+                    // is the address that may re-add it — a segment spelled
+                    // as a CURIE against an IRI-expanded label included.
+                    Some(label) => segment_matches_label(&new_child, Some(&label), key),
+                    // No identity to check (scalar element, unkeyed range):
+                    // only a positional or emptied list may grow this way.
+                    None => !list_is_keyed_shaped(values),
+                };
+                if !allowed {
+                    return Ok(false);
+                }
+                mark_added_subtree(&new_child, trace);
+                values.push(new_child);
+                trace.updated.push(owner_id);
+                return Ok(true);
             }
             let Some(new_child) = build_or_fail(build_child) else {
                 return Ok(false);
@@ -1429,7 +1455,7 @@ fn apply_delta_list(
         let value = newv.cloned().unwrap_or(JsonValue::Null);
         let slot_clone = slot.clone();
         let class_clone = class.clone();
-        return apply_list_leaf_delta(values, idx_opt, owner_id, trace, opts, op, || {
+        return apply_list_leaf_delta(values, idx_opt, key, owner_id, trace, opts, op, || {
             with_converter(schema_view, value, move |val, sv, conv| {
                 let mut diags = ValidationResultSink::default();
                 let value = LinkMLInstance::build_list_item_for_slot(

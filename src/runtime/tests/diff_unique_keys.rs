@@ -348,8 +348,9 @@ fn patch_refuses_positional_update_into_identity_addressed_list() {
     let f = fixture();
     let golden = f.load(phones(vec![e(), n()]));
     // A stale positional Update against a keyed-shaped list resolves to no
-    // element. It must report, not append: an unresolved address is never an
-    // invitation to grow the list.
+    // element, and its payload's identity ("Emergency_Number") does not name
+    // the address ("0"). It must report: appending would invent an element,
+    // and on `main` this address overwrote whichever element sat at index 0.
     let mut e2 = e();
     e2["phoneNumber"] = json!("09/999.99.99");
     let delta = Delta {
@@ -369,17 +370,55 @@ fn patch_refuses_positional_update_into_identity_addressed_list() {
 }
 
 #[test]
-fn patch_refuses_update_whose_label_matches_nothing() {
+fn update_whose_payload_names_its_address_is_re_added() {
     let f = fixture();
     let golden = f.load(phones(vec![e(), n()]));
-    // An Update addressing an element that is not there: the producer meant to
-    // edit an existing Operator entry, and the golden has none. Reporting is
-    // the only honest answer — appending would invent an edit as a creation.
+    // Multi-source: one source dropped the Operator entry, another still has
+    // it and describes it as an Update (its delta was computed against an
+    // older golden). The payload's identity names exactly the element the path
+    // addresses, so the Update re-adds it — the field comes back rather than
+    // being reported as a failure and silently lost.
     let delta = Delta {
         path: vec!["hasPhoneNumber".to_string(), "Operator".to_string()],
         op: DeltaOp::Update,
         old: Some(o()),
         new: Some(o()),
+    };
+    let (patched, trace) = patch(
+        &golden,
+        std::slice::from_ref(&delta),
+        PatchOptions::default(),
+    )
+    .unwrap();
+    assert!(trace.failed.is_empty(), "failed: {:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(phones(vec![e(), n(), o()])), true),
+        "{}",
+        patched.to_json()
+    );
+    // And the round trip is clean: re-diffing the result against the intent
+    // yields nothing.
+    assert!(
+        diff2(&f, patched.to_json(), phones(vec![e(), n(), o()])).is_empty(),
+        "re-added element must be indistinguishable from an Add"
+    );
+}
+
+#[test]
+fn patch_refuses_update_whose_payload_contradicts_its_address() {
+    let f = fixture();
+    let golden = f.load(phones(vec![e(), n()]));
+    // A label address that resolves to nothing AND a payload naming a
+    // different element: the address is stale, not a re-add. Appending would
+    // duplicate the Non_Urgent_Communication entry the list already carries
+    // and knock the whole list off keyed matching.
+    let mut n2 = n();
+    n2["phoneNumber"] = json!("09/999.99.99");
+    let delta = Delta {
+        path: vec!["hasPhoneNumber".to_string(), "Operator".to_string()],
+        op: DeltaOp::Update,
+        old: Some(o()),
+        new: Some(n2),
     };
     let (patched, trace) = patch(
         &golden,
