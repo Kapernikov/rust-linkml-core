@@ -53,8 +53,9 @@ with any generator commits that are not in `linkml/main` yet. While that list is
 the crate cannot be reproduced from upstream linkml alone, so a generator fix belongs
 upstream as a linkml PR *before* the regenerated crate is committed here.
 
-Open linkml generator PRs that this crate is waiting on, and the behaviour each unblocks, are
-tracked in [#109](https://github.com/Kapernikov/rust-linkml-core/issues/109).
+Each open linkml generator PR this crate is waiting on has its own tracking issue, so they close
+as they merge; [#109](https://github.com/Kapernikov/rust-linkml-core/issues/109) is the
+regeneration itself and links to them.
 
 ## Development on the Python bindings
 
