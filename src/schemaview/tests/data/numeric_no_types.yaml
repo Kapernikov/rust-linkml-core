@@ -1,0 +1,17 @@
+# Deliberately declares no `types:` block and imports nothing: numeric
+# detection has to fall back to the builtin LinkML type names, because there is
+# no datatype IRI to resolve.
+id: https://example.com/notypes
+name: notypes
+prefixes:
+  notypes: https://example.com/notypes/
+default_prefix: notypes
+classes:
+  Thing:
+    attributes:
+      count:
+        range: integer
+      score:
+        range: double
+      name:
+        range: string

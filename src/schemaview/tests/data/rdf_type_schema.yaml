@@ -3,6 +3,7 @@ name: rdftype
 prefixes:
   rdftype: https://example.com/rdftype/
   geosparql: http://www.opengis.net/ont/geosparql#
+  xsd: http://www.w3.org/2001/XMLSchema#
   linkml: https://w3id.org/linkml/
 default_prefix: rdftype
 imports:
@@ -11,7 +12,72 @@ types:
   wktLiteral:
     uri: geosparql:wktLiteral
     typeof: string
+  # LinkML declares no builtin name for these XSD numeric datatypes, so a schema
+  # has to define its own type for each. Numeric detection therefore has to work
+  # off the resolved datatype IRI, not off the range's name.
+  xsdInt:
+    uri: xsd:int
+    base: int
+  xsdLong:
+    uri: xsd:long
+    base: int
+  xsdShort:
+    uri: xsd:short
+    base: int
+  xsdByte:
+    uri: xsd:byte
+    base: int
+  xsdUnsignedInt:
+    uri: xsd:unsignedInt
+    base: int
+  xsdUnsignedLong:
+    uri: xsd:unsignedLong
+    base: int
+  xsdUnsignedShort:
+    uri: xsd:unsignedShort
+    base: int
+  xsdUnsignedByte:
+    uri: xsd:unsignedByte
+    base: int
+  xsdNonNegativeInteger:
+    uri: xsd:nonNegativeInteger
+    base: int
+  xsdPositiveInteger:
+    uri: xsd:positiveInteger
+    base: int
+  xsdNegativeInteger:
+    uri: xsd:negativeInteger
+    base: int
+  xsdNonPositiveInteger:
+    uri: xsd:nonPositiveInteger
+    base: int
+  # A schema-defined subtype of a builtin, carrying its own datatype IRI.
+  # Inheriting a datatype through `typeof` alone is covered by
+  # tests/typeof_inheritance.rs.
+  trackLength:
+    typeof: integer
+    uri: xsd:int
+    base: int
+enums:
+  Status:
+    permissible_values:
+      active:
+        meaning: rdftype:Active
+      retired:
+        meaning: rdftype:Retired
+  Flag:
+    permissible_values:
+      up: {}
+      down: {}
 classes:
+  Target:
+    attributes:
+      target_id:
+        identifier: true
+  Nested:
+    attributes:
+      label:
+        range: string
   Thing:
     attributes:
       name:
@@ -28,3 +94,57 @@ classes:
         range: uri
       see_also:
         range: uriorcurie
+      truthy:
+        range: boolean
+      when:
+        range: date
+      status:
+        range: Status
+      flag:
+        range: Flag
+      target:
+        range: Target
+      nested:
+        range: Nested
+      description:
+        range: string
+        in_language: en
+      counted_in_english:
+        range: integer
+        in_language: en
+  Numbers:
+    attributes:
+      as_int:
+        range: xsdInt
+      as_long:
+        range: xsdLong
+      as_short:
+        range: xsdShort
+      as_byte:
+        range: xsdByte
+      as_unsigned_int:
+        range: xsdUnsignedInt
+      as_unsigned_long:
+        range: xsdUnsignedLong
+      as_unsigned_short:
+        range: xsdUnsignedShort
+      as_unsigned_byte:
+        range: xsdUnsignedByte
+      as_non_negative_integer:
+        range: xsdNonNegativeInteger
+      as_positive_integer:
+        range: xsdPositiveInteger
+      as_negative_integer:
+        range: xsdNegativeInteger
+      as_non_positive_integer:
+        range: xsdNonPositiveInteger
+      as_integer:
+        range: integer
+      as_float:
+        range: float
+      as_double:
+        range: double
+      as_decimal:
+        range: decimal
+      as_track_length:
+        range: trackLength

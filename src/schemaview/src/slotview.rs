@@ -3,6 +3,7 @@ use std::sync::{Arc, OnceLock};
 use crate::classview::ClassView;
 use crate::identifier::Identifier;
 use crate::schemaview::{EnumView, SchemaView};
+use crate::Converter;
 use linkml_meta::poly::SlotExpression;
 use linkml_meta::{SlotDefinition, SlotExpressionOrSubtype};
 
@@ -97,6 +98,31 @@ impl RangeInfo {
     /// builtin type other than by its reserved name.
     const FLOAT_TYPE_NAMES: &'static [&'static str] = &["float", "double", "decimal"];
     const INTEGER_TYPE_NAMES: &'static [&'static str] = &["integer"];
+    /// Every builtin LinkML type name that denotes a number. The XSD numeric
+    /// datatypes beyond these four have no builtin LinkML name at all, so a
+    /// schema can only reach them by declaring its own type — which is why
+    /// [`is_numeric`](Self::is_numeric) has to recognise them by IRI.
+    const NUMERIC_TYPE_NAMES: &'static [&'static str] = &["integer", "float", "double", "decimal"];
+
+    /// XSD IRIs of every numeric datatype.
+    const XSD_NUMERIC: &'static [&'static str] = &[
+        Self::XSD_INTEGER,
+        Self::XSD_FLOAT,
+        Self::XSD_DOUBLE,
+        Self::XSD_DECIMAL,
+        "http://www.w3.org/2001/XMLSchema#int",
+        "http://www.w3.org/2001/XMLSchema#long",
+        "http://www.w3.org/2001/XMLSchema#short",
+        "http://www.w3.org/2001/XMLSchema#byte",
+        "http://www.w3.org/2001/XMLSchema#unsignedInt",
+        "http://www.w3.org/2001/XMLSchema#unsignedLong",
+        "http://www.w3.org/2001/XMLSchema#unsignedShort",
+        "http://www.w3.org/2001/XMLSchema#unsignedByte",
+        "http://www.w3.org/2001/XMLSchema#nonNegativeInteger",
+        "http://www.w3.org/2001/XMLSchema#positiveInteger",
+        "http://www.w3.org/2001/XMLSchema#negativeInteger",
+        "http://www.w3.org/2001/XMLSchema#nonPositiveInteger",
+    ];
 
     /// `true` when this range is a real-valued number type (`float`, `double`
     /// or `decimal`), for which an integer JSON literal should be canonicalised
@@ -125,6 +151,31 @@ impl RangeInfo {
             return true;
         }
         self.range_name_matches(Self::INTEGER_TYPE_NAMES)
+    }
+
+    /// `true` when this range is any numeric type — every XSD numeric datatype,
+    /// not only the four that need JSON canonicalisation.
+    ///
+    /// This is the question a consumer asks when it has to decide whether values
+    /// compare as numbers or as text: `'9' >= '10'` holds as text and fails as a
+    /// number, so getting it wrong is silent in both directions. It is
+    /// deliberately broader than [`is_integer`](Self::is_integer) and
+    /// [`is_floating_point`](Self::is_floating_point), which answer the narrower
+    /// question of *which* canonicalisation to apply at boxing time.
+    ///
+    /// Same IRI-primary, name-fallback resolution as those two: the resolved
+    /// datatype IRI also catches user-defined subtypes through the `typeof`
+    /// chain, and the builtin type names keep detection working when the
+    /// `linkml:types` schema that defines those IRIs has not been loaded.
+    pub fn is_numeric(&self) -> bool {
+        if self
+            .rdf_datatype_iri
+            .as_deref()
+            .is_some_and(|iri| Self::XSD_NUMERIC.contains(&iri))
+        {
+            return true;
+        }
+        self.range_name_matches(Self::NUMERIC_TYPE_NAMES)
     }
 
     /// Fallback range check by builtin type name. Only the range itself, never
@@ -360,6 +411,57 @@ impl RangeInfo {
     }
 }
 
+/// What kind of RDF term a slot's values become.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TermKind {
+    /// A named node — the range is IRI-ish, or the slot holds a reference to an
+    /// object identified by its own URI.
+    Iri,
+    /// A literal, possibly typed or language-tagged.
+    Literal,
+    /// An enum whose permissible values carry `meaning` IRIs. A value present in
+    /// [`TermDescriptor::enum_map`] becomes that IRI; a value without a meaning
+    /// falls back to a literal, which is what the turtle writer does.
+    EnumIri,
+}
+
+/// How a slot's stored values render as RDF terms.
+///
+/// Decided from the slot alone, so it can be resolved once and applied per
+/// value — which is what a consumer that has to render values *before* it sees
+/// any of them needs (e.g. pushing a query down to SQL over stored JSON, where
+/// the rendering has to be decided at plan time and must match, term for term,
+/// what the turtle writer would have produced for the same data).
+///
+/// Obtain one from [`SlotView::term_descriptor`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TermDescriptor {
+    pub kind: TermKind,
+    /// Datatype IRI for a typed literal. `None` means a plain literal.
+    pub datatype: Option<String>,
+    /// Language tag. Mutually exclusive with `datatype`, per RDF.
+    pub lang: Option<String>,
+    /// Stored value → expanded meaning IRI, sorted by stored value. Non-empty
+    /// only for [`TermKind::EnumIri`].
+    ///
+    /// Sorted because it crosses into generated code downstream, where an
+    /// unstable order makes queries and their tests flap.
+    pub enum_map: Vec<(String, String)>,
+}
+
+impl TermDescriptor {
+    /// A named node with nothing else to decide: an IRI-ish range, or a
+    /// reference to an object identified by its own URI.
+    fn iri() -> Self {
+        Self {
+            kind: TermKind::Iri,
+            datatype: None,
+            lang: None,
+            enum_map: Vec::new(),
+        }
+    }
+}
+
 pub struct SlotViewData {
     pub definitions: Vec<SlotDefinition>,
     cached_definition: OnceLock<SlotDefinition>,
@@ -565,5 +667,101 @@ impl SlotView {
         self.get_range_info()
             .first()
             .map_or(SlotInlineMode::Primitive, |ri| ri.slot_inline_mode)
+    }
+
+    /// Returns how this slot's values render as RDF terms, or `None` when they
+    /// are not a term anything can reproduce.
+    ///
+    /// The whole decision depends on the slot, never on the value, so it can be
+    /// resolved once and then applied per value. The precedence, in order:
+    ///
+    /// 1. an enum value carrying a `meaning` → that IRI;
+    /// 2. an IRI-ish range (`uri`/`uriorcurie` in the `typeof` chain) → a named
+    ///    node;
+    /// 3. `in_language` on the slot, only when there is no datatype (RDF allows
+    ///    one or the other) → a language-tagged literal;
+    /// 4. a custom RDF datatype → a typed literal;
+    /// 5. otherwise → a plain literal.
+    ///
+    /// `conv` expands the enum `meaning` CURIEs, so pass the same converter the
+    /// values will be serialized with.
+    ///
+    /// Rules 1 and 2 cannot both apply, so their order is immaterial:
+    /// `determine_rdf_type_info` yields `(None, false)` for an enum range, so
+    /// `is_range_iri` is never true for one. Stating the chain in one place is
+    /// what makes that invariant visible.
+    pub fn term_descriptor(&self, conv: &Converter) -> Option<TermDescriptor> {
+        // A class range needs care, and the two cases differ. A *reference*
+        // stores the target's URI, so the stored value is exactly the named node
+        // that gets emitted. An *inlined* structure serializes as a blank node
+        // whose label nothing can reproduce — not a second serialization run,
+        // not a consumer reading the stored value back — so there is no term to
+        // describe. Such a slot is still traversable; it is just never a value.
+        if self.get_range_class().is_some() {
+            return match self.determine_slot_inline_mode() {
+                SlotInlineMode::Reference => Some(TermDescriptor::iri()),
+                _ => None,
+            };
+        }
+
+        let info = self.get_range_info().first();
+        let datatype = info.and_then(|ri| ri.rdf_datatype_iri.clone());
+        // Rules 3 and 4 collide — RDF allows a datatype or a language tag, not
+        // both — and the datatype wins.
+        let lang = if datatype.is_none() {
+            self.definition().in_language.clone()
+        } else {
+            None
+        };
+
+        // Rule 1. The map is finite (the permissible values) so materializing it
+        // is safe, unlike walking the schema graph. `lang` is carried through
+        // because a value with no meaning falls back to a literal.
+        let enum_map = self.enum_meanings(conv);
+        if !enum_map.is_empty() {
+            return Some(TermDescriptor {
+                kind: TermKind::EnumIri,
+                datatype,
+                lang,
+                enum_map,
+            });
+        }
+
+        // Rule 2.
+        if info.is_some_and(|ri| ri.is_range_iri) {
+            return Some(TermDescriptor::iri());
+        }
+
+        // Rules 3, 4 and 5.
+        Some(TermDescriptor {
+            kind: TermKind::Literal,
+            datatype,
+            lang,
+            enum_map: Vec::new(),
+        })
+    }
+
+    /// Permissible value → expanded meaning IRI, sorted. Empty when the range is
+    /// not an enum, or when no permissible value carries a `meaning`.
+    fn enum_meanings(&self, conv: &Converter) -> Vec<(String, String)> {
+        let Some(enum_view) = self.get_range_enum() else {
+            return Vec::new();
+        };
+        let Some(values) = enum_view.definition().permissible_values.as_ref() else {
+            return Vec::new();
+        };
+        let mut out: Vec<(String, String)> = values
+            .iter()
+            .filter_map(|(text, pv)| {
+                let meaning = pv.meaning.as_ref()?;
+                let iri = Identifier::new(meaning)
+                    .to_uri(conv)
+                    .map(|u| u.0)
+                    .unwrap_or_else(|_| meaning.clone());
+                Some((text.clone(), iri))
+            })
+            .collect();
+        out.sort();
+        out
     }
 }
