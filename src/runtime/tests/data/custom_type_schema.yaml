@@ -13,6 +13,15 @@ types:
     typeof: string
     title: Well-known Text Literal
     description: A Well-known Text serialization of a Geometry object.
+  # Derived types carrying no `uri` of their own: everything they contribute to
+  # serialisation is inherited through `typeof`.
+  weblink:
+    typeof: uri
+    base: URI
+    repr: str
+  trackLength:
+    typeof: integer
+    base: int
 classes:
   Place:
     attributes:
@@ -24,3 +33,7 @@ classes:
         range: uri
       related_doc:
         range: uriorcurie
+      mirror:
+        range: weblink
+      track_length:
+        range: trackLength
