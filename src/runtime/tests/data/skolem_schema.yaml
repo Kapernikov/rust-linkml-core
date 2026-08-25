@@ -1,0 +1,48 @@
+id: https://example.com/skolem-test
+name: skolem_test
+prefixes:
+  sktest: https://example.com/skolem-test/
+  linkml: https://w3id.org/linkml/
+default_prefix: sktest
+default_range: string
+imports:
+- linkml:types
+classes:
+  Person:
+    tree_root: true
+    attributes:
+      id:
+        identifier: true
+      # Two multivalued slots over the same keyless class: the list index alone
+      # is not enough to tell their members apart.
+      home_addresses:
+        range: Address
+        multivalued: true
+        inlined_as_list: true
+      work_addresses:
+        range: Address
+        multivalued: true
+        inlined_as_list: true
+      # Two single-valued slots over the same keyless class: neither a key nor
+      # an index is available for either one.
+      primary_contact:
+        range: Contact
+      backup_contact:
+        range: Contact
+      # A keyed collection: the key, not the index, names the member. The key
+      # value here holds characters that are not legal in a path segment.
+      accounts:
+        range: Account
+        multivalued: true
+        inlined: true
+  Address:
+    attributes:
+      street:
+  Contact:
+    attributes:
+      phone:
+  Account:
+    attributes:
+      label:
+        key: true
+      balance:
