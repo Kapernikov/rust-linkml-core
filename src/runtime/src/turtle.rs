@@ -3,7 +3,7 @@ use linkml_schemaview::Converter;
 
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::{ClassView, SchemaView};
-use linkml_schemaview::slotview::{SlotInlineMode, SlotView};
+use linkml_schemaview::slotview::{SlotView, TermDescriptor, TermKind};
 use serde_json::Value as JsonValue;
 use std::io::{Result as IoResult, Write};
 
@@ -105,33 +105,80 @@ fn literal_and_type(value: &JsonValue, slot: &SlotView) -> (String, Option<Strin
     (lit, dt)
 }
 
-fn is_range_iri(slot: &SlotView) -> bool {
-    slot.get_range_info()
-        .first()
-        .is_some_and(|ri| ri.is_range_iri)
+/// Apply a [`TermDescriptor`] to one value.
+///
+/// The value-dependent half of [`SlotView::term_descriptor`]: the descriptor
+/// resolves the precedence from the slot once, this turns a single value into the
+/// `Term` that precedence calls for. Exposed so a consumer that has to render
+/// values without serializing them — pushing a query down to SQL over stored
+/// JSON, say — produces the same terms this writer does.
+pub fn term_for(descriptor: &TermDescriptor, value: &JsonValue, conv: &Converter) -> Term {
+    let lit = literal_value(value);
+    match descriptor.kind {
+        TermKind::Iri => {
+            // The stored value may be a CURIE; expand it, and fall back to the
+            // value itself when it is not one.
+            let iri = Identifier::new(&lit)
+                .to_uri(conv)
+                .map(|u| u.0)
+                .unwrap_or(lit);
+            Term::NamedNode(NamedNode::new_unchecked(iri))
+        }
+        TermKind::EnumIri => {
+            // Only a string can name a permissible value. A value with no
+            // meaning has no IRI to become, so it renders as a literal.
+            if matches!(value, JsonValue::String(_)) {
+                if let Ok(idx) = descriptor
+                    .enum_map
+                    .binary_search_by(|(text, _)| text.as_str().cmp(lit.as_str()))
+                {
+                    let iri = descriptor.enum_map[idx].1.clone();
+                    return Term::NamedNode(NamedNode::new_unchecked(iri));
+                }
+            }
+            literal_term(lit, descriptor)
+        }
+        TermKind::Literal => literal_term(lit, descriptor),
+    }
 }
 
-/// Build an RDF literal `Term` for a scalar value, respecting:
-/// 1. `in_language` on the slot definition → language-tagged literal
-/// 2. Custom RDF datatype IRI → typed literal
-/// 3. Otherwise → plain simple literal
-fn scalar_literal_term(value: &JsonValue, slot: &SlotView) -> Term {
-    let (lit, dt_opt) = literal_and_type(value, slot);
-    // Language tag takes priority over datatype (they are mutually exclusive in RDF)
-    if dt_opt.is_none() {
-        if let Some(lang) = &slot.definition().in_language {
-            if let Ok(tagged) = Literal::new_language_tagged_literal(lit.clone(), lang) {
-                return Term::Literal(tagged);
-            }
+/// A typed, language-tagged or plain literal, per the descriptor. `datatype` and
+/// `lang` are already mutually exclusive by construction.
+fn literal_term(lit: String, descriptor: &TermDescriptor) -> Term {
+    if let Some(dt) = &descriptor.datatype {
+        return Term::Literal(Literal::new_typed_literal(
+            lit,
+            NamedNode::new_unchecked(dt.clone()),
+        ));
+    }
+    if let Some(lang) = &descriptor.lang {
+        if let Ok(tagged) = Literal::new_language_tagged_literal(lit.clone(), lang) {
+            return Term::Literal(tagged);
         }
     }
-    if let Some(dt) = dt_opt {
-        Term::Literal(Literal::new_typed_literal(
-            lit,
-            NamedNode::new_unchecked(dt),
-        ))
-    } else {
-        Term::Literal(Literal::new_simple_literal(lit))
+    Term::Literal(Literal::new_simple_literal(lit))
+}
+
+/// The object term for one scalar value of `slot`.
+///
+/// A slot whose values are not a reproducible term has no descriptor — an
+/// inlined structure is a blank node — but a scalar can still turn up there
+/// (an `Anything` range, for instance), and it serializes as a literal.
+fn scalar_object_term(value: &JsonValue, slot: &SlotView, conv: &Converter) -> Term {
+    match slot.term_descriptor(conv) {
+        Some(descriptor) => term_for(&descriptor, value, conv),
+        None => literal_term(
+            literal_value(value),
+            &TermDescriptor {
+                kind: TermKind::Literal,
+                datatype: slot
+                    .get_range_info()
+                    .first()
+                    .and_then(|ri| ri.rdf_datatype_iri.clone()),
+                lang: slot.definition().in_language.clone(),
+                enum_map: Vec::new(),
+            },
+        ),
     }
 }
 
@@ -156,25 +203,6 @@ fn try_lang_tag_collapse(
     Literal::new_language_tagged_literal(val, &lang)
         .ok()
         .map(Term::Literal)
-}
-
-/// If the slot's range is an enum and the scalar value matches a permissible
-/// value that has a `meaning` URI, resolve and return that URI.  Otherwise
-/// return `None` so the caller falls through to literal serialization.
-fn enum_meaning_iri(value: &JsonValue, slot: &SlotView, conv: &Converter) -> Option<String> {
-    let text = match value {
-        JsonValue::String(s) => s.as_str(),
-        _ => return None,
-    };
-    let enum_view = slot.get_range_enum()?;
-    let pv_map = enum_view.definition().permissible_values.as_ref()?;
-    let pv = pv_map.get(text)?;
-    let meaning = pv.meaning.as_ref()?;
-    let iri = Identifier::new(meaning)
-        .to_uri(conv)
-        .map(|u| u.0)
-        .unwrap_or_else(|_| meaning.clone());
-    Some(iri)
 }
 
 fn identifier_node(
@@ -291,35 +319,12 @@ fn serialize_map<W: Write>(
         let predicate = NamedNode::new_unchecked(pred_iri.clone());
         match v {
             LinkMLInstance::Scalar { value, slot, .. } => {
-                let inline_mode = slot.determine_slot_inline_mode();
-                if inline_mode == SlotInlineMode::Reference || is_range_iri(slot) {
-                    let lit = literal_value(value);
-                    let iri = Identifier::new(&lit)
-                        .to_uri(conv)
-                        .map(|u| u.0)
-                        .unwrap_or(lit);
-                    let triple = Triple {
-                        subject: subject.as_subject(),
-                        predicate: predicate.clone(),
-                        object: Term::NamedNode(NamedNode::new_unchecked(iri)),
-                    };
-                    formatter.serialize_triple(triple.as_ref())?;
-                } else if let Some(iri) = enum_meaning_iri(value, slot, conv) {
-                    let triple = Triple {
-                        subject: subject.as_subject(),
-                        predicate: predicate.clone(),
-                        object: Term::NamedNode(NamedNode::new_unchecked(iri)),
-                    };
-                    formatter.serialize_triple(triple.as_ref())?;
-                } else {
-                    let object = scalar_literal_term(value, slot);
-                    let triple = Triple {
-                        subject: subject.as_subject(),
-                        predicate: predicate.clone(),
-                        object,
-                    };
-                    formatter.serialize_triple(triple.as_ref())?;
-                }
+                let triple = Triple {
+                    subject: subject.as_subject(),
+                    predicate: predicate.clone(),
+                    object: scalar_object_term(value, slot, conv),
+                };
+                formatter.serialize_triple(triple.as_ref())?;
             }
             LinkMLInstance::Null { .. } => {
                 // Null is treated as absent; emit nothing
@@ -359,35 +364,12 @@ fn serialize_map<W: Write>(
                 for (idx, item) in values.iter().enumerate() {
                     match item {
                         LinkMLInstance::Scalar { value, .. } => {
-                            let inline_mode = slot.determine_slot_inline_mode();
-                            if inline_mode == SlotInlineMode::Reference || is_range_iri(slot) {
-                                let lit = literal_value(value);
-                                let iri = Identifier::new(&lit)
-                                    .to_uri(conv)
-                                    .map(|u| u.0)
-                                    .unwrap_or(lit);
-                                let triple = Triple {
-                                    subject: subject.as_subject(),
-                                    predicate: predicate.clone(),
-                                    object: Term::NamedNode(NamedNode::new_unchecked(iri)),
-                                };
-                                formatter.serialize_triple(triple.as_ref())?;
-                            } else if let Some(iri) = enum_meaning_iri(value, slot, conv) {
-                                let triple = Triple {
-                                    subject: subject.as_subject(),
-                                    predicate: predicate.clone(),
-                                    object: Term::NamedNode(NamedNode::new_unchecked(iri)),
-                                };
-                                formatter.serialize_triple(triple.as_ref())?;
-                            } else {
-                                let object = scalar_literal_term(value, slot);
-                                let triple = Triple {
-                                    subject: subject.as_subject(),
-                                    predicate: predicate.clone(),
-                                    object,
-                                };
-                                formatter.serialize_triple(triple.as_ref())?;
-                            }
+                            let triple = Triple {
+                                subject: subject.as_subject(),
+                                predicate: predicate.clone(),
+                                object: scalar_object_term(value, slot, conv),
+                            };
+                            formatter.serialize_triple(triple.as_ref())?;
                         }
                         LinkMLInstance::Null { .. } => {
                             // Skip null items
@@ -439,35 +421,12 @@ fn serialize_map<W: Write>(
                 for (idx, item) in values.values().enumerate() {
                     match item {
                         LinkMLInstance::Scalar { value: v, slot, .. } => {
-                            let inline_mode = slot.determine_slot_inline_mode();
-                            if inline_mode == SlotInlineMode::Reference || is_range_iri(slot) {
-                                let lit = literal_value(v);
-                                let iri = Identifier::new(&lit)
-                                    .to_uri(conv)
-                                    .map(|u| u.0)
-                                    .unwrap_or(lit);
-                                let triple = Triple {
-                                    subject: subject.as_subject(),
-                                    predicate: predicate.clone(),
-                                    object: Term::NamedNode(NamedNode::new_unchecked(iri)),
-                                };
-                                formatter.serialize_triple(triple.as_ref())?;
-                            } else if let Some(iri) = enum_meaning_iri(v, slot, conv) {
-                                let triple = Triple {
-                                    subject: subject.as_subject(),
-                                    predicate: predicate.clone(),
-                                    object: Term::NamedNode(NamedNode::new_unchecked(iri)),
-                                };
-                                formatter.serialize_triple(triple.as_ref())?;
-                            } else {
-                                let object = scalar_literal_term(v, slot);
-                                let triple = Triple {
-                                    subject: subject.as_subject(),
-                                    predicate: predicate.clone(),
-                                    object,
-                                };
-                                formatter.serialize_triple(triple.as_ref())?;
-                            }
+                            let triple = Triple {
+                                subject: subject.as_subject(),
+                                predicate: predicate.clone(),
+                                object: scalar_object_term(v, slot, conv),
+                            };
+                            formatter.serialize_triple(triple.as_ref())?;
                         }
                         LinkMLInstance::Null { .. } => {
                             // nothing
