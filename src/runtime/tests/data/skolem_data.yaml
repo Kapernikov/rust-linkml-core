@@ -1,0 +1,14 @@
+id: sktest:p1
+home_addresses:
+  - street: home street
+work_addresses:
+  - street: work street
+primary_contact:
+  phone: "555-0001"
+backup_contact:
+  phone: "555-0002"
+accounts:
+  savings_2024:
+    balance: "100"
+  "odd label/with slash":
+    balance: "200"

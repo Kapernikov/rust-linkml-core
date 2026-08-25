@@ -83,8 +83,18 @@ fn literal_value(v: &JsonValue) -> String {
     }
 }
 
+/// Characters that may appear literally in one segment of a skolem IRI path:
+/// the RFC 3986 unreserved set (`ALPHA / DIGIT / "-" / "." / "_" / "~"`).
+/// Everything else — `/` and space above all — is percent-encoded, so a key
+/// value can never introduce a path segment of its own.
+const PATH_SEGMENT: &percent_encoding::AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
 fn encode_path_part(s: &str) -> String {
-    utf8_percent_encode(s, NON_ALPHANUMERIC).to_string()
+    utf8_percent_encode(s, PATH_SEGMENT).to_string()
 }
 
 fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> String {
@@ -205,13 +215,26 @@ fn try_lang_tag_collapse(
         .map(Term::Literal)
 }
 
+/// Pick the subject node for `map`, an object reached through `slot_name` on
+/// `parent`.
+///
+/// An object carrying an identifier names itself. Otherwise, in skolem mode the
+/// IRI is built from the path walked to reach the object: `<parent>/<slot>` for
+/// a single-valued slot, and `<parent>/<slot>/<member>` for a member of a
+/// multivalued one, where `member` is the object's own key if it has one and
+/// the caller-supplied discriminator (a mapping key, or a list index) otherwise.
+///
+/// The slot has to be in the path: two keyless objects under different slots of
+/// the same parent otherwise both land on `<parent>/0` and get merged into one
+/// node.
 fn identifier_node(
     map: &std::collections::HashMap<String, LinkMLInstance>,
     class: &ClassView,
     conv: &Converter,
     state: &mut State,
     parent: Option<&Node>,
-    index: Option<usize>,
+    slot_name: &str,
+    member: Option<&str>,
 ) -> (Node, Option<String>) {
     if let Some(id_slot) = class.identifier_slot() {
         if let Some(LinkMLInstance::Scalar { value, .. }) = map.get(&id_slot.name) {
@@ -225,24 +248,22 @@ fn identifier_node(
     }
     if state.skolem {
         if let Some(p) = parent {
-            let part_opt = class.key_or_identifier_slot().and_then(|ks| {
-                map.get(&ks.name).and_then(|v| match v {
-                    LinkMLInstance::Scalar { value, .. } => {
-                        if let JsonValue::String(s) = value {
-                            Some(encode_path_part(s))
-                        } else {
+            let key_part = class
+                .key_or_identifier_slot()
+                .and_then(|ks| {
+                    map.get(&ks.name).and_then(|v| match v {
+                        LinkMLInstance::Scalar { value, .. } => {
                             Some(encode_path_part(&literal_value(value)))
                         }
-                    }
-                    _ => None,
+                        _ => None,
+                    })
                 })
-            });
-            let part = part_opt
-                .or_else(|| index.map(|i| i.to_string()))
-                .unwrap_or_else(|| {
-                    state.counter += 1;
-                    format!("gen{}", state.counter)
-                });
+                .or_else(|| member.map(encode_path_part));
+            let slot_part = encode_path_part(slot_name);
+            let part = match key_part {
+                Some(k) => format!("{}/{}", slot_part, k),
+                None => slot_part,
+            };
             let node = state.child_subject(p, &part);
             return (node, None);
         }
@@ -341,7 +362,7 @@ fn serialize_map<W: Write>(
                     formatter.serialize_triple(triple.as_ref())?;
                 } else {
                     let (obj, child_id) =
-                        identifier_node(values, class_ref, conv, state, Some(subject), None);
+                        identifier_node(values, class_ref, conv, state, Some(subject), k, None);
                     let triple = Triple {
                         subject: subject.as_subject(),
                         predicate: predicate.clone(),
@@ -386,13 +407,17 @@ fn serialize_map<W: Write>(
                                 };
                                 formatter.serialize_triple(triple.as_ref())?;
                             } else {
+                                // Position in the list is the discriminator for
+                                // members that carry no key of their own.
+                                let position = idx.to_string();
                                 let (obj, child_id) = identifier_node(
                                     mv,
                                     class_ref,
                                     conv,
                                     state,
                                     Some(subject),
-                                    Some(idx),
+                                    k,
+                                    Some(position.as_str()),
                                 );
                                 let triple = Triple {
                                     subject: subject.as_subject(),
@@ -418,7 +443,7 @@ fn serialize_map<W: Write>(
                 }
             }
             LinkMLInstance::Mapping { values, .. } => {
-                for (idx, item) in values.values().enumerate() {
+                for (member_key, item) in values.iter() {
                     match item {
                         LinkMLInstance::Scalar { value: v, slot, .. } => {
                             let triple = Triple {
@@ -449,7 +474,8 @@ fn serialize_map<W: Write>(
                                     conv,
                                     state,
                                     Some(subject),
-                                    Some(idx),
+                                    k,
+                                    Some(member_key.as_str()),
                                 );
                                 let triple = Triple {
                                     subject: subject.as_subject(),
