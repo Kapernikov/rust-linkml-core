@@ -4,11 +4,9 @@
 //! field and the value is silently dropped, leaving derived types with no
 //! parent at all.
 //!
-//! The metamodel is generated, so the fix is a generator change (linkml/linkml#3919)
-//! followed by a regen here. Until that lands these are `#[ignore]`d rather than
-//! deleted: they are the executable record of issue #108, and are expected to pass
-//! unchanged once the regenerated metamodel is committed. Un-ignore them in that
-//! commit; see #109 for the regeneration gate.
+//! The generator now emits `#[serde(rename = "<linkml name>")]` for every field
+//! whose Rust name was escaped, so both spellings line up and a derived type
+//! inherits again. These ran red until the regenerated metamodel landed (#108).
 
 use linkml_schemaview::identifier::{converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -57,7 +55,6 @@ fn range_info(
 }
 
 #[test]
-#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
 fn typeof_survives_deserialization() {
     let schema = from_yaml(Path::new(&data_path("typeof_schema.yaml"))).unwrap();
     let types = schema.types.as_ref().expect("schema declares types");
@@ -69,7 +66,6 @@ fn typeof_survives_deserialization() {
 }
 
 #[test]
-#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
 fn abstract_survives_deserialization() {
     let schema = from_yaml(Path::new(&data_path("typeof_schema.yaml"))).unwrap();
     let classes = schema.classes.as_ref().expect("schema declares classes");
@@ -81,7 +77,6 @@ fn abstract_survives_deserialization() {
 }
 
 #[test]
-#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
 fn type_ancestors_walks_the_whole_typeof_chain() {
     let (sv, conv) = load();
     let ancestors = sv
@@ -100,7 +95,6 @@ fn type_ancestors_walks_the_whole_typeof_chain() {
 }
 
 #[test]
-#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
 fn derived_type_inherits_its_parents_datatype() {
     let (sv, conv) = load();
     for slot in ["length", "main_length"] {
@@ -122,7 +116,6 @@ fn derived_type_inherits_its_parents_datatype() {
 /// The case with user-visible serialisation impact: a type derived from `uri`
 /// is an IRI, so its values are named nodes rather than literals.
 #[test]
-#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
 fn type_derived_from_uri_is_an_iri_range() {
     let (sv, conv) = load();
     let ri = range_info(&sv, &conv, "Thing", "homepage");
