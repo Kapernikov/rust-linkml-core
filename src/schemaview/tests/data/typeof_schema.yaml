@@ -1,0 +1,37 @@
+id: https://example.com/typeofs
+name: typeofs
+prefixes:
+  typeofs: https://example.com/typeofs/
+  xsd: http://www.w3.org/2001/XMLSchema#
+  linkml: https://w3id.org/linkml/
+default_prefix: typeofs
+imports:
+- linkml:types
+types:
+  # Derived types spelled the way LinkML spells them: `typeof`, not `typeof_`.
+  trackLength:
+    typeof: integer
+    base: int
+  weblink:
+    typeof: uri
+    base: URI
+    repr: str
+  # Two levels down, to check the walk does not stop at the first parent.
+  mainTrackLength:
+    typeof: trackLength
+    base: int
+classes:
+  Base:
+    abstract: true
+    attributes:
+      name:
+        range: string
+  Thing:
+    is_a: Base
+    attributes:
+      length:
+        range: trackLength
+      main_length:
+        range: mainTrackLength
+      homepage:
+        range: weblink

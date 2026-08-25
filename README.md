@@ -31,17 +31,31 @@ making it ideal for building views server-side and shipping them to Python, WASM
 
 ## Regenerating the metamodel
 
-In order to regenerate the metamodel:
+`src/metamodel` (the `linkml_meta` crate) is generated and must never be edited by hand.
+The generator is `gen-rust`, which lives in a [linkml](https://github.com/linkml/linkml)
+checkout rather than in this repo; the input schema is `src/schemaview/tests/data/meta.yaml`.
 
-* Make sure you have a python virtual env with linkml_runtime (python!) installed, and that its active
-* In the `../linkml` folder there should be a linkml checkout that is on a branch with the rust generator
-* run the `regen.sh` script from the root of this repo
+* Put a linkml checkout at `../linkml` on a branch carrying the rust generator, or point
+  `LINKML_DIR` at one. Recreate its venv with `cd ../linkml && uv sync` if it is missing.
+* Regenerate in place: `./regen.sh`
+* Check reproducibility: `./regen.sh --check` — regenerates into a temp dir, formats it the
+  same way, and diffs against the committed crate without writing anything.
 
-Note that now the metamodel is generated from src/schemaview/tests/data/meta.yaml.
+An empty `--check` diff means the committed crate is exactly what that generator emits. A
+non-empty one means either the checkout is on a different revision than the crate was built
+from, or something was hand-edited into generated code — and a regen would silently revert
+it. That has happened before (a per-key map merge strategy), which is why the check exists.
 
-### TODOs
+### Keeping regeneration reproducible
 
-* generate the metamodel directly from the linkml meta repository
+`./regen.sh` stamps `src/metamodel/GENERATED_FROM` with the generator revision it used and
+with any generator commits that are not in `linkml/main` yet. While that list is non-empty
+the crate cannot be reproduced from upstream linkml alone, so a generator fix belongs
+upstream as a linkml PR *before* the regenerated crate is committed here.
+
+Each open linkml generator PR this crate is waiting on has its own tracking issue, so they close
+as they merge; [#109](https://github.com/Kapernikov/rust-linkml-core/issues/109) is the
+regeneration itself and links to them.
 
 ## Development on the Python bindings
 

@@ -132,6 +132,70 @@ fn turtle_uri_range_emits_named_node() {
     );
 }
 
+/// A type derived from `uri` with no `uri` of its own is still an IRI, so its
+/// values are named nodes. This is the user-visible half of issue #108: while
+/// `typeof:` is dropped at deserialization the derived type inherits nothing and
+/// this serializes as a plain literal instead. Expected to pass unchanged once
+/// linkml/linkml#3919 lands and the metamodel is regenerated (see #109).
+#[test]
+#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
+fn turtle_type_derived_from_uri_emits_named_node() {
+    let (schema, sv, conv) = load_schema_with_types("custom_type_schema.yaml");
+    let class = sv
+        .get_class(&Identifier::new("Place"), &conv)
+        .unwrap()
+        .unwrap();
+    let v = load_yaml_file(
+        Path::new(&data_path("custom_type_data.yaml")),
+        &sv,
+        &class,
+        &conv,
+    )
+    .unwrap()
+    .into_instance()
+    .unwrap();
+    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+
+    assert!(
+        ttl.contains("<https://mirror.brussels.be>"),
+        "a `typeof: uri` range should emit a named node. Got:\n{}",
+        ttl
+    );
+    assert!(
+        !ttl.contains("\"https://mirror.brussels.be\""),
+        "a `typeof: uri` range should NOT be a string literal. Got:\n{}",
+        ttl
+    );
+}
+
+/// Same inheritance, on the datatype rather than the IRI disposition: a type
+/// derived from `integer` carries `xsd:integer`. See #108.
+#[test]
+#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
+fn turtle_type_derived_from_integer_carries_its_parents_datatype() {
+    let (schema, sv, conv) = load_schema_with_types("custom_type_schema.yaml");
+    let class = sv
+        .get_class(&Identifier::new("Place"), &conv)
+        .unwrap()
+        .unwrap();
+    let v = load_yaml_file(
+        Path::new(&data_path("custom_type_data.yaml")),
+        &sv,
+        &class,
+        &conv,
+    )
+    .unwrap()
+    .into_instance()
+    .unwrap();
+    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+
+    assert!(
+        !ttl.contains("\"1200\" ") && !ttl.contains("\"1200\";") && !ttl.contains("\"1200\"."),
+        "a `typeof: integer` range should not serialize as a plain literal. Got:\n{}",
+        ttl
+    );
+}
+
 #[test]
 fn turtle_uriorcurie_range_emits_named_node() {
     let (schema, sv, conv) = load_schema_with_types("custom_type_schema.yaml");
