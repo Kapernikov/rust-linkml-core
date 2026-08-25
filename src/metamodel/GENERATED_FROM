@@ -1,0 +1,13 @@
+# Provenance of the generated linkml_meta crate. Written by regen.sh.
+# Do not edit by hand.
+generator_repo = git@github.com:Kapernikov/linkml.git
+generator_revision = e7015ec5cfe365db14e4aea92b646f58759ef254
+generator_describe = v1.11.1-288-ge7015ec5c-dirty
+meta_yaml = src/schemaview/tests/data/meta.yaml
+
+# To reproduce: apply these generator changes on top of linkml/main,
+# then run ./regen.sh. They need not be merged; naming them is enough.
+# Newest first:
+# e7015ec5c fix(rustgen): preserve LinkML slot name on the wire for escaped fields  (linkml/linkml#3919)
+# 0e8b0cb3a fix(rustgen): include concrete base class in its *OrSubtype enum  (linkml/linkml#3919)
+# a9c00ca0a fix(rustgen): emit serde tag for type designators on subtype enums  (linkml/linkml#3919)

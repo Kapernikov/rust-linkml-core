@@ -54,11 +54,13 @@ impl Extension for crate::ExtensionOrSubtype {
     fn extension_tag<'a>(&'a self) -> &'a crate::uriorcurie {
         match self {
             ExtensionOrSubtype::Annotation(val) => val.extension_tag(),
+            ExtensionOrSubtype::Extension(val) => val.extension_tag(),
         }
     }
     fn extension_value<'a>(&'a self) -> &'a crate::AnyValue {
         match self {
             ExtensionOrSubtype::Annotation(val) => val.extension_value(),
+            ExtensionOrSubtype::Extension(val) => val.extension_value(),
         }
     }
     fn extensions<'a>(
@@ -66,6 +68,7 @@ impl Extension for crate::ExtensionOrSubtype {
     ) -> Option<impl poly_containers::MapRef<'a, String, ExtensionOrSubtype>> {
         match self {
             ExtensionOrSubtype::Annotation(val) => val.extensions().map(|x| x.to_any()),
+            ExtensionOrSubtype::Extension(val) => val.extensions().map(|x| x.to_any()),
         }
     }
 }
@@ -6984,24 +6987,28 @@ impl EnumExpression for crate::EnumExpressionOrSubtype {
         match self {
             EnumExpressionOrSubtype::AnonymousEnumExpression(val) => val.code_set(),
             EnumExpressionOrSubtype::EnumDefinition(val) => val.code_set(),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.code_set(),
         }
     }
     fn code_set_tag<'a>(&'a self) -> Option<&'a str> {
         match self {
             EnumExpressionOrSubtype::AnonymousEnumExpression(val) => val.code_set_tag(),
             EnumExpressionOrSubtype::EnumDefinition(val) => val.code_set_tag(),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.code_set_tag(),
         }
     }
     fn code_set_version<'a>(&'a self) -> Option<&'a str> {
         match self {
             EnumExpressionOrSubtype::AnonymousEnumExpression(val) => val.code_set_version(),
             EnumExpressionOrSubtype::EnumDefinition(val) => val.code_set_version(),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.code_set_version(),
         }
     }
     fn pv_formula<'a>(&'a self) -> Option<&'a crate::PvFormulaOptions> {
         match self {
             EnumExpressionOrSubtype::AnonymousEnumExpression(val) => val.pv_formula(),
             EnumExpressionOrSubtype::EnumDefinition(val) => val.pv_formula(),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.pv_formula(),
         }
     }
     fn permissible_values<'a>(
@@ -7014,6 +7021,9 @@ impl EnumExpression for crate::EnumExpressionOrSubtype {
             EnumExpressionOrSubtype::EnumDefinition(val) => {
                 val.permissible_values().map(|x| x.to_any())
             }
+            EnumExpressionOrSubtype::EnumExpression(val) => {
+                val.permissible_values().map(|x| x.to_any())
+            }
         }
     }
     fn include<'a>(
@@ -7024,6 +7034,7 @@ impl EnumExpression for crate::EnumExpressionOrSubtype {
                 val.include().map(|x| x.to_any())
             }
             EnumExpressionOrSubtype::EnumDefinition(val) => val.include().map(|x| x.to_any()),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.include().map(|x| x.to_any()),
         }
     }
     fn minus<'a>(
@@ -7034,6 +7045,7 @@ impl EnumExpression for crate::EnumExpressionOrSubtype {
                 val.minus().map(|x| x.to_any())
             }
             EnumExpressionOrSubtype::EnumDefinition(val) => val.minus().map(|x| x.to_any()),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.minus().map(|x| x.to_any()),
         }
     }
     fn inherits<'a>(&'a self) -> Option<impl poly_containers::SeqRef<'a, String>> {
@@ -7042,18 +7054,21 @@ impl EnumExpression for crate::EnumExpressionOrSubtype {
                 val.inherits().map(|x| x.to_any())
             }
             EnumExpressionOrSubtype::EnumDefinition(val) => val.inherits().map(|x| x.to_any()),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.inherits().map(|x| x.to_any()),
         }
     }
     fn reachable_from<'a>(&'a self) -> Option<&'a crate::ReachabilityQuery> {
         match self {
             EnumExpressionOrSubtype::AnonymousEnumExpression(val) => val.reachable_from(),
             EnumExpressionOrSubtype::EnumDefinition(val) => val.reachable_from(),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.reachable_from(),
         }
     }
     fn matches<'a>(&'a self) -> Option<&'a crate::MatchQuery> {
         match self {
             EnumExpressionOrSubtype::AnonymousEnumExpression(val) => val.matches(),
             EnumExpressionOrSubtype::EnumDefinition(val) => val.matches(),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.matches(),
         }
     }
     fn concepts<'a>(&'a self) -> Option<impl poly_containers::SeqRef<'a, crate::uriorcurie>> {
@@ -7062,6 +7077,7 @@ impl EnumExpression for crate::EnumExpressionOrSubtype {
                 val.concepts().map(|x| x.to_any())
             }
             EnumExpressionOrSubtype::EnumDefinition(val) => val.concepts().map(|x| x.to_any()),
+            EnumExpressionOrSubtype::EnumExpression(val) => val.concepts().map(|x| x.to_any()),
         }
     }
 }

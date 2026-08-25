@@ -43,13 +43,39 @@ if [[ ! -d $LINKML_DIR ]]; then
 fi
 LINKML_DIR=$(cd "$LINKML_DIR" && pwd)
 
-# The revision that produced this output, and — more useful when the output
-# does not match — which generator commits are not upstream yet. Anything
-# listed here has to be merged and this file re-stamped before another machine
-# can reproduce the crate.
+# The revision that produced this output, plus the generator changes it needs
+# that are not in linkml/main. Naming those is what makes the crate
+# reproducible: someone else applies the listed PRs and runs this script. They
+# do not have to be merged first.
 revision=$(git -C "$LINKML_DIR" rev-parse HEAD)
 described=$(git -C "$LINKML_DIR" describe --always --dirty)
-unmerged=$(git -C "$LINKML_DIR" log --oneline linkml/main..HEAD 2>/dev/null || true)
+# A dirty generator checkout means the revision does not determine the output,
+# which is the one thing the stamp is supposed to promise. Worth saying out loud;
+# not worth refusing over, since the diff may well be unrelated to the generator.
+if [[ -n $(git -C "$LINKML_DIR" status --porcelain --untracked-files=no) ]]; then
+  echo "WARNING: $LINKML_DIR has uncommitted changes; the recorded revision" >&2
+  echo "         alone will not reproduce this output." >&2
+fi
+extra_commits=$(git -C "$LINKML_DIR" log --format='%h %s' linkml/main..HEAD 2>/dev/null || true)
+
+# Resolve each extra commit to the pull request carrying it, so the stamp names
+# something a reader can fetch rather than a bare sha. Best effort: needs `gh`
+# and network, and the commit has to be pushed to $LINKML_PR_REPO.
+PR_REPO=${LINKML_PR_REPO:-linkml/linkml}
+describe_commit() {
+  local sha=$1 subject=$2 prs=
+  if command -v gh >/dev/null 2>&1; then
+    # Every PR whose head contains the commit, not just one: a stacked branch
+    # puts the same commit in several, and any of them reproduces it.
+    prs=$(gh api "repos/$PR_REPO/commits/$sha/pulls" \
+      --jq '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null || true)
+  fi
+  if [[ -n $prs && $prs != "null" ]]; then
+    echo "$sha $subject  ($PR_REPO$prs)"
+  else
+    echo "$sha $subject  (no PR found on $PR_REPO)"
+  fi
+}
 
 out_dir=$CRATE_DIR
 tmp_dir=
@@ -95,12 +121,15 @@ fi
   echo "generator_describe = $described"
   echo "meta_yaml = src/schemaview/tests/data/meta.yaml"
   echo
-  if [[ -n $unmerged ]]; then
-    echo "# Generator commits NOT in linkml/main. Until these are merged, this"
-    echo "# crate cannot be reproduced from upstream linkml alone."
-    while IFS= read -r line; do echo "# $line"; done <<<"$unmerged"
+  if [[ -n $extra_commits ]]; then
+    echo "# To reproduce: apply these generator changes on top of linkml/main,"
+    echo "# then run ./regen.sh. They need not be merged; naming them is enough."
+    echo "# Newest first:"
+    while IFS= read -r line; do
+      echo "# $(describe_commit "${line%% *}" "${line#* }")"
+    done <<<"$extra_commits"
   else
-    echo "# Every generator commit is in linkml/main; reproducible from upstream."
+    echo "# Every generator commit is in linkml/main; plain checkout reproduces."
   fi
 } >"$PROVENANCE"
 

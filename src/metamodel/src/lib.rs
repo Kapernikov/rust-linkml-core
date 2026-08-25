@@ -794,11 +794,17 @@ impl serde_utils::InlinedPair for Extension {
 #[cfg_attr(feature = "serde", serde(untagged))]
 pub enum ExtensionOrSubtype {
     Annotation(Annotation),
+    Extension(Extension),
 }
 
 impl From<Annotation> for ExtensionOrSubtype {
     fn from(x: Annotation) -> Self {
         Self::Annotation(x)
+    }
+}
+impl From<Extension> for ExtensionOrSubtype {
+    fn from(x: Extension) -> Self {
+        Self::Extension(x)
     }
 }
 
@@ -807,6 +813,9 @@ impl<'py> FromPyObject<'py> for ExtensionOrSubtype {
     fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Annotation>() {
             return Ok(ExtensionOrSubtype::Annotation(val));
+        }
+        if let Ok(val) = ob.extract::<Extension>() {
+            return Ok(ExtensionOrSubtype::Extension(val));
         }
         Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
             "invalid ExtensionOrSubtype",
@@ -823,6 +832,7 @@ impl<'py> IntoPyObject<'py> for ExtensionOrSubtype {
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self {
             ExtensionOrSubtype::Annotation(val) => val.into_pyobject(py).map(move |b| b.into_any()),
+            ExtensionOrSubtype::Extension(val) => val.into_pyobject(py).map(move |b| b.into_any()),
         }
     }
 }
@@ -859,6 +869,9 @@ impl serde_utils::InlinedPair for ExtensionOrSubtype {
         if let Ok(x) = Annotation::from_pair_mapping(k.clone(), v.clone()) {
             return Ok(ExtensionOrSubtype::Annotation(x));
         }
+        if let Ok(x) = Extension::from_pair_mapping(k.clone(), v.clone()) {
+            return Ok(ExtensionOrSubtype::Extension(x));
+        }
         Err("none of the variants matched the mapping form".into())
     }
 
@@ -866,18 +879,22 @@ impl serde_utils::InlinedPair for ExtensionOrSubtype {
         if let Ok(x) = Annotation::from_pair_simple(k.clone(), v.clone()) {
             return Ok(ExtensionOrSubtype::Annotation(x));
         }
+        if let Ok(x) = Extension::from_pair_simple(k.clone(), v.clone()) {
+            return Ok(ExtensionOrSubtype::Extension(x));
+        }
         Err("none of the variants support the primitive form".into())
     }
 
     fn extract_key(&self) -> &Self::Key {
         match self {
             ExtensionOrSubtype::Annotation(inner) => inner.extract_key(),
+            ExtensionOrSubtype::Extension(inner) => inner.extract_key(),
         }
     }
 }
 
 #[cfg(feature = "stubgen")]
-::pyo3_stub_gen::impl_stub_type!(ExtensionOrSubtype = Annotation);
+::pyo3_stub_gen::impl_stub_type!(ExtensionOrSubtype = Annotation | Extension);
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -4245,6 +4262,7 @@ impl<'py> FromPyObject<'py> for Box<AnonymousTypeExpression> {
 #[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
 pub struct TypeDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(rename = "typeof"))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub typeof_: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -5503,6 +5521,7 @@ pub struct Definition {
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(rename = "abstract"))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -6306,6 +6325,7 @@ pub struct EnumDefinition {
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(rename = "abstract"))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -8250,6 +8270,7 @@ impl<'py> FromPyObject<'py> for Box<EnumExpression> {
 pub enum EnumExpressionOrSubtype {
     AnonymousEnumExpression(AnonymousEnumExpression),
     EnumDefinition(EnumDefinition),
+    EnumExpression(EnumExpression),
 }
 
 impl From<AnonymousEnumExpression> for EnumExpressionOrSubtype {
@@ -8262,6 +8283,11 @@ impl From<EnumDefinition> for EnumExpressionOrSubtype {
         Self::EnumDefinition(x)
     }
 }
+impl From<EnumExpression> for EnumExpressionOrSubtype {
+    fn from(x: EnumExpression) -> Self {
+        Self::EnumExpression(x)
+    }
+}
 
 #[cfg(feature = "pyo3")]
 impl<'py> FromPyObject<'py> for EnumExpressionOrSubtype {
@@ -8271,6 +8297,9 @@ impl<'py> FromPyObject<'py> for EnumExpressionOrSubtype {
         }
         if let Ok(val) = ob.extract::<EnumDefinition>() {
             return Ok(EnumExpressionOrSubtype::EnumDefinition(val));
+        }
+        if let Ok(val) = ob.extract::<EnumExpression>() {
+            return Ok(EnumExpressionOrSubtype::EnumExpression(val));
         }
         Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
             "invalid EnumExpressionOrSubtype",
@@ -8290,6 +8319,9 @@ impl<'py> IntoPyObject<'py> for EnumExpressionOrSubtype {
                 val.into_pyobject(py).map(move |b| b.into_any())
             }
             EnumExpressionOrSubtype::EnumDefinition(val) => {
+                val.into_pyobject(py).map(move |b| b.into_any())
+            }
+            EnumExpressionOrSubtype::EnumExpression(val) => {
                 val.into_pyobject(py).map(move |b| b.into_any())
             }
         }
@@ -8320,7 +8352,7 @@ impl<'py> FromPyObject<'py> for Box<EnumExpressionOrSubtype> {
 
 #[cfg(feature = "stubgen")]
 ::pyo3_stub_gen::impl_stub_type!(
-    EnumExpressionOrSubtype = AnonymousEnumExpression | EnumDefinition
+    EnumExpressionOrSubtype = AnonymousEnumExpression | EnumDefinition | EnumExpression
 );
 
 #[derive(Debug, Clone, PartialEq)]
@@ -10224,6 +10256,7 @@ pub struct SlotDefinition {
     pub is_a: Option<String>,
     #[merge(strategy = overwrite_except_none)]
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(rename = "abstract"))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[merge(strategy = overwrite_except_none)]
@@ -11568,6 +11601,7 @@ pub struct ClassDefinition {
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub is_a: Option<String>,
     #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(rename = "abstract"))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub abstract_: Option<bool>,
     #[cfg_attr(feature = "serde", serde(default))]

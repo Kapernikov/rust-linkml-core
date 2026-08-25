@@ -138,7 +138,6 @@ fn turtle_uri_range_emits_named_node() {
 /// this serializes as a plain literal instead. Expected to pass unchanged once
 /// linkml/linkml#3919 lands and the metamodel is regenerated (see #109).
 #[test]
-#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
 fn turtle_type_derived_from_uri_emits_named_node() {
     let (schema, sv, conv) = load_schema_with_types("custom_type_schema.yaml");
     let class = sv
@@ -171,7 +170,6 @@ fn turtle_type_derived_from_uri_emits_named_node() {
 /// Same inheritance, on the datatype rather than the IRI disposition: a type
 /// derived from `integer` carries `xsd:integer`. See #108.
 #[test]
-#[ignore = "blocked on linkml/linkml#3919 + a metamodel regen; see issue #108"]
 fn turtle_type_derived_from_integer_carries_its_parents_datatype() {
     let (schema, sv, conv) = load_schema_with_types("custom_type_schema.yaml");
     let class = sv

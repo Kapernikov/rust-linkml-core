@@ -49,13 +49,17 @@ it. That has happened before (a per-key map merge strategy), which is why the ch
 ### Keeping regeneration reproducible
 
 `./regen.sh` stamps `src/metamodel/GENERATED_FROM` with the generator revision it used and
-with any generator commits that are not in `linkml/main` yet. While that list is non-empty
-the crate cannot be reproduced from upstream linkml alone, so a generator fix belongs
-upstream as a linkml PR *before* the regenerated crate is committed here.
+with every generator change it needed that is not in `linkml/main`, each resolved to the pull
+request carrying it. That list is the reproduction recipe: apply those PRs on top of
+`linkml/main` and re-run the script.
 
-Each open linkml generator PR this crate is waiting on has its own tracking issue, so they close
-as they merge; [#109](https://github.com/Kapernikov/rust-linkml-core/issues/109) is the
-regeneration itself and links to them.
+So a generator fix does **not** have to be merged upstream before the regenerated crate lands
+here — it has to be *identifiable*. Push it and open the PR, so the stamp can name something a
+reader can fetch instead of a sha that only exists on your disk. (`LINKML_PR_REPO` overrides
+which repo is searched for the PR; it defaults to `linkml/linkml`.)
+
+Each such PR gets a tracking issue here, so they can be closed off one by one as they merge
+upstream and drop out of the stamp.
 
 ## Development on the Python bindings
 
