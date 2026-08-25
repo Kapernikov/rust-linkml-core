@@ -129,3 +129,88 @@ fn uriorcurie_range_is_iri() {
     );
     assert!(ri.is_range_iri, "uriorcurie range should be flagged as IRI");
 }
+
+/// Every XSD numeric datatype counts as numeric, not only the four that need
+/// JSON canonicalisation (`is_integer` / `is_floating_point`).
+#[test]
+fn every_xsd_numeric_datatype_is_numeric() {
+    let (_schema, sv, conv) = load_schema_with_types("rdf_type_schema.yaml");
+    for slot in [
+        "as_int",
+        "as_long",
+        "as_short",
+        "as_byte",
+        "as_unsigned_int",
+        "as_unsigned_long",
+        "as_unsigned_short",
+        "as_unsigned_byte",
+        "as_non_negative_integer",
+        "as_positive_integer",
+        "as_negative_integer",
+        "as_non_positive_integer",
+        "as_integer",
+        "as_float",
+        "as_double",
+        "as_decimal",
+    ] {
+        let ri = range_info_for_slot(&sv, &conv, "Numbers", slot);
+        assert!(
+            ri.is_numeric(),
+            "'{}' (datatype {:?}) should be numeric",
+            slot,
+            ri.rdf_datatype_iri
+        );
+    }
+}
+
+/// A schema-defined subtype carrying its own datatype IRI is numeric through
+/// the IRI path — nothing about the name "trackLength" says it is a number.
+#[test]
+fn schema_defined_numeric_subtype_is_numeric_through_its_datatype() {
+    let (_schema, sv, conv) = load_schema_with_types("rdf_type_schema.yaml");
+    let ri = range_info_for_slot(&sv, &conv, "Numbers", "as_track_length");
+    assert_eq!(
+        ri.rdf_datatype_iri.as_deref(),
+        Some("http://www.w3.org/2001/XMLSchema#int")
+    );
+    assert!(ri.is_numeric());
+    // `is_integer` answers a narrower question — which JSON canonicalisation to
+    // apply — and xsd:int is not xsd:integer, so it stays false.
+    assert!(!ri.is_integer());
+    assert!(!ri.is_floating_point());
+}
+
+#[test]
+fn non_numeric_ranges_are_not_numeric() {
+    let (_schema, sv, conv) = load_schema_with_types("rdf_type_schema.yaml");
+    for slot in [
+        "name",     // string
+        "truthy",   // boolean
+        "when",     // date
+        "see_also", // uriorcurie
+        "location", // a custom string subtype
+        "status",   // an enum range
+        "target",   // a class range
+    ] {
+        let ri = range_info_for_slot(&sv, &conv, "Thing", slot);
+        assert!(!ri.is_numeric(), "'{}' should not be numeric", slot);
+    }
+}
+
+/// The case a local list of datatype IRIs gets wrong: with no `types:` block
+/// there is no datatype IRI to resolve, so detection has to fall back to the
+/// builtin LinkML type names.
+#[test]
+fn builtin_range_is_numeric_without_a_types_block() {
+    let schema = from_yaml(Path::new(&data_path("numeric_no_types.yaml"))).unwrap();
+    let mut sv = SchemaView::new();
+    sv.add_schema(schema.clone()).unwrap();
+    let conv = converter_from_schemas([&schema]);
+
+    for slot in ["count", "score"] {
+        let ri = range_info_for_slot(&sv, &conv, "Thing", slot);
+        assert_eq!(ri.rdf_datatype_iri, None, "no types block, no datatype IRI");
+        assert!(ri.is_numeric(), "'{}' should be numeric by name", slot);
+    }
+    assert!(!range_info_for_slot(&sv, &conv, "Thing", "name").is_numeric());
+}

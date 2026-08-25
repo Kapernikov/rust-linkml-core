@@ -97,6 +97,31 @@ impl RangeInfo {
     /// builtin type other than by its reserved name.
     const FLOAT_TYPE_NAMES: &'static [&'static str] = &["float", "double", "decimal"];
     const INTEGER_TYPE_NAMES: &'static [&'static str] = &["integer"];
+    /// Every builtin LinkML type name that denotes a number. The XSD numeric
+    /// datatypes beyond these four have no builtin LinkML name at all, so a
+    /// schema can only reach them by declaring its own type — which is why
+    /// [`is_numeric`](Self::is_numeric) has to recognise them by IRI.
+    const NUMERIC_TYPE_NAMES: &'static [&'static str] = &["integer", "float", "double", "decimal"];
+
+    /// XSD IRIs of every numeric datatype.
+    const XSD_NUMERIC: &'static [&'static str] = &[
+        Self::XSD_INTEGER,
+        Self::XSD_FLOAT,
+        Self::XSD_DOUBLE,
+        Self::XSD_DECIMAL,
+        "http://www.w3.org/2001/XMLSchema#int",
+        "http://www.w3.org/2001/XMLSchema#long",
+        "http://www.w3.org/2001/XMLSchema#short",
+        "http://www.w3.org/2001/XMLSchema#byte",
+        "http://www.w3.org/2001/XMLSchema#unsignedInt",
+        "http://www.w3.org/2001/XMLSchema#unsignedLong",
+        "http://www.w3.org/2001/XMLSchema#unsignedShort",
+        "http://www.w3.org/2001/XMLSchema#unsignedByte",
+        "http://www.w3.org/2001/XMLSchema#nonNegativeInteger",
+        "http://www.w3.org/2001/XMLSchema#positiveInteger",
+        "http://www.w3.org/2001/XMLSchema#negativeInteger",
+        "http://www.w3.org/2001/XMLSchema#nonPositiveInteger",
+    ];
 
     /// `true` when this range is a real-valued number type (`float`, `double`
     /// or `decimal`), for which an integer JSON literal should be canonicalised
@@ -125,6 +150,31 @@ impl RangeInfo {
             return true;
         }
         self.range_name_matches(Self::INTEGER_TYPE_NAMES)
+    }
+
+    /// `true` when this range is any numeric type — every XSD numeric datatype,
+    /// not only the four that need JSON canonicalisation.
+    ///
+    /// This is the question a consumer asks when it has to decide whether values
+    /// compare as numbers or as text: `'9' >= '10'` holds as text and fails as a
+    /// number, so getting it wrong is silent in both directions. It is
+    /// deliberately broader than [`is_integer`](Self::is_integer) and
+    /// [`is_floating_point`](Self::is_floating_point), which answer the narrower
+    /// question of *which* canonicalisation to apply at boxing time.
+    ///
+    /// Same IRI-primary, name-fallback resolution as those two: the resolved
+    /// datatype IRI also catches user-defined subtypes through the `typeof`
+    /// chain, and the builtin type names keep detection working when the
+    /// `linkml:types` schema that defines those IRIs has not been loaded.
+    pub fn is_numeric(&self) -> bool {
+        if self
+            .rdf_datatype_iri
+            .as_deref()
+            .is_some_and(|iri| Self::XSD_NUMERIC.contains(&iri))
+        {
+            return true;
+        }
+        self.range_name_matches(Self::NUMERIC_TYPE_NAMES)
     }
 
     /// Fallback range check by builtin type name. Only the range itself, never
