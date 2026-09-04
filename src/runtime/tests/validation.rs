@@ -155,9 +155,13 @@ fn validation_issue_paths_include_list_indices_once() {
         "1".to_string(),
         "primary_email".to_string(),
     ];
+    // The fixture's second object declares `objecttype` as Person, so the bad
+    // email is a pattern violation on a declared slot rather than an unknown
+    // slot. This test is about the *path* carrying the list index exactly once,
+    // but it still pins a problem type so the filter stays a real assertion.
     let diag_paths: Vec<_> = diags
         .iter()
-        .filter(|d| matches!(d.problem_type, ValidationProblemType::UndeclaredSlot))
+        .filter(|d| matches!(d.problem_type, ValidationProblemType::SlotRangeViolation))
         .map(|d| d.subject.clone())
         .collect();
     assert!(

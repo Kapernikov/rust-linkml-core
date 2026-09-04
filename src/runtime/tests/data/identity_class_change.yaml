@@ -1,0 +1,63 @@
+id: https://w3id.org/linkml/examples/identity_class_change
+name: identity_class_change
+description: |-
+  Fixture for spec addendum rule 3 — a class change is a whole-element
+  replacement — and rule 4 — `patch` never hard-errors on an unappliable delta.
+
+  `Part` declares the element identity (`unique_keys: [code]`) and the type
+  designator; `Bolt` and `Nut` are siblings carrying *disjoint* extra slots.
+  Two elements can therefore share one identity label while being different
+  things: diff must say so once, at the element, instead of recursing
+  field-by-field across two classes and emitting deltas (`thread` on a `Nut`)
+  that no builder can apply.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  part: https://w3id.org/linkml/examples/identity_class_change/
+  linkml: https://w3id.org/linkml/
+default_prefix: part
+default_range: string
+
+classes:
+  Inventory:
+    attributes:
+      parts:
+        range: Part
+        multivalued: true
+        inlined_as_list: true
+      # single-valued inlined object: rule 3 is not list-specific
+      featured:
+        range: Part
+        inlined: true
+      # a class with a real key slot: the case diff's changed-key branch still
+      # owns after rule 3 (same class, changed key value)
+      owner:
+        range: Owner
+        inlined: true
+
+  Part:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+    attributes:
+      typeURI:
+        range: uriorcurie
+        designates_type: true
+      code: {range: string, required: true}
+      note: {range: string}
+
+  Bolt:
+    is_a: Part
+    attributes:
+      thread: {range: string}
+
+  Nut:
+    is_a: Part
+    attributes:
+      pitch: {range: string}
+
+  Owner:
+    attributes:
+      oid: {range: string, key: true}
+      oname: {range: string}

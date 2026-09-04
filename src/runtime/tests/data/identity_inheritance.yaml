@@ -1,0 +1,79 @@
+id: https://w3id.org/linkml/examples/identity-inheritance
+name: identity_inheritance
+description: |-
+  Regression fixture for "report a flagged slot once, at the class that
+  introduces it".
+
+  A flagged slot is inherited by every descendant, so reporting it per class
+  buries the one place the author can fix it under a pile of copies. The lint
+  reports only the topmost class whose direct `is_a` parent does not already
+  carry the same slot in the same flagged state.
+
+  The classes below cover the cases that pull against each other:
+    Base      introduces the flagged `outline`      -> reported
+    Middle    inherits it unchanged                 -> silent
+    Leaf      inherits it via Middle                -> silent (recursion)
+    Fixed     narrows `outline` to a keyed range    -> silent, on its own merits
+    Broken    widens a clean slot to an ambiguous
+              range, so IT introduces the problem   -> reported
+    Tagged    gets `tags` from a mixin, not is_a    -> reported (see rustdoc)
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  inherit: https://w3id.org/linkml/examples/identity-inheritance/
+  linkml: https://w3id.org/linkml/
+default_prefix: inherit
+default_range: string
+
+classes:
+  Base:
+    attributes:
+      # Vertex declares no key, identifier or unique_keys: flagged here.
+      outline:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+      # Keyed declares a key: not flagged.
+      keyed:
+        range: Keyed
+        multivalued: true
+        inlined_as_list: true
+
+  Middle:
+    is_a: Base
+
+  Leaf:
+    is_a: Middle
+
+  Fixed:
+    is_a: Base
+    slot_usage:
+      outline:
+        range: Keyed
+
+  Broken:
+    is_a: Base
+    slot_usage:
+      keyed:
+        range: Vertex
+
+  HasTagsMixin:
+    mixin: true
+    attributes:
+      tags:
+        range: string
+        multivalued: true
+
+  Tagged:
+    mixins:
+      - HasTagsMixin
+
+  Keyed:
+    attributes:
+      k: {range: string, key: true}
+
+  Vertex:
+    attributes:
+      x: {range: float}
+      y: {range: float}

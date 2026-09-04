@@ -1,0 +1,10 @@
+{
+  "name": "reg",
+  "entries": [{"note": "a"}, {"note": "b"}],
+  "records": [{"serial": "S1"}, {"note": "b"}],
+  "unfillable": [{"note": "a"}, {"note": "b"}],
+  "vertices": [{"x": 1.0, "y": 2.0}, {"x": 1.0, "y": 2.0}],
+  "tags": ["a", "a"],
+  "references": ["urn:a", "urn:b"],
+  "archivedEntries": [{"code": "dup"}, {"code": "dup"}]
+}

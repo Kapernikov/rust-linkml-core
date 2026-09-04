@@ -1,14 +1,14 @@
 objects:
   - id: T
-    objecttype: https://w3id.org/linkml/examples/personinfo/Organization
+    objecttype: http://schema.org/Organization
     name: club
   - id: P:001
     name: fred bloggs
-    objecttype: https://w3id.org/linkml/examples/personinfo/Person
+    objecttype: http://schema.org/Person
     primary_email: fred.bloggs@example.com
     age_in_years: 33
   - id: P:002
-    objecttype: https://w3id.org/linkml/examples/personinfo/Person
+    objecttype: http://schema.org/Person
     name: joe schmoe
     primary_email: joe.schmoe@example.com
     has_employment_history:

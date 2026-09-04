@@ -1,25 +1,32 @@
 objects:
   - id: T
-    objecttype: https://w3id.org/linkml/examples/personinfo/Organization
+    objecttype: http://schema.org/Organization
     name: club
   - id: P:001
     name: fred bloggs
-    objecttype: https://w3id.org/linkml/examples/personinfo/Person
+    objecttype: http://schema.org/Person
     primary_email: fred.bloggs@example.com
     age_in_years: 33
   - id: P:002
-    objecttype: https://w3id.org/linkml/examples/personinfo/Person
+    objecttype: http://schema.org/Person
     name: joe schmoe
     primary_email: joe.schmoe@example.com
     has_employment_history:
       - employed_at: ROR:1
         started_at_time: 2019-01-01
         is_current: true
+    # `role` is the key slot of this inlined dict. Spec addendum rule 5 makes
+    # the dict key real data, so the loader fills `role` from it — this file is
+    # the *expected* side of the `linkml-patch` CLI round-trip and therefore
+    # states its own normal form. `example_personinfo_data.yaml`, the source
+    # side, still omits it, so the omitted case stays exercised end to end.
     has_familial_relationships:
       brother:
+        role: brother
         related_to: P:001
         type: SIBLING_OF
       mother:
+        role: mother
         related_to: P:003
         type: PARENT_OF
     has_medical_history:
@@ -34,7 +41,7 @@ objects:
           name: trepanation
           objecttype: https://w3id.org/linkml/examples/personinfo/ProcedureConcept
   - id: P:003
-    objecttype: https://w3id.org/linkml/examples/personinfo/Person
+    objecttype: http://schema.org/Person
     name: alice smith
     primary_email: alice.smith@example.com
     age_in_years: 34

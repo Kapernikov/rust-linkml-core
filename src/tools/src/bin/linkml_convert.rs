@@ -10,7 +10,7 @@ use linkml_runtime::{
 #[cfg(feature = "ttl")]
 use linkml_schemaview::io::from_yaml;
 #[cfg(all(feature = "ttl", feature = "resolve"))]
-use linkml_schemaview::resolve::resolve_schemas;
+use linkml_schemaview::resolve::resolve_schemas_from;
 #[cfg(feature = "ttl")]
 use linkml_schemaview::schemaview::SchemaView;
 #[cfg(feature = "ttl")]
@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "resolve")]
     {
         eprintln!("Resolving schemas...");
-        resolve_schemas(&mut sv).map_err(|e| e.to_string())?;
+        resolve_schemas_from(&mut sv, &args.schema).map_err(|e| e.to_string())?;
         eprintln!("Schemas resolved");
     }
     let conv = sv.converter();

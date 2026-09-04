@@ -1,0 +1,129 @@
+id: https://w3id.org/linkml/examples/identity_canonical
+name: identity_canonical
+description: |-
+  Fixture for spec addendum rule 2 — identity compares meaning, not spelling.
+
+  Two shapes are exercised:
+
+  * a type designator (`Shape.typeURI`, `Node.kind`, `Widget.typeURI`) whose
+    value data may spell as a CURIE, as a full URI, or omit entirely — all
+    three must box to the one canonical value the class declares, and a value
+    that is no accepted designator value at all must load with a warning.
+  * an identity component whose range descends from `uri`/`uriorcurie`
+    (`System.systemType`), where a CURIE and its expansion are one identity.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  canon: https://w3id.org/linkml/examples/identity_canonical/
+  ex: https://example.org/canon/
+  linkml: https://w3id.org/linkml/
+default_prefix: canon
+default_range: string
+
+classes:
+  Container:
+    attributes:
+      # polymorphic list; identity is unique_keys[label], the designator is not
+      shapes:
+        range: Shape
+        multivalued: true
+        inlined_as_list: true
+      # designator on a `uri`-ranged slot: canonical form is the expanded URI
+      nodes:
+        range: Node
+        multivalued: true
+        inlined_as_list: true
+      # dict form, so `build_mapping_entry_for_slot` is exercised too
+      widgets:
+        range: Widget
+        multivalued: true
+        inlined: true
+      # D6: identity component whose range descends from `uri`
+      systems:
+        range: System
+        multivalued: true
+        inlined_as_list: true
+      # the same, where that component is a `key` — the one input diff's
+      # changed-key check reads, which `unique_keys` never reaches
+      keyed_systems:
+        range: KeyedSystem
+        multivalued: true
+        inlined_as_list: true
+
+  Shape:
+    unique_keys:
+      by_label:
+        unique_key_slots: [label]
+    attributes:
+      typeURI:
+        range: uriorcurie
+        designates_type: true
+      label: {range: string, required: true}
+
+  Circle:
+    is_a: Shape
+    attributes:
+      radius: {range: float}
+
+  Node:
+    unique_keys:
+      by_name:
+        unique_key_slots: [name]
+    attributes:
+      kind:
+        range: uri
+        designates_type: true
+      name: {range: string, required: true}
+
+  # declares a `class_uri`, so its canonical designator value and its
+  # schema-native URI differ — data may legitimately spell either
+  LeafNode:
+    is_a: Node
+    class_uri: ex:Leaf
+    attributes:
+      depth: {range: integer}
+
+  # the guard for `ClassView::get_uri(native, expand)`: a `class_uri` and no
+  # distinguishing slot at all, so the ONLY thing that can select this class is
+  # its designator value. Spelled with its schema-native URI it is reachable
+  # only if that spelling is in the accepted set; if `get_uri(true, true)` ever
+  # returns the `class_uri` again, this class silently becomes `Node` and the
+  # designator gets rewritten to `Node`'s value.
+  BareLeaf:
+    is_a: Node
+    class_uri: ex:BareLeaf
+
+  # `find_scalar_slot_for_inlined_map` picks the first non-key scalar slot —
+  # here the designator — so `{"w1": "canon:FancyWidget"}` is a legal compact
+  # dict entry that names its own class.
+  # `wid` is `required` on purpose: the dict-key injection of spec addendum
+  # rule 5 is what satisfies it for both the object and the compact form, so a
+  # loader that stopped injecting fails here rather than quietly.
+  Widget:
+    attributes:
+      wid: {range: string, key: true, required: true}
+      typeURI:
+        range: uriorcurie
+        designates_type: true
+
+  FancyWidget:
+    is_a: Widget
+    attributes:
+      sparkle: {range: string}
+
+  System:
+    unique_keys:
+      by_system_type:
+        unique_key_slots: [systemType]
+    attributes:
+      systemType: {range: uri, required: true}
+      value: {range: string}
+
+  # `System`'s identity comes from `unique_keys`, which diff's changed-key
+  # check never consults; this one declares the same component as a `key`, so
+  # the check does read it, and its comparison has to be the canonical one too.
+  KeyedSystem:
+    attributes:
+      systemType: {range: uri, key: true, required: true}
+      value: {range: string}

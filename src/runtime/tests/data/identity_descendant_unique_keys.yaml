@@ -1,0 +1,189 @@
+id: https://w3id.org/linkml/examples/identity_descendant_unique_keys
+name: identity_descendant_unique_keys
+description: |-
+  `unique_keys` ambiguity across an inheritance hierarchy (spike D4d).
+
+  A list ranged on a class holds elements of that class *and of every class
+  descending from it*, and each element's label comes from the name-sorted
+  first entry of its OWN merged `unique_keys`. Inspecting only the range class
+  therefore answers the wrong question twice over:
+
+  - `boxes` (range `Box`) — `Box` declares one entry, so the range class alone
+    looks unambiguous; `BigBox` adds a later-sorting one. Two entries are now
+    reachable through this slot, and the load-bearing one is still `by_id` for
+    every class: the candidate set is ambiguous, the label space is not.
+  - `gadgets` (range `Gadget`) — `Gadget` declares one entry, `Widget` adds an
+    earlier-sorting one. `Gadget` elements are labelled by `code` and `Widget`
+    elements by `serial`: one list, two label spaces, and a `Widget` serial can
+    collide with a `Gadget` code without either class's constraint being
+    violated. That is the split the second warning names.
+
+  - `keyed` (range `Plate`) — `StampedPlate` declares a `key`, which outranks
+    its `unique_keys` entirely. Its entries are therefore never load-bearing
+    and do not widen the candidate set — but the key itself is a label space:
+    `Plate` elements are labelled by `plate_identity` and `StampedPlate`
+    elements by `stampId`, and the two can collide exactly as two entries can.
+    The divergence rule counts a key-labelled class as its own group, so this
+    slot gets the divergence warning and *not* the several-entries one.
+
+  Guard rail: `crates` (a descendant that declares no entries of its own) must
+  stay silent.
+
+  `Base.stamps` is the gate-subtraction case. Its range class is
+  designator-keyed, so the designator rule is its only voice — but the raw
+  several-entries and divergence shapes also match it (the designator key no
+  longer shadows `DesignatorMarker`'s entries, and `AaaSubMarker` adds an
+  earlier-sorting one). A subclass that `slot_usage`-retargets the slot to a
+  class those rules really do speak for must therefore not be suppressed by a
+  parent that never emitted their warning: `Retargeted` and `SplitRetargeted`
+  are the two halves of that.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  identity: https://w3id.org/linkml/examples/identity_descendant_unique_keys/
+  linkml: https://w3id.org/linkml/
+default_prefix: identity
+default_range: string
+
+classes:
+  Depot:
+    attributes:
+      # descendant adds a LATER-sorting entry: ambiguous candidate set, one
+      # label space -> the several-entries warning only
+      boxes:
+        range: Box
+        multivalued: true
+        inlined_as_list: true
+      # descendant adds an EARLIER-sorting entry: split label space -> the
+      # several-entries warning AND the divergence warning
+      gadgets:
+        range: Gadget
+        multivalued: true
+        inlined_as_list: true
+      # descendant declares nothing of its own: one entry, one label space
+      crates:
+        range: Crate
+        multivalued: true
+        inlined_as_list: true
+      # the descendant's key outranks its own unique_keys, so the candidate set
+      # is unchanged — but the key is a second label space -> divergence only
+      keyed:
+        range: Plate
+        multivalued: true
+        inlined_as_list: true
+
+  # the gate-subtraction cases: this slot's range class is designator-keyed, so
+  # the designator rule is its sole voice, even though the raw several-entries
+  # and divergence shapes both match it
+  Base:
+    attributes:
+      stamps:
+        range: DesignatorMarker
+        multivalued: true
+        inlined_as_list: true
+
+  # retargets the inherited slot onto a keyless two-entry class: the
+  # several-entries rule speaks for it HERE, and the parent — which only ever
+  # emitted the designator warning — cannot stand in for that
+  Retargeted:
+    is_a: Base
+    slot_usage:
+      stamps:
+        range: TwoEntry
+
+  # the same, for the divergence rule
+  SplitRetargeted:
+    is_a: Base
+    slot_usage:
+      stamps:
+        range: Gadget
+
+  Box:
+    unique_keys:
+      by_id:
+        unique_key_slots: [boxId]
+    attributes:
+      boxId: {range: string, required: true}
+
+  BigBox:
+    is_a: Box
+    unique_keys:
+      zz_by_volume:
+        unique_key_slots: [volume]
+    attributes:
+      volume: {range: string, required: true}
+
+  Gadget:
+    unique_keys:
+      gadget_identity:
+        unique_key_slots: [code]
+    attributes:
+      code: {range: string, required: true}
+
+  Widget:
+    is_a: Gadget
+    unique_keys:
+      aaa_widget_identity:
+        unique_key_slots: [serial]
+    attributes:
+      serial: {range: string, required: true}
+
+  Crate:
+    unique_keys:
+      crate_identity:
+        unique_key_slots: [crateId]
+    attributes:
+      crateId: {range: string, required: true}
+
+  BigCrate:
+    is_a: Crate
+    attributes:
+      capacity: {range: string}
+
+  Plate:
+    unique_keys:
+      plate_identity:
+        unique_key_slots: [code]
+    attributes:
+      code: {range: string, required: true}
+
+  StampedPlate:
+    is_a: Plate
+    unique_keys:
+      aaa_stamp_identity:
+        unique_key_slots: [stamp]
+    attributes:
+      stampId: {range: string, key: true}
+      stamp: {range: string, required: true}
+
+  DesignatorMarker:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+      zz_by_label:
+        unique_key_slots: [label]
+    attributes:
+      typeURI: {range: uriorcurie, key: true, designates_type: true}
+      code: {range: string, required: true}
+      label: {range: string, required: true}
+
+  # an earlier-sorting entry, so `DesignatorMarker`'s family also matches the
+  # divergence shape raw — the second half of the gate-subtraction case
+  AaaSubMarker:
+    is_a: DesignatorMarker
+    unique_keys:
+      aaa_sub_identity:
+        unique_key_slots: [sub]
+    attributes:
+      sub: {range: string, required: true}
+
+  TwoEntry:
+    unique_keys:
+      by_alpha:
+        unique_key_slots: [alpha]
+      zz_by_beta:
+        unique_key_slots: [beta]
+    attributes:
+      alpha: {range: string, required: true}
+      beta: {range: string, required: true}

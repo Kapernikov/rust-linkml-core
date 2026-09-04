@@ -1,0 +1,127 @@
+id: https://w3id.org/linkml/examples/identity_type_designator_key
+name: identity_type_designator_key
+description: |-
+  Element identity declared as a key that is also the class's type designator.
+  A designator's value describes the element's class, never the element, so it
+  is never element identity: the diff engine ignores such a key outright and
+  addresses the list by the element class's unique_keys when it declares any
+  (and their labels are unique within the list), positionally otherwise. The
+  dict (mapping) form of the same class is legitimate: it means
+  at-most-one-element-per-subtype.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  identity: https://w3id.org/linkml/examples/identity_type_designator_key/
+  linkml: https://w3id.org/linkml/
+default_prefix: identity
+default_range: string
+
+classes:
+  Ring:
+    attributes:
+      # a homogeneous vertex ring whose element class declares nothing but the
+      # designator key: the engine ignores that key, no identity is left, and
+      # the ring is addressed positionally (even at length one)
+      vertices:
+        range: Coordinate
+        multivalued: true
+        inlined_as_list: true
+      # the shadow case: the designator key used to outrank unique_keys and no
+      # longer does, so `by_code` (name-sorted first) is the real identity the
+      # engine matches on. Still flagged by the designator rule only — the
+      # sharpest diagnosis, and the sole voice for a designator-keyed slot
+      markers:
+        range: Marker
+        multivalued: true
+        inlined_as_list: true
+      # dict form: keyed by the designator means at-most-one-per-subtype, which
+      # is a legitimate model
+      byType:
+        range: Coordinate
+        multivalued: true
+        inlined: true
+      # identity declared as "nowhere": the value is replaced as a whole
+      archivedVertices:
+        range: Coordinate
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+      # outside diff's scope entirely
+      draftVertices:
+        range: Coordinate
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/ignore: true
+      # the wild shape (asset360's PositioningSystemCoordinate): the designator
+      # is declared on a base class and a subclass promotes it to the key with
+      # `slot_usage`. The rule only sees this because `SlotView::definition()`
+      # merges the is_a chain; without that it is a silent false negative.
+      # Also the polymorphic case: with `SpecialKeyedTypedThing` in the list the
+      # designator values differ per element, which is a fact about the classes
+      # present, not an element identity — positional too.
+      inheritedVertices:
+        range: KeyedTypedThing
+        multivalued: true
+        inlined_as_list: true
+      # an ordinary key, discriminating per element: nothing to warn about
+      points:
+        range: Point
+        multivalued: true
+        inlined_as_list: true
+
+  # inherits `vertices` unchanged: reported at Ring, not here
+  SubRing:
+    is_a: Ring
+
+  Coordinate:
+    attributes:
+      typeURI:
+        range: uriorcurie
+        key: true
+        designates_type: true
+      x: {range: float, required: true}
+      y: {range: float, required: true}
+
+  Marker:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+      zz_by_label:
+        unique_key_slots: [label]
+    attributes:
+      typeURI:
+        range: uriorcurie
+        key: true
+        designates_type: true
+      code: {range: string, required: true}
+      label: {range: string, required: true}
+
+  # declares the designator but no key: nothing ranges a list on it directly
+  TypedThing:
+    attributes:
+      typeURI:
+        range: uri
+        designates_type: true
+      label: {range: string}
+
+  # promotes the inherited designator to the key, exactly as
+  # PositioningSystemCoordinate does
+  KeyedTypedThing:
+    is_a: TypedThing
+    slot_usage:
+      typeURI:
+        key: true
+
+  # a second concrete subtype, so a list ranged on `KeyedTypedThing` can be
+  # polymorphic: one element per subtype, each carrying its own designator value
+  SpecialKeyedTypedThing:
+    is_a: KeyedTypedThing
+
+  Point:
+    attributes:
+      pointId: {range: string, key: true}
+      x: {range: float, required: true}
+      y: {range: float, required: true}

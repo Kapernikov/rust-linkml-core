@@ -2789,7 +2789,12 @@ class LinkMLInstance:
     def __getitem__(self, key:typing.Any) -> LinkMLInstance: ...
     def navigate(self, path:typing.Any) -> typing.Optional[LinkMLInstance]:
         r"""
-        Navigate by a path of strings (map keys or list indices).
+        Navigate by a path of strings: slot names, mapping keys, and — for
+        lists — element identity labels (identifier/key or `unique_keys` value)
+        when the list carries unique labels, numeric indices otherwise. This is
+        the same addressing `diff` emits and `patch` applies, so delta paths are
+        navigable; a numeric segment aimed at a label-addressed list resolves to
+        nothing rather than to that position.
         Returns a new LinkMLInstance if found, otherwise None.
         """
     def keys(self) -> builtins.list[builtins.str]: ...
@@ -5476,6 +5481,43 @@ def import_ntriples(reader:typing.Any, schema_view:SchemaView, root_classes:typi
 def import_turtle(reader:typing.Any, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str], *, disk_path:typing.Optional[builtins.str]=None, strict:builtins.bool=False) -> RdfStream:
     r"""
     Import RDF/Turtle into a streaming iterator of LinkML instances.
+    """
+
+def lint_element_identity(schema_view:SchemaView) -> builtins.list[ValidationResult]:
+    r"""
+    Schema-level lint: warn where a multivalued inlined slot's element identity
+    is absent, ambiguous, or cannot address the list.
+
+    Five rules: (1) no identity declared at all; (2) the declared identity is
+    the element class's type designator, whose value describes the class rather
+    than the element; (3) several ``unique_keys`` entries to choose from across
+    the range class and its descendants, of which only the name-sorted first is
+    load-bearing; (4) those classes labelled in different ways, so one list
+    carries two label spaces; (5) two classes of one ``is_a`` hierarchy
+    declaring the same ``class_uri`` while the hierarchy designates its type.
+
+    Warnings only — the schema stays usable. Results are deterministic: sorted
+    by subject, deduplicated across class URIs, and an inherited slot is
+    reported once, at the class that introduces the problem. Rules 1-4 are
+    per-slot and their ``subject`` is ``[class_name, slot_name]``; rule 5 is
+    class-level and its ``subject`` is ``"shared_class_uri"`` followed by the
+    classes sharing the URI — the marker distinguishes it from a per-slot
+    subject, which a rendering that joins the segments could not otherwise do.
+    """
+
+def lint_instance_identity(instance:LinkMLInstance) -> builtins.list[ValidationResult]:
+    r"""
+    Data-level lint: warn where loaded data defeats a declared element identity.
+
+    Two rules: a list whose elements repeat a declared identity — key/identifier
+    or ``unique_keys`` value — reported as ``duplicate_element_identity``; and a
+    list addressed positionally *despite* a declared identity, because some
+    element leaves the slot that identity names empty, reported as
+    ``ambiguous_element_identity``. Neither is visible in the schema: an
+    identity slot that is not ``required`` may be absent, and repeated or
+    missing values are alike valid data.
+
+    Warnings only. ``subject`` is the container's instance path.
     """
 
 def load_json(source:typing.Any, sv:SchemaView, class_view:ClassView) -> tuple[typing.Optional[LinkMLInstance], builtins.list[ValidationResult]]: ...

@@ -1,7 +1,8 @@
 use clap::{Parser, ValueEnum};
 #[cfg(feature = "resolve")]
-use linkml_schemaview::resolve::resolve_schemas;
+use linkml_schemaview::resolve::resolve_schemas_from;
 use linkml_schemaview::{identifier::Identifier, io::from_yaml, schemaview::SchemaView, Converter};
+use linkml_tools::validation_utils::identity_warnings_json;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -12,6 +13,11 @@ struct Args {
     /// Output format
     #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
     output: OutputFormat,
+    /// Opt-in: warn for multivalued inlined slots whose element identity comes
+    /// from nowhere (positional, ambiguous deltas in multi-sourced use).
+    /// Warnings never change the exit code.
+    #[arg(long, default_value_t = false)]
+    lint_identity: bool,
 }
 
 #[derive(ValueEnum, Clone)]
@@ -108,7 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).map_err(|e| e.to_string())?;
     #[cfg(feature = "resolve")]
-    if let Err(e) = resolve_schemas(&mut sv) {
+    if let Err(e) = resolve_schemas_from(&mut sv, &args.schema) {
         eprintln!("{e}");
     }
     let conv = sv.converter();
@@ -177,17 +183,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     if errors.is_empty() {
+        // Opt-in identity lint. It runs against the same SchemaView the
+        // validation above used, so classes pulled in by `resolve_schemas`
+        // from `imports:` are linted too. Warnings only — the exit code is
+        // whatever the validation produced.
+        let identity_warnings = if args.lint_identity {
+            linkml_runtime::lint_element_identity(&sv)
+        } else {
+            Vec::new()
+        };
         match args.output {
-            OutputFormat::Text => println!("schema valid"),
+            OutputFormat::Text => {
+                println!("schema valid");
+                for w in &identity_warnings {
+                    println!("warning[{}]: {}", w.subject.join("."), w.detail);
+                }
+            }
+            OutputFormat::Json if args.lint_identity => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "valid",
+                        "errors": errors,
+                        "identity_warnings": identity_warnings_json(&identity_warnings),
+                        "identity_lint_skipped": false,
+                        "identity_lint_skipped_reason": serde_json::Value::Null,
+                    }))?
+                );
+            }
             OutputFormat::Json => println!("{}", serde_json::json!({"status":"valid"})),
         }
         Ok(())
     } else {
+        // The lint is deliberately skipped when the schema does not validate:
+        // it asks "where does this slot's element identity come from?" of a
+        // schema graph that is known to be incomplete, so its answers would be
+        // wrong (an unresolved import turns a class range into "not a class").
+        // Reporting the errors first is also the only useful output here.
         match args.output {
             OutputFormat::Text => {
                 for e in &errors {
                     println!("{e}");
                 }
+                if args.lint_identity {
+                    println!("note: --lint-identity skipped: fix the schema errors above first");
+                }
+            }
+            OutputFormat::Json if args.lint_identity => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "invalid",
+                        "errors": errors,
+                        "identity_warnings": serde_json::Value::Null,
+                        "identity_lint_skipped": true,
+                        "identity_lint_skipped_reason":
+                            "schema has errors; fix them and re-run",
+                    }))?
+                );
             }
             OutputFormat::Json => {
                 println!("{}", serde_json::to_string_pretty(&errors)?);

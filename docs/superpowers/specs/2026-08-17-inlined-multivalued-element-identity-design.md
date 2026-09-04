@@ -1,0 +1,328 @@
+# Element Identity for Inlined Multivalued Slots — Design
+
+**Status:** Draft, awaiting user review before plan-writing.
+**Date:** 2026-08-17
+**Branch:** `feat/inlined-multivalued-element-identity`
+**Supersedes:** the abandoned shapes work on branch `feat/container-shapes-and-verify-old` (see "Recyclable material" at the end).
+
+## Goal
+
+Answer the question, for each inlined multivalued shape: **where does element identity come from?**
+
+The offered options are:
+
+- a **key** (or identifier) — a slot on the element class,
+- a **composed key** (content) — declared with the existing LinkML meta `unique_keys`,
+- **opaque** — nowhere; the value is replaced as a whole.
+
+"Where does identity for an element come from" should be easy to answer for a data model author.
+
+## Non-goal
+
+Positional index deltas remain the inferred semantics for slots that declare nothing — they are still valuable for projects not dealing with multiple sources producing deltas for the same object at the same time, and the opt-in linter is the only place that complains about them.
+
+One deliberate compatibility break ships with this design (a spike finding): **keyed matching becomes uniform**. A list is matched by element identity only when every element on both sides yields an identity label (key/identifier first — unless that key is the element class's type designator, which the addendum's rule 1 never accepts as element identity — else the class's `unique_keys`) and the labels are unique within each side; path segments are then the labels, IRI-expanded when the slot they came from ranges on `uri`/`uriorcurie` (addendum rule 2). In every other case matching is positional and path segments are plain numeric indices. This removes two behaviours of the old fallback: key values were opportunistically mixed into positional paths, and duplicate key values within a "keyed" list were silently collapsed by the matcher. Consumers see cleaner, uniform delta paths; `patch` keeps accepting both numeric and label segments, and reports a delta as failed instead of guessing when a label matches more than one element.
+
+## Proposed solution
+
+Inlined multivalued slots cause ambiguous deltas downstream.
+
+1. We add a **`diff.linkml.io/opaque` annotation**, with the meaning: **stop all recursion, replace the whole value.**
+2. Together with **new support for the existing LinkML meta `unique_keys`**, allowing to declare composed keys.
+3. An **opt-in linter** warns when your data model still allows for ambiguous deltas in multi-sourced operation.
+4. We provide **examples explaining the nuanced options** a data model author has when the linter flags ambiguity (worked out below on the constituting examples).
+
+Consequence of this strict mode is that some LinkML schemas need to be reworked to be compliant, and more cases of patches (produced outside this diff lib) cannot be applied fully.
+
+## Problem statement
+
+When the element class of an inlined multivalued slot carries no key or identifier, the diff falls back to positional index paths (`src/runtime/src/diff.rs:267-296` — `for i in 0..max_len`, numeric path segments). A positional path is only meaningful against the exact list the producer saw. In multi-sourced operation the golden record has drifted by the time a patch arrives, and the index silently selects a different element — no error, wrong data.
+
+Both constituting examples are real, from the asset360 model at
+`consolidator-server/components/py/asset360-model/asset360_model/schemas/asset360/repository/v1.0.0/`.
+
+### Example 1 — phone numbers: data loss and duplication under current inferred semantics
+
+`Service.hasPhoneNumber` is an inlined list of anonymous value objects (`tunnels.yaml:1954-1999`, locale annotations elided):
+
+```yaml
+  Service:
+    attributes:
+      hasPhoneNumber:
+        description: Phone number of the resource.
+        range: ServicePhoneNumber
+        multivalued: true
+        inlined_as_list: true
+
+  ServicePhoneNumber:
+    description: >-
+      A phone number associated with a Service, classified by its function
+      (emergency, non-urgent, operator, etc.). Inlined into Service.
+    attributes:
+      phoneNumber:
+        range: string
+      hasNumberFunction:
+        range: NumberFunction
+        required: true
+```
+
+`ServicePhoneNumber` has no `identifier`, no `key`, and the schema declares no `unique_keys` anywhere. Elements have no stable identity at all — yet the model *does* have an identity rule in mind. It lives in hand-written SHACL (`constraints.shacl.ttl:546-612`), invisible to LinkML:
+
+```turtle
+asset360:Service_OnePhoneNumberPerFunctionShape
+  a sh:NodeShape ;
+  sh:targetClass asset360:Service ;
+  sh:message "A service cannot have two phone numbers with the same function."@en ;
+  sh:property [
+    sh:path asset360:hasPhoneNumber ;
+    sh:qualifiedValueShape [ sh:path asset360:hasNumberFunction ; sh:hasValue "Emergency_Number" ] ;
+    sh:qualifiedMaxCount 1
+  ] ;
+  # ... one qualifiedMaxCount block per NumberFunction value ...
+```
+
+So `hasNumberFunction` *behaves* as a key — but LinkML sees an unkeyed list, and the diff sees positions. (The ingestion layer even carries an external identity per phone number — `source_id_key: new_uri` in `changeset-generator/.../ce_kwoa_a1552/service_phone_number.yaml` — which is dropped at the schema boundary.)
+
+**Data loss.** Two sources both derived their deltas from the same snapshot:
+
+```json
+"hasPhoneNumber": [
+  {"phoneNumber": "09/241.25.00", "hasNumberFunction": "Emergency_Number"},
+  {"phoneNumber": "09/241.25.03", "hasNumberFunction": "Non_Urgent_Communication"}
+]
+```
+
+- Source A corrects the non-urgent number: `Update hasPhoneNumber/1/phoneNumber` → `"09/241.25.99"`.
+- Source B removes the emergency number. Positionally that is a cascade: `Update hasPhoneNumber/0/*` (the non-urgent content shifts into index 0, with the *stale* phone number `09/241.25.03`) plus `Remove hasPhoneNumber/1`.
+
+Apply A then B: B's cascade overwrites index 0 with the stale snapshot value — A's correction is silently reverted. Apply B then A: A's path `hasPhoneNumber/1` now points at nothing (or at whatever drifted in) — the edit is lost or lands on the wrong element. Either order corrupts; neither reports an error.
+
+**Duplication.** Two ingest sources independently discover the same new operator number and both emit `Add hasPhoneNumber/2 = {"phoneNumber": "09/241.25.10", "hasNumberFunction": "Operator"}`. Both apply; the golden record now holds the same phone number twice. Under key-based identity the second add would have been recognised as the same element.
+
+The correct resolution for this slot is Option 2 below: declare the SHACL rule as `unique_keys`.
+
+### Example 2 — `PositioningSystemCoordinate`: one class, two identity shapes
+
+`PositioningSystemCoordinate` declares a key — `typeURI`, the type designator, which plays the role of the coordinate-system discriminator (`rsm.yaml:610-625`, `asset360.yaml:541-550`, elided):
+
+```yaml
+  PositioningSystemCoordinate:
+    is_a: ObservableProperty
+    description: A tuple of coordinates in a given positioning system.
+    slots:
+      - typeURI            # range: uri, designates_type: true
+    attributes:
+      PositioningSystemCoordinate_positioningSystem:
+        range: PositioningSystem
+    slot_usage:
+      typeURI:
+        key: true
+```
+
+**Shape B — keyed dict (the key is real).** `SpotLocation` holds at most one coordinate per coordinate-system type (`rsm.yaml:678-696`):
+
+```yaml
+  SpotLocation:
+    is_a: BaseLocation
+    attributes:
+      SpotLocation_coordinates:
+        multivalued: true
+        inlined: true
+        inlined_as_list: false     # JSON object keyed by typeURI
+        range: PositioningSystemCoordinate
+```
+
+Real committed data (`asset360-model/tests/data/signal-obj-with-track.json:38-96`, trimmed) — one `LinearCoordinate`, one `GeographicCoordinate`, keyed by class URI:
+
+```json
+"SpotLocation_coordinates": {
+  "https://data.infrabel.be/asset360-rsm-subset/LinearCoordinate": {
+    "measure": {"Quantity_unit": ".../unit/Kilometer", "NumericQuantity_value": 526.0},
+    "typeURI": "http://rsm.uic.org/RSM12#EAID_CB107995_3610_4622_824B_708281B24CEA"
+  },
+  "https://data.infrabel.be/asset360-rsm-subset/GeographicCoordinate": {
+    "typeURI": "https://data.infrabel.be/asset360-rsm-subset/GeographicCoordinate",
+    "latitude": 50.820240734349845,
+    "longitude": 4.316083008990688
+  }
+}
+```
+
+~25k records rely on this keyed behaviour. (The same pattern recurs one level up: `locations` is a dict of `BaseLocation` keyed by the `locationrole` enum slot, `rsm.yaml:734-742`.)
+
+**Shape A — vertex ring (the key is constant).** `Polyline` and `Polygon` hold the *same* class as an ordered ring (`rsm.yaml:567-608`):
+
+```yaml
+  Polyline:
+    is_a: NamedResource
+    attributes:
+      PolyLine_coordinates:
+        range: PositioningSystemCoordinate
+        multivalued: true
+        inlined_as_list: true
+
+  Polygon:
+    is_a: NamedResource
+    attributes:
+      Polygon_coordinates:
+        range: PositioningSystemCoordinate
+        multivalued: true
+        inlined_as_list: true
+```
+
+Every vertex of a ring is the same coordinate subclass, so the declared key (`typeURI`) is **constant across elements**. Real committed data shows it plainly (`consolidator_api/goldenrecords/tests/data/a_trail.json`, trimmed to two of four vertices — all four repeat the identical `typeURI` and the identical positioning system):
+
+```json
+"polylines": [{
+  "PolyLine_coordinates": [
+    {"x": 214888.6, "y": 97029.71,
+     "typeURI": "https://data.infrabel.be/asset360/MicroCoordinate",
+     "PositioningSystemCoordinate_positioningSystem": {"typeURI": "http://rsm.uic.org/RSM12#EAID_4160AA98_..."}},
+    {"x": 214819.42, "y": 97029.71,
+     "typeURI": "https://data.infrabel.be/asset360/MicroCoordinate",
+     "PositioningSystemCoordinate_positioningSystem": {"typeURI": "http://rsm.uic.org/RSM12#EAID_4160AA98_..."}}
+  ]
+}]
+```
+
+Position is the only identity, ring data legitimately repeats the key value (a closed ring may even repeat a whole vertex), and vertex order is meaningful. The per-vertex `typeURI` and positioning system are pure redundancy: the system is a property of the ring, not of the vertex.
+
+One class, two identity shapes. That ring data violates any `unique_keys` the class would declare — so the class can't declare one, and letting the opaque annotation suppress a schema constraint would be a layering inversion we do not accept. The resolution is to rework the model: move the positioning-system identity up a layer and give rings a bare vertex class that never inherits the key. One valid remodeling is worked out in Option 4 below; `SpotLocation_coordinates` and the coordinate hierarchy stay untouched.
+
+## The options when the linter flags a slot
+
+The linter's question is always the same — *where does element identity come from?* — and the author has exactly three answers, plus a rework escape hatch. Each constituting example gets its correct resolution below.
+
+### Option 1 — a key (or identifier): identity a single slot already provides
+
+When the element class declares a `key` or `identifier` slot that is truthful for all of its data, nothing needs to change — the diff already matches elements by it. `SpotLocation_coordinates` is the example: a dict keyed by `typeURI`, at most one coordinate per positioning system, exactly what the data means.
+
+One slot cannot answer this way: the class's own type designator. Its value is a function of the element's class, not of the element, so the addendum's rule 1 makes the engine look past it in **list** form and fall through to `unique_keys` (else position). The dict form above is unaffected — a mapping keyed by the designator is exactly the at-most-one-per-subtype statement it looks like — and the linter says so on the slot that needs the other answer.
+
+### Option 2 — a composed key (content): declare `unique_keys` — the phone number solution
+
+`hasNumberFunction` is already the de-facto identity — the SHACL shape says so. Declare exactly that rule with the existing LinkML meta `unique_keys`:
+
+```yaml
+  ServicePhoneNumber:
+    unique_keys:
+      one_number_per_function:
+        unique_key_slots:
+          - hasNumberFunction
+    attributes:
+      phoneNumber:
+        range: string
+      hasNumberFunction:
+        range: NumberFunction
+        required: true
+```
+
+This is the SHACL constraint expressed verbatim in the schema, and it is purely additive: `unique_keys` changes neither serialization nor loading of the deployed list data (unlike promoting the slot to `key: true`, which changes the container's serialization contract). Element identity is the function: deltas are addressed by it (`hasPhoneNumber/Emergency_Number/phoneNumber`), immune to drift and reorder, and the duplicate-add from Example 1 collides into the same element instead of duplicating it.
+
+`unique_key_slots` composes: had the model allowed several numbers per function, `[hasNumberFunction, phoneNumber]` would make the full content the identity — at the price that every correction becomes a remove-plus-add of the whole element. Here that composition would be wrong: it would permit two numbers for the same function, contradicting the SHACL rule.
+
+### Option 3 — opaque: identity comes from nowhere, say so
+
+For the vertex ring, elements genuinely have no identity — a moved vertex, an inserted vertex, a reversed ring are all edits *of the geometry*, not of a vertex:
+
+```yaml
+      Polygon_coordinates:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+```
+
+All recursion stops at the slot: any change below it is exactly one `Update` at the slot path carrying the whole old and new value. Two sources editing the same ring conflict visibly at the ring level — whole value against whole value — instead of interleaving vertex indices into a corrupt geometry.
+
+### Option 4 — remodel: when one class needs two answers — the coordinate solution
+
+`PositioningSystemCoordinate` needs Option 1 in `SpotLocation` and Option 3 in `Polyline`/`Polygon`, and its ring data violates the very declaration the keyed usage needs. No slot-level override can fix that — identity declarations stay class-level truths; slots choose only *whether* to recurse, never *what identity means*. Rework the model instead. One valid remodeling (shown for `Polygon`; `Polyline` is symmetric):
+
+```yaml
+  AreaLocation:
+    attributes:
+      polygons:
+        range: Polygon
+        multivalued: true
+        inlined_as_list: true
+
+  Polygon:
+    is_a: NamedResource
+    unique_keys:
+      one_polygon_per_positioning_system:
+        unique_key_slots:
+          - positioningSystemType
+    attributes:
+      positioningSystemType:        # the identity the vertices used to repeat,
+        range: uri                  # lifted up to the ring layer
+        required: true
+      Polygon_positioningSystem:
+        range: PositioningSystem
+        inlined: true
+      Polygon_coordinates:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+
+  Vertex:
+    attributes:
+      x: {range: float}
+      y: {range: float}
+      z: {range: float}
+```
+
+The move is to introduce a layer so the key slot no longer sits on the elements holding the geometry data:
+
+- `locations` is already keyed by `locationrole` — that layer exists.
+- A polygon's identity within `polygons` is its positioning system, declared as a `unique_keys` composed key on `Polygon`. The schema's own description already says the list holds the same shape once per positioning system; the redundant per-vertex `typeURI` / positioning system move up to the ring layer, which is what they always described.
+- The ring becomes an opaque list of a bare `Vertex` class that never inherits `key: typeURI`, so no declaration is violated by repeated vertices.
+- `SpotLocation_coordinates` and the `PositioningSystemCoordinate` hierarchy are untouched; the ~25k keyed lookup records keep their behaviour.
+
+## Consequence of strict mode
+
+- Some LinkML schemas need to be reworked to be compliant — in asset360 concretely: `ServicePhoneNumber` gains a `unique_keys` declaration, and the polygon/polyline rings move their positioning-system identity up a layer and become opaque lists of a bare `Vertex` class.
+- More cases of patches produced outside this diff lib cannot be applied fully: a patch that addresses elements positionally has no meaning against an opaque slot (only whole-value updates apply) and no reliable meaning against a keyed/composed-key container. Such deltas are reported as failed rather than guessed at.
+
+## Recyclable material
+
+The abandoned branch `feat/container-shapes-and-verify-old` (local, single commit `312e6d8`) and the follow-up spike `spike/unique-keys-vs-opaque` contain fixtures and tests that carry over; the `DiffShape::Set`/`ShapeConfig` machinery itself is superseded by this design.
+
+Recycled (near-verbatim, renamed to `opaque` where the branch says `array`):
+
+- `diff_shapes.rs:158-219` — `array_slot_emits_one_whole_slot_update` (move / insert / drop / reverse a vertex ring, each exactly one whole-slot `Update`), the scalar-list variant, and `array_slot_unchanged_emits_nothing`.
+- `diff_shapes.rs:419-463` — `keyed_slot_keeps_minimal_field_level_deltas`, as the regression guard that keyed containers keep minimal field-level deltas.
+- `diff_shapes.rs:467-492` — `undeclared_slots_keep_positional_behaviour`, the non-goal's compatibility guard.
+- `load_duplicate_keys.rs:113-181` — missing `key` is an error / missing `identifier` warns / type-designator carve-out, as linter severity fixtures (the designator carve-out exists precisely because of coordinate classes like Example 2).
+- Multiplicity guards (`set_diff_respects_multiplicity`, the `["a","a"]` load assertion): a repeated element is data, never deduped.
+- From the spike: `opaque_*` tests, `coordinates_match_by_unique_keys_derived_key`, and the `unique_keys` ambiguity-warning pair.
+
+Not recycled: the `Set` content-matching diff/patch (`diff_set`, `apply_set_leaf_delta`, the drift-location trio) and the single-slot `shape_key` override — both replaced by `unique_keys`-declared identity.
+
+## Addendum (2026-08-19): designator and canonicalization hardening
+
+An empirical spike (typeURI × polymorphism × induced URIs, findings D1–D9) showed the shipped identity machinery honours *spellings* and *declarations* where it must honour *meaning*. Since this branch already carries a sanctioned compatibility break, the following rules are added to the design. Every behavioural change below must be attributable, output-line by output-line, in the downstream differential harness (consolidator-server corpus) before it merges.
+
+### Rules
+
+1. **A type designator is never an element identity (D3).** `element_key_label` skips a key/identifier slot whose merged definition has `designates_type: true`; identity falls through to `unique_keys`, else the list is positional. Rationale: a designator's value is a function of the element's class — constant across any homogeneous list by construction. The schema-level designator-key lint rule remains as the author-facing voice; this rule makes the engine agree with it. (Blast radius: homogeneous rings already fell back to positional via the uniqueness guard; the change moves polymorphic designator-keyed lists and classes whose real `unique_keys` was shadowed.)
+2. **Identity compares meaning, not spelling (D1 + D6).**
+   - Designator values are canonicalized at load (the boxing chokepoint, mirroring int/float coercion): once the element's class is selected, the stored designator value is the class's canonical designator value. JSON and RDF loaders then agree; `to_json` emits the canonical form.
+   - Identity-label components whose slot range descends from `uri`/`uriorcurie` are IRI-expanded before comparison, in **all** resolve sites at once: diff emission, `resolve_list_segment` (patch + navigate), and the instance lint. A curie and its expansion are one identity.
+3. **A class change is a whole-element replacement (D2a).** When diff pairs two objects whose classes differ, it emits a single whole-element `Update` — never field-level recursion across classes.
+4. **`patch` never hard-errors on an unappliable delta (D2b).** A delta whose value cannot be built or applied at its resolved location records its path in `trace.failed` and leaves the tree untouched; `Err` is reserved for infrastructure failures. One bad delta must not void a batch.
+5. **The inlined-dict key is real data (D5).** `build_mapping_entry_for_slot` injects the dict key into the element's key/identifier slot when the payload omits it (the LinkML `inlined` contract); a payload value that disagrees with the dict key is a load-time validation warning. For designator-keyed dicts, a dict key that is not an accepted designator value is a load-time validation warning.
+6. **Lint extensions (D7, D4d, D8, D9).**
+   - Instance lint: a list that is addressed positionally *despite* a declared identity (some element yields no label) is warned — missing labels get a voice, not only duplicates.
+   - Schema lint: the multi-`unique_keys` ambiguity check unions entries across the range class's descendants and warns when descendants resolve different load-bearing entries (split label space).
+   - Schema lint: warn when two classes within one `is_a` hierarchy share a `class_uri` and the hierarchy carries a designator (stable-but-arbitrary class selection); the loader behaviour itself is unchanged (deliberately out of scope — too hot for this branch).
+   - `slot_usage: designates_type: false` leaving an unfillable `key` is documented in the linter rustdoc, not specially detected.
+
+### Explicitly out of scope (recorded, not fixed here)
+
+- Loader preference of native-URI matches over shared `class_uri` matches (D8's fix half).
+- Namespacing identity labels by the `unique_keys` entry that produced them (D4's deep fix).
+- `key: true` implying `required: true` at validation time.

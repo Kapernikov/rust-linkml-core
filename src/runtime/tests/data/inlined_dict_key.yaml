@@ -1,0 +1,72 @@
+id: https://w3id.org/linkml/examples/inlined_dict_key
+name: inlined_dict_key
+description: |-
+  Fixture for spec addendum rule 5 — the inlined-dict key is real data (D5).
+
+  Three shapes:
+
+  * `Container.people` — an ordinary keyed class in dict form. The dict key is
+    the element's `pid`; a payload that omits it must be filled from the key,
+    and a payload that contradicts it must be heard.
+  * `Container.coords` — a dict whose range class's key slot *is* its type
+    designator, so the dict key names the entry's class. The asset360 shape.
+  * `Container.systems` — a key slot whose range descends from `uri`, where a
+    CURIE dict key and its expansion in the payload are one identity.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  dk: https://w3id.org/linkml/examples/inlined_dict_key/
+  ex: https://example.org/dk/
+  linkml: https://w3id.org/linkml/
+default_prefix: dk
+default_range: string
+
+classes:
+  Container:
+    attributes:
+      people:
+        range: Person
+        multivalued: true
+        inlined: true
+      coords:
+        range: Coordinate
+        multivalued: true
+        inlined: true
+      systems:
+        range: System
+        multivalued: true
+        inlined: true
+
+  # `pid` is `required` on purpose: the injection is what satisfies it, and a
+  # loader that stopped injecting would fail loudly here rather than quietly.
+  Person:
+    attributes:
+      pid: {range: string, key: true, required: true}
+      name: {range: string}
+
+  # key and designator on one slot — the asset360 `PositioningSystemCoordinate`
+  # shape (`slot_usage: typeURI: {key: true}` over a `designates_type` slot).
+  Coordinate:
+    attributes:
+      typeURI:
+        range: uriorcurie
+        designates_type: true
+        key: true
+      value: {range: string}
+
+  # declares a `class_uri`, so its canonical designator value and its
+  # schema-native URI are two different accepted spellings — exactly the
+  # asset360 `LinearCoordinate` divergence.
+  LinearCoordinate:
+    is_a: Coordinate
+    class_uri: ex:Linear
+    attributes:
+      measure: {range: float}
+
+  # a key slot whose range descends from `uri`: a CURIE dict key and the
+  # expanded payload are one identity (rule 2), so they must not diverge.
+  System:
+    attributes:
+      systemType: {range: uri, key: true, required: true}
+      label: {range: string}

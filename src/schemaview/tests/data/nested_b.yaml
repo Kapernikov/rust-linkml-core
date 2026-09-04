@@ -1,0 +1,12 @@
+id: http://example.com/nested_b
+name: nested_b
+prefixes:
+  nested_b: http://example.com/nested_b/
+default_prefix: nested_b
+default_range: string
+classes:
+  LeafThing:
+    attributes:
+      id:
+        identifier: true
+      label: {}

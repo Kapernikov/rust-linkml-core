@@ -1,0 +1,163 @@
+id: https://w3id.org/linkml/examples/identity
+name: identity
+description: |-
+  Shared fixture for element-identity features: unique_keys, the
+  `diff.linkml.io/opaque` annotation, and the identity linter.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  identity: https://w3id.org/linkml/examples/identity/
+  linkml: https://w3id.org/linkml/
+default_prefix: identity
+default_range: string
+
+classes:
+  Service:
+    # An explicit class_uri indexes the class under BOTH this URI and its
+    # default one, so a linter walking `get_class_ids()` sees it twice.
+    class_uri: identity:ServiceEndpoint
+    attributes:
+      name: {range: string}
+      # spec Example 1 with its correct resolution: identity = the function
+      hasPhoneNumber:
+        range: ServicePhoneNumber
+        multivalued: true
+        inlined_as_list: true
+      # same shape, nothing declared: must keep positional behaviour; linter flags it
+      plainPhoneNumber:
+        range: PlainPhoneNumber
+        multivalued: true
+        inlined_as_list: true
+      # inherited unique_keys (via is_a) must also drive matching
+      escalation:
+        range: EmergencyPhoneNumber
+        multivalued: true
+        inlined_as_list: true
+      # composite two-slot unique key
+      contacts:
+        range: Contact
+        multivalued: true
+        inlined_as_list: true
+      # opaque + a keyed element class: data lint must still check unique_keys
+      archivedContacts:
+        range: Contact
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+      # scalar list, nothing declared: positional; linter flags it
+      tags:
+        range: string
+        multivalued: true
+      # scalar list declared opaque
+      opaqueTags:
+        range: string
+        multivalued: true
+        annotations:
+          diff.linkml.io/opaque: true
+      # spec Example 2's ring: opaque list of bare vertices
+      outline:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+      # single-valued opaque object: "stop all recursion" is not list-specific
+      profile:
+        range: Profile
+        inlined: true
+        annotations:
+          diff.linkml.io/opaque: true
+      # keyed class inlined as dict: already unambiguous, linter stays silent
+      labels:
+        range: Label
+        multivalued: true
+        inlined: true
+      # keyed class inlined as list: the uniform guard applies to key labels too
+      labelList:
+        range: Label
+        multivalued: true
+        inlined_as_list: true
+      # reference list (not inlined): out of the linter's scope
+      operators:
+        range: Operator
+        multivalued: true
+        inlined: false
+      area:
+        range: AreaLocation
+        inlined: true
+
+  ServicePhoneNumber:
+    unique_keys:
+      one_number_per_function:
+        unique_key_slots: [hasNumberFunction]
+    attributes:
+      phoneNumber: {range: string}
+      hasNumberFunction: {range: NumberFunction, required: true}
+
+  PlainPhoneNumber:
+    attributes:
+      phoneNumber: {range: string}
+      hasNumberFunction: {range: NumberFunction, required: true}
+
+  EmergencyPhoneNumber:
+    is_a: ServicePhoneNumber
+    attributes:
+      note: {range: string}
+
+  Contact:
+    unique_keys:
+      contact_identity:
+        unique_key_slots: [kind, phone]
+    attributes:
+      kind: {range: string, required: true}
+      phone: {range: string, required: true}
+      note: {range: string}
+
+  Label:
+    attributes:
+      lang: {range: string, key: true, required: true}
+      text: {range: string}
+
+  Profile:
+    attributes:
+      bio: {range: string}
+      motto: {range: string}
+
+  Operator:
+    attributes:
+      opId: {range: string, identifier: true}
+      opName: {range: string}
+
+  AreaLocation:
+    attributes:
+      polygons:
+        range: Polygon
+        multivalued: true
+        inlined_as_list: true
+
+  Polygon:
+    unique_keys:
+      one_polygon_per_positioning_system:
+        unique_key_slots: [positioningSystemType]
+    attributes:
+      positioningSystemType: {range: uri, required: true}
+      coordinates:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+        annotations:
+          diff.linkml.io/opaque: true
+
+  Vertex:
+    attributes:
+      x: {range: float}
+      y: {range: float}
+
+enums:
+  NumberFunction:
+    permissible_values:
+      Emergency_Number:
+      Non_Urgent_Communication:
+      Operator:

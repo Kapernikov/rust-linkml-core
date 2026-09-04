@@ -30,6 +30,18 @@ fn class_get_uri() {
         "personinfo:Person"
     );
     assert_eq!(
+        cv.get_uri(&conv, false, true).unwrap().to_string(),
+        "https://w3id.org/linkml/Person"
+    );
+    // `native` must survive expansion: this is the schema-native URI, not the
+    // `class_uri`. `get_accepted_type_designator_values` relies on the two being
+    // distinct — data spelling a designator with the native URI of a class that
+    // also declares a `class_uri` still means that class.
+    assert_eq!(
+        cv.get_uri(&conv, true, true).unwrap().to_string(),
+        "https://w3id.org/linkml/examples/personinfo/Person"
+    );
+    assert_eq!(
         cv.canonical_uri().to_string(),
         "https://w3id.org/linkml/Person"
     );

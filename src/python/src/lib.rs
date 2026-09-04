@@ -4,8 +4,8 @@ use linkml_runtime::diff::{
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
 use linkml_runtime::{
-    load_json_str, load_yaml_str, validate_issues, LinkMLInstance, LoadResult, NodeId,
-    ValidationProblemType, ValidationResult, ValidationSeverity, ValidationValue,
+    lint_element_identity, lint_instance_identity, load_json_str, load_yaml_str, validate_issues,
+    LinkMLInstance, LoadResult, NodeId, ValidationResult, ValidationSeverity, ValidationValue,
 };
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
@@ -744,6 +744,8 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(load_json, m)?)?;
     m.add_function(wrap_pyfunction!(py_diff, m)?)?;
     m.add_function(wrap_pyfunction!(py_patch, m)?)?;
+    m.add_function(wrap_pyfunction!(py_lint_element_identity, m)?)?;
+    m.add_function(wrap_pyfunction!(py_lint_instance_identity, m)?)?;
     m.add_function(wrap_pyfunction!(py_import_turtle, m)?)?;
     m.add_function(wrap_pyfunction!(py_import_ntriples, m)?)?;
     m.add_function(wrap_pyfunction!(py_export_turtle, m)?)?;
@@ -874,7 +876,7 @@ impl From<ValidationResult> for PyValidationResult {
 impl PyValidationResult {
     #[getter]
     fn r#type(&self) -> String {
-        validation_problem_type_label(&self.inner.problem_type).to_string()
+        self.inner.problem_type.label().to_string()
     }
 
     #[getter]
@@ -915,7 +917,7 @@ impl PyValidationResult {
     fn __repr__(&self) -> PyResult<String> {
         Ok(format!(
             "ValidationResult(type='{}', severity='{}', subject={:?}, detail={})",
-            validation_problem_type_label(&self.inner.problem_type),
+            self.inner.problem_type.label(),
             severity_label(&self.inner.severity),
             self.inner.subject,
             self.inner.detail
@@ -1042,17 +1044,6 @@ fn validation_value_to_py(py: Python<'_>, value: &ValidationValue) -> PyResult<P
         ValidationValue::None => Ok(py.None()),
         ValidationValue::Literal(v) => Ok(PyString::new(py, v).into_any().unbind()),
         ValidationValue::Node(path) => Ok(path.clone().into_pyobject(py)?.into_any().unbind()),
-    }
-}
-
-fn validation_problem_type_label(problem_type: &ValidationProblemType) -> &'static str {
-    match problem_type {
-        ValidationProblemType::UndeclaredSlot => "undeclared_slot",
-        ValidationProblemType::InapplicableSlot => "inapplicable_slot",
-        ValidationProblemType::MissingSlotValue => "missing_slot_value",
-        ValidationProblemType::SlotRangeViolation => "slot_range_violation",
-        ValidationProblemType::MaxCountViolation => "max_count_violation",
-        ValidationProblemType::ParsingError => "parsing_error",
     }
 }
 
@@ -1223,7 +1214,12 @@ impl PyLinkMLInstance {
         }
     }
 
-    /// Navigate by a path of strings (map keys or list indices).
+    /// Navigate by a path of strings: slot names, mapping keys, and — for
+    /// lists — element identity labels (identifier/key or `unique_keys` value)
+    /// when the list carries unique labels, numeric indices otherwise. This is
+    /// the same addressing `diff` emits and `patch` applies, so delta paths are
+    /// navigable; a numeric segment aimed at a label-addressed list resolves to
+    /// nothing rather than to that position.
     /// Returns a new LinkMLInstance if found, otherwise None.
     #[pyo3(name = "navigate")]
     fn py_navigate<'py>(
@@ -1567,6 +1563,55 @@ fn py_patch(
     let py_trace = Py::new(py, PyPatchTrace::from(trace))?;
     let result = PyPatchResult::new(py_val, py_trace);
     Py::new(py, result)
+}
+
+// ── Identity lints ──────────────────────────────────────────────────────────
+
+/// Schema-level lint: warn where a multivalued inlined slot's element identity
+/// is absent, ambiguous, or cannot address the list.
+///
+/// Five rules: (1) no identity declared at all; (2) the declared identity is
+/// the element class's type designator, whose value describes the class rather
+/// than the element; (3) several ``unique_keys`` entries to choose from across
+/// the range class and its descendants, of which only the name-sorted first is
+/// load-bearing; (4) those classes labelled in different ways, so one list
+/// carries two label spaces; (5) two classes of one ``is_a`` hierarchy
+/// declaring the same ``class_uri`` while the hierarchy designates its type.
+///
+/// Warnings only — the schema stays usable. Results are deterministic: sorted
+/// by subject, deduplicated across class URIs, and an inherited slot is
+/// reported once, at the class that introduces the problem. Rules 1-4 are
+/// per-slot and their ``subject`` is ``[class_name, slot_name]``; rule 5 is
+/// class-level and its ``subject`` is ``"shared_class_uri"`` followed by the
+/// classes sharing the URI — the marker distinguishes it from a per-slot
+/// subject, which a rendering that joins the segments could not otherwise do.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "lint_element_identity")]
+fn py_lint_element_identity(
+    py: Python<'_>,
+    schema_view: &PySchemaView,
+) -> PyResult<Vec<Py<PyValidationResult>>> {
+    validation_results_to_py(py, lint_element_identity(schema_view.as_rust()))
+}
+
+/// Data-level lint: warn where loaded data defeats a declared element identity.
+///
+/// Two rules: a list whose elements repeat a declared identity — key/identifier
+/// or ``unique_keys`` value — reported as ``duplicate_element_identity``; and a
+/// list addressed positionally *despite* a declared identity, because some
+/// element leaves the slot that identity names empty, reported as
+/// ``ambiguous_element_identity``. Neither is visible in the schema: an
+/// identity slot that is not ``required`` may be absent, and repeated or
+/// missing values are alike valid data.
+///
+/// Warnings only. ``subject`` is the container's instance path.
+#[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
+#[pyfunction(name = "lint_instance_identity")]
+fn py_lint_instance_identity(
+    py: Python<'_>,
+    instance: &PyLinkMLInstance,
+) -> PyResult<Vec<Py<PyValidationResult>>> {
+    validation_results_to_py(py, lint_instance_identity(&instance.value))
 }
 
 // ── RDF import/export ───────────────────────────────────────────────────────

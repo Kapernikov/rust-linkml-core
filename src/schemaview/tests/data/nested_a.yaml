@@ -1,0 +1,17 @@
+id: http://example.com/nested_a
+name: nested_a
+prefixes:
+  nested_a: http://example.com/nested_a/
+  nested_b: http://example.com/nested_b/
+default_prefix: nested_a
+default_range: string
+# An import of an import: only reachable if resolution loops to a fixpoint.
+imports:
+  - ./nested_b
+classes:
+  MiddleThing:
+    attributes:
+      id:
+        identifier: true
+      leaf:
+        range: nested_b:LeafThing

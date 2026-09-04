@@ -1,0 +1,56 @@
+id: https://w3id.org/linkml/examples/identity-shared-class-uri
+name: identity_shared_class_uri
+description: |-
+  Regression fixture for the identity linter's class-visit dedupe.
+
+  LinkML permits several distinct classes to declare the SAME `class_uri`
+  (in this repo, `meta.yaml`'s `Anything` and `extensions.yaml`'s `AnyValue`
+  both declare `linkml:Any`). A linter that dedupes its class visits by class
+  URI treats the second such class as already-seen and silently drops all of
+  its warnings — a false negative, which is worse than the duplicate
+  reporting the dedupe exists to prevent.
+
+  `SharedUriA` and `SharedUriB` declare one shared `class_uri` and each holds
+  one multivalued inlined slot with no declared element identity, so both must
+  be reported. `TwoUris` additionally declares an explicit `class_uri`, which
+  indexes it under both that and its default URI: it must be reported once,
+  not twice. The two requirements pull in opposite directions, which is the
+  point of keeping them in one fixture.
+license: https://creativecommons.org/publicdomain/zero/1.0/
+imports:
+  - linkml:types
+prefixes:
+  shared: https://w3id.org/linkml/examples/identity-shared-class-uri/
+  linkml: https://w3id.org/linkml/
+default_prefix: shared
+default_range: string
+
+classes:
+  SharedUriA:
+    class_uri: shared:SharedThing
+    attributes:
+      itemsA:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+
+  SharedUriB:
+    class_uri: shared:SharedThing
+    attributes:
+      itemsB:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+
+  TwoUris:
+    class_uri: shared:SomethingElse
+    attributes:
+      itemsC:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+
+  Vertex:
+    attributes:
+      x: {range: float}
+      y: {range: float}

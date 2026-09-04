@@ -1,8 +1,8 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, OnceLock};
 
 use crate::converter::Converter;
-use linkml_meta::{ClassDefinition, SchemaDefinition, SlotDefinition};
+use linkml_meta::{ClassDefinition, SchemaDefinition, SlotDefinition, UniqueKey};
 
 use crate::identifier::{Identifier, IdentifierError};
 use crate::schemaview::{CanonicalIds, SchemaView, SchemaViewError};
@@ -254,6 +254,14 @@ impl ClassView {
     /// - `native=true` uses the schema's default prefix; `native=false` prefers
     ///   an explicit `class_uri` when set.
     /// - `expand=true` returns a full URI; `expand=false` returns a CURIE.
+    ///
+    /// All four combinations are distinct for a class that declares a
+    /// `class_uri`. In particular `(native: true, expand: true)` is the
+    /// *schema-native* URI (`<default prefix expansion><ClassName>`) and not the
+    /// `class_uri` — that is what `(native: false, expand: true)` returns.
+    /// [`Self::get_accepted_type_designator_values`] depends on the difference:
+    /// data that spells a designator with the schema-native URI of a class that
+    /// also declares a `class_uri` still *means* that class.
     pub fn get_uri(
         &self,
         conv: &Converter,
@@ -279,7 +287,7 @@ impl ClassView {
         expand: bool,
     ) -> Result<Identifier, IdentifierError> {
         match (native, expand) {
-            (true, true) => Ok(ids.canonical_uri()),
+            (true, true) => Ok(ids.native_uri()),
             (true, false) => {
                 if let Some(curie) = ids.native_curie() {
                     Ok(curie)
@@ -306,9 +314,6 @@ impl ClassView {
         native: bool,
         expand: bool,
     ) -> Result<Identifier, IdentifierError> {
-        if native && expand {
-            return Ok(self.canonical_uri());
-        }
         let schema = self
             .data
             .sv
@@ -619,6 +624,47 @@ impl ClassView {
             .slots
             .iter()
             .find(|s| s.definition().identifier.unwrap_or(false))
+    }
+
+    /// Returns the class's `unique_keys`, merged across the inheritance chain
+    /// (`is_a` parents and mixins), with the nearest declaration winning per name.
+    ///
+    /// The result is sorted by unique key name: declaration order is lost in the
+    /// underlying map, and consumers (such as diff path segments) need a
+    /// deterministic order.
+    pub fn unique_keys(&self) -> Vec<(String, UniqueKey)> {
+        let mut merged: HashMap<String, UniqueKey> = HashMap::new();
+        let mut queue: VecDeque<ClassView> = VecDeque::from([self.clone()]);
+        let mut seen: HashSet<String> = HashSet::new();
+
+        while let Some(cv) = queue.pop_front() {
+            if !seen.insert(cv.canonical_uri().to_string()) {
+                continue;
+            }
+            if let Some(uks) = cv.def().unique_keys.as_ref() {
+                for (name, uk) in uks {
+                    merged.entry(name.clone()).or_insert_with(|| (**uk).clone());
+                }
+            }
+            if let Ok(Some(parent)) = cv.parent_class() {
+                queue.push_back(parent);
+            }
+            if let Some(mixins) = &cv.data.class.mixins {
+                if let Some(conv) = cv.data.sv.converter_for_schema(&cv.data.schema_uri) {
+                    for mixin in mixins {
+                        if let Ok(Some(mixin_view)) =
+                            cv.data.sv.get_class(&Identifier::new(mixin), &conv)
+                        {
+                            queue.push_back(mixin_view);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut out: Vec<(String, UniqueKey)> = merged.into_iter().collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 
     fn collect_ancestors_map(

@@ -66,8 +66,10 @@ objects:
 "#;
     let v1 = load_yaml_doc(doc_with_null, &sv, &container, &conv);
     let v2 = load_yaml_doc(doc_without_slot, &sv, &container, &conv);
-    let p1 = v1.navigate_path(["objects", "0"]).unwrap();
-    let p2 = v2.navigate_path(["objects", "0"]).unwrap();
+    // `objects` is a list of NamedThing, which declares an `id` identifier:
+    // it is addressed by that label, never by position.
+    let p1 = v1.navigate_path(["objects", "P:1"]).unwrap();
+    let p2 = v2.navigate_path(["objects", "P:1"]).unwrap();
     assert!(
         p1.equals(p2, true),
         "Person with null assignment should equal omission"
@@ -112,8 +114,10 @@ objects:
 "#;
     let v1 = load_yaml_doc(doc_a, &sv, &container, &conv);
     let v2 = load_yaml_doc(doc_b, &sv, &container, &conv);
-    let p1 = v1.navigate_path(["objects", "0"]).unwrap();
-    let p2 = v2.navigate_path(["objects", "0"]).unwrap();
+    // `objects` is a list of NamedThing, which declares an `id` identifier:
+    // it is addressed by that label, never by position.
+    let p1 = v1.navigate_path(["objects", "P:1"]).unwrap();
+    let p2 = v2.navigate_path(["objects", "P:1"]).unwrap();
     assert!(matches!(p1, LinkMLInstance::Object { .. }));
     assert!(matches!(p2, LinkMLInstance::Object { .. }));
     assert!(!p1.equals(p2, true), "List order must affect equality");
@@ -196,9 +200,9 @@ objects:
     let v1 = load_yaml_doc(doc1, &sv, &container, &conv);
     let v2 = load_yaml_doc(doc2, &sv, &container, &conv);
     let v3 = load_yaml_doc(doc3, &sv, &container, &conv);
-    let g1 = v1.navigate_path(["objects", "0", "gender"]).unwrap();
-    let g2 = v2.navigate_path(["objects", "0", "gender"]).unwrap();
-    let g3 = v3.navigate_path(["objects", "0", "gender"]).unwrap();
+    let g1 = v1.navigate_path(["objects", "P:1", "gender"]).unwrap();
+    let g2 = v2.navigate_path(["objects", "P:2", "gender"]).unwrap();
+    let g3 = v3.navigate_path(["objects", "P:3", "gender"]).unwrap();
     assert!(g1.equals(g2, true));
     assert!(!g1.equals(g3, true));
 }

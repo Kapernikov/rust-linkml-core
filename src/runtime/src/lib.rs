@@ -26,6 +26,7 @@ use constraints::{run_object_constraints, run_slot_constraints};
 
 pub mod blame;
 pub mod diff;
+pub mod identity_lint;
 #[cfg(feature = "ttl")]
 pub mod rdf_export;
 #[cfg(feature = "ttl")]
@@ -46,7 +47,10 @@ pub use blame::{
     blame_map_to_paths, format_blame_map, format_blame_map_with, get_blame_info, patch_with_blame,
     record_blame_from_trace,
 };
-pub use diff::{diff, patch, Delta, DeltaOp, DiffOptions, PatchOptions, PatchTrace};
+pub use diff::{
+    diff, patch, Delta, DeltaOp, DiffOptions, PatchOptions, PatchTrace, OPAQUE_ANNOTATION,
+};
+pub use identity_lint::{lint_element_identity, lint_instance_identity};
 #[derive(Debug)]
 pub struct LinkMLError {
     validation_issues: Vec<ValidationResult>,
@@ -154,6 +158,37 @@ pub enum ValidationProblemType {
     SlotRangeViolation,
     MaxCountViolation,
     ParsingError,
+    /// Element identity that cannot address a list unambiguously: none is
+    /// declared, several declarations compete, two classes answer to one URI
+    /// (opt-in, [`crate::lint_element_identity`]) — or one is declared but the
+    /// data leaves it empty, so the list is positional after all (opt-in,
+    /// [`crate::lint_instance_identity`]).
+    AmbiguousElementIdentity,
+    /// Elements of one list repeat a declared identity (opt-in,
+    /// [`crate::lint_instance_identity`]).
+    DuplicateElementIdentity,
+}
+
+impl ValidationProblemType {
+    /// The stable machine-readable name of this variant.
+    ///
+    /// Every machine surface — the Python binding's `problem_type`, the CLI's
+    /// JSON `type` — reports the value through this one function, so the two
+    /// cannot spell the same variant differently and a variant rename cannot
+    /// silently change either contract. `Debug` formatting is a Rust
+    /// implementation detail and is deliberately not it.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::UndeclaredSlot => "undeclared_slot",
+            Self::InapplicableSlot => "inapplicable_slot",
+            Self::MissingSlotValue => "missing_slot_value",
+            Self::SlotRangeViolation => "slot_range_violation",
+            Self::MaxCountViolation => "max_count_violation",
+            Self::ParsingError => "parsing_error",
+            Self::AmbiguousElementIdentity => "ambiguous_element_identity",
+            Self::DuplicateElementIdentity => "duplicate_element_identity",
+        }
+    }
 }
 
 pub type InstancePath = Vec<String>;
@@ -534,8 +569,20 @@ impl LinkMLInstance {
         }
     }
 
-    /// Navigate the value by a path of strings, where each element is either
-    /// a dictionary key (for maps) or a list index (for lists).
+    /// Navigate the value by a path of strings, where each segment is a slot
+    /// name, a mapping key, or — for lists — whatever addresses an element:
+    /// its identity label (identifier/key slot value, or a value derived from
+    /// the range class's `unique_keys`) for a list whose elements all carry
+    /// unique labels, and a numeric index otherwise.
+    ///
+    /// List segments resolve through the same rule [`diff()`](crate::diff())
+    /// emits and [`patch()`](crate::patch()) applies, so a delta path is
+    /// navigable by construction.
+    /// In particular a numeric segment aimed at a label-addressed list resolves
+    /// to nothing rather than to that position: when a label happens to be
+    /// `"0"`, position and label name different elements, and guessing which
+    /// one was meant is exactly the wrong-element hazard.
+    ///
     /// Returns `Some(&LinkMLInstance)` if the full path can be resolved, otherwise `None`.
     pub fn navigate_path<I, S>(&self, path: I) -> Option<&LinkMLInstance>
     where
@@ -550,42 +597,7 @@ impl LinkMLInstance {
                     current = values.get(key)?;
                 }
                 LinkMLInstance::List { values, .. } => {
-                    // Support either numeric index or identifier/key-based selection
-                    if let Ok(idx) = key.parse::<usize>() {
-                        current = values.get(idx)?;
-                    } else {
-                        // Attempt identifier-based lookup for object elements
-                        let mut found: Option<&LinkMLInstance> = None;
-                        for v in values.iter() {
-                            if let LinkMLInstance::Object {
-                                values: mv, class, ..
-                            } = v
-                            {
-                                if let Some(id_slot) = class.key_or_identifier_slot() {
-                                    if let Some(LinkMLInstance::Scalar { value, .. }) =
-                                        mv.get(&id_slot.name)
-                                    {
-                                        match value {
-                                            JsonValue::String(sv) => {
-                                                if sv == key {
-                                                    found = Some(v);
-                                                    break;
-                                                }
-                                            }
-                                            other => {
-                                                let sv = other.to_string();
-                                                if sv == key {
-                                                    found = Some(v);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        current = found?;
-                    }
+                    current = values.get(diff::resolve_list_segment(values, key)?)?;
                 }
                 LinkMLInstance::Mapping { values, .. } => {
                     current = values.get(key)?;
@@ -856,10 +868,240 @@ impl LinkMLInstance {
             .unwrap_or_else(|| base.clone())
     }
 
+    /// Rewrite an already-present type designator value to the canonical value
+    /// of the class that was actually selected — identity compares meaning, not
+    /// spelling (spec addendum rule 2, finding D1).
+    ///
+    /// A designator says "this element is a `Circle`", and a `uriorcurie`-ranged
+    /// one can say it as `canon:Circle`, as the expanded IRI, or not at all.
+    /// Stored verbatim, those are three different strings: the same element
+    /// authored by two producers diffs as a whole-element Remove + Add, and the
+    /// RDF loader — which never harvests the designator predicate and always
+    /// fills it from the class ([`Self::populate_type_designator`], called from
+    /// `turtle_import`) — disagrees with the JSON loader on every document.
+    /// Canonicalising at the boxing chokepoint, exactly as
+    /// [`Self::coerce_scalar_to_range`] does for the int/float ambiguity, makes
+    /// the representation canonical before any diff/equals/patch/`to_json` sees
+    /// it, and makes the two loaders agree by construction.
+    ///
+    /// It is also what makes `diff`'s changed-key check ("a changed designator
+    /// means a different class") unconditionally true rather than true only for
+    /// consistently-spelled data.
+    ///
+    /// A supplied value that is *no* accepted designator value of the selected
+    /// class (a bare class name against a `uri` range, a typo, a stale class
+    /// name) is data the loader cannot honour. Following the loader-tolerance
+    /// precedent it is a **warning**, not an error: the instance still loads and
+    /// the slot carries the canonical value of the class `select_class` picked.
+    ///
+    /// Only a `Scalar` is rewritten. An explicit `null` and a structurally wrong
+    /// value (list, object) are left for the range checks that already ran to
+    /// describe; replacing them would hide the shape of the offending data.
+    fn canonicalize_type_designator(
+        values: &mut HashMap<String, LinkMLInstance>,
+        class: &ClassView,
+        conv: &Converter,
+        path: &[String],
+        validation_issues: &mut ValidationResultSink,
+    ) {
+        let Some(type_slot_def) = class.get_type_designator_slot() else {
+            return;
+        };
+        // Cheapest checks first: the two commonest cases — the designator is
+        // absent (the RDF-shaped and the omit-it-and-let-the-loader-fill-it
+        // documents), or it is already canonical (every document a previous
+        // load emitted) — must not pay for a URI computation. Neither
+        // `get_type_designator_value` nor `get_accepted_type_designator_values`
+        // is cached: each walks `type_ancestors` and expands URIs through the
+        // converter, and this runs once per object built.
+        let Some(LinkMLInstance::Scalar { value, .. }) = values.get_mut(&type_slot_def.name) else {
+            return;
+        };
+        let supplied = match &*value {
+            JsonValue::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        let Ok(canonical) = class.get_type_designator_value(type_slot_def, conv) else {
+            return;
+        };
+        let canonical = canonical.to_string();
+        if supplied == canonical {
+            return;
+        }
+        // Only a value that differs from the canonical one is worth the second
+        // walk. An `Err` here means the accepted set is unknown, not empty:
+        // warning-and-rewriting on it would punish the data for a schema the
+        // view cannot resolve, so leave the value alone — the same posture the
+        // canonical-value line above takes.
+        let Ok(accepted) = class.get_accepted_type_designator_values(type_slot_def, conv) else {
+            return;
+        };
+        if !accepted.iter().any(|v| v.to_string() == supplied) {
+            let mut p = path.to_vec();
+            p.push(type_slot_def.name.clone());
+            validation_issues.push_warning(
+                ValidationProblemType::SlotRangeViolation,
+                p,
+                format!(
+                    "type designator value `{supplied}` is not an accepted designator \
+                     value for class `{}`; stored as `{canonical}`",
+                    class.name()
+                ),
+            );
+        }
+        *value = JsonValue::String(canonical);
+    }
+
+    /// Hear what an inlined-dict entry's key says when the payload also states
+    /// it (spec addendum rule 5, finding D5).
+    ///
+    /// Called only when the payload *did* supply the key slot — the omitted
+    /// case is filled from the dict key by the caller, and any complaint about
+    /// that injected value is then [`Self::canonicalize_type_designator`]'s to
+    /// make, in its own words, on the value that was actually stored.
+    ///
+    /// Two things are checked, and both are warnings, never errors: the
+    /// document loads, because the LinkML `inlined` contract makes both halves
+    /// legal on their own and only their *combination* is contradictory.
+    ///
+    /// 1. **Divergence.** The dict key and the element's key-slot value say
+    ///    different things about the same slot. The payload is the element's
+    ///    data and is what gets stored; the dict key is the address and is what
+    ///    the mapping stays keyed by (`parse_mapping_slot` inserts under the raw
+    ///    key). Neither can be dropped without losing information the document
+    ///    contains, so both are named and the author decides.
+    ///
+    ///    The comparison is against the value **as stored**, which is why this
+    ///    runs after [`Self::canonicalize_type_designator`] and
+    ///    [`Self::populate_type_designator`] rather than against the raw
+    ///    payload. A designator payload is rewritten to its class's canonical
+    ///    spelling at load, so comparing the raw payload would call
+    ///    `{"<class_uri>": {"typeURI": "<native URI>"}}` a divergence while the
+    ///    two ends of the message — key and "the stored value" — had in fact
+    ///    already been made to agree, and reloading the emitted document would
+    ///    be silent. The rule is therefore: warn when the entry, *as it will be
+    ///    written back out*, contradicts the key it is written under.
+    ///
+    ///    Both sides go through [`crate::diff::canonical_identity_component`],
+    ///    the same function every identity label is built from, so a CURIE key
+    ///    and an expanded stored value are one identity (rule 2) rather than a
+    ///    divergence. What survives is the genuinely contradictory case:
+    ///    `{"<native URI>": {"typeURI": "<class_uri>"}}`, where both spellings
+    ///    name one class but only the payload is canonicalised, so the loaded
+    ///    entry really is addressed by one IRI and carries another. That is
+    ///    asset360's committed `SpotLocation_coordinates` shape.
+    ///
+    /// 2. **An unaccepted designator key.** When the key slot *is* the class's
+    ///    type designator the dict key names the entry's class, and a key that
+    ///    is no accepted designator value of the class actually selected names
+    ///    nothing. Before this rule the case was silent twice over: nothing read
+    ///    the key, and `populate_type_designator` filled the slot from the range
+    ///    class, so the entry looked complete.
+    ///
+    /// The two checks compare **by different notions of equality**, and that is
+    /// deliberate rather than an oversight. Check 2 asks whether a value is in
+    /// the accepted designator set, and membership of that set is the raw string
+    /// match `canonicalize_type_designator` performs verbatim; deciding it here
+    /// on an IRI-equal-but-differently-spelled basis would wave a value through
+    /// that the canonicaliser then rewrites and reports itself — two voices for
+    /// one fact. Check 1 asks whether two spellings name the same element, which
+    /// is exactly what [`crate::diff::canonical_identity_component`] answers
+    /// everywhere else (spec addendum rule 2), so a CURIE key and an expanded
+    /// stored value are one identity here as they are in diff and patch. The
+    /// questions differ, so the equalities do.
+    ///
+    /// The key slot itself is [`ClassView::key_or_identifier_slot`] on the
+    /// slot's **range** class, not on the class finally selected: the key has to
+    /// be read (and injected) before `select_class` can run, so a key declared
+    /// only by a subclass — via `slot_usage` on a descendant — is chicken-and-egg
+    /// and gets neither the injection nor these checks.
+    fn reconcile_dict_key_with_payload(
+        entry_key: &str,
+        key_slot: &SlotView,
+        values: &HashMap<String, LinkMLInstance>,
+        selected: &ClassView,
+        conv: &Converter,
+        path: &[String],
+        validation_issues: &mut ValidationResultSink,
+    ) {
+        let mut p = path.to_vec();
+        p.push(key_slot.name.clone());
+
+        if key_slot.definition().designates_type == Some(true) {
+            // Deliberately a raw string compare, unlike the divergence half
+            // below: the accepted set is what `canonicalize_type_designator`
+            // (Task 12, rule 2) matches against, verbatim, and a key that this
+            // check waved through on an IRI-equal-but-differently-spelled basis
+            // would then be rewritten by that function and reported by *it*
+            // instead — two voices for one fact.
+            //
+            // `Err` means the accepted set is unknown, not empty — the same
+            // posture `canonicalize_type_designator` takes: do not punish the
+            // data for a schema the view cannot resolve.
+            if let Some(td) = selected.get_type_designator_slot() {
+                if let Ok(accepted) = selected.get_accepted_type_designator_values(td, conv) {
+                    if !accepted.iter().any(|v| v.to_string() == entry_key) {
+                        validation_issues.push_warning(
+                            ValidationProblemType::SlotRangeViolation,
+                            p.clone(),
+                            format!(
+                                "inlined-dict key `{entry_key}` is not an accepted designator \
+                                 value for class `{}`",
+                                selected.name()
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+
+        // A `Null` and a structurally wrong value (list, object) are left for
+        // the range checks that already ran to describe; calling them a
+        // divergence would say the wrong thing about the wrong problem.
+        let Some(LinkMLInstance::Scalar { value, .. }) = values.get(&key_slot.name) else {
+            return;
+        };
+        let stored = match value {
+            JsonValue::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        if crate::diff::canonical_identity_component(entry_key, key_slot)
+            == crate::diff::canonical_identity_component(&stored, key_slot)
+        {
+            return;
+        }
+        validation_issues.push_warning(
+            ValidationProblemType::SlotRangeViolation,
+            p,
+            format!(
+                "inlined-dict key `{entry_key}` disagrees with `{stored}`, the value stored in \
+                 key slot `{}`; the payload is the element's data and the dict key is its \
+                 address, so the entry keeps both and stays addressed by its dict key",
+                key_slot.name
+            ),
+        );
+    }
+
+    /// The dict key of an inlined mapping entry, as the value its key slot
+    /// takes when the payload omitted it (spec addendum rule 5).
+    ///
+    /// A JSON object key is a string and is injected as one. A numerically
+    /// ranged key slot therefore receives the string spelling of its key: the
+    /// loader runs no scalar type check (see [`crate::constraints`] — enum,
+    /// regex and min/max only), and inventing a second, untested numeric parse
+    /// here would be a coercion path of its own rather than this rule.
+    fn dict_key_value(entry_key: &str) -> JsonValue {
+        JsonValue::String(entry_key.to_string())
+    }
+
     /// If the class has a `designates_type` slot and the values map does not
     /// already contain it, insert a Scalar value with the class's type
     /// designator value. This ensures round-trip fidelity for formats like
     /// JSON that lack an intrinsic typing mechanism (unlike RDF's rdf:type).
+    ///
+    /// The complement of [`Self::canonicalize_type_designator`], which settles
+    /// the case where the data *did* supply a value; JSON boxing runs both, RDF
+    /// harvesting only ever needs this one (it skips the designator predicate).
     fn populate_type_designator(
         values: &mut HashMap<String, LinkMLInstance>,
         class: &ClassView,
@@ -934,6 +1176,7 @@ impl LinkMLInstance {
             path.clone(),
             validation_issues,
         );
+        Self::canonicalize_type_designator(&mut values, class, conv, &path, validation_issues);
         Self::populate_type_designator(&mut values, class, sv, conv);
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
@@ -1024,6 +1267,7 @@ impl LinkMLInstance {
                 for (k, v) in map.into_iter() {
                     let child = Self::build_mapping_entry_for_slot(
                         sl,
+                        &k,
                         v,
                         sv,
                         conv,
@@ -1171,6 +1415,7 @@ impl LinkMLInstance {
             path.clone(),
             validation_issues,
         );
+        Self::canonicalize_type_designator(&mut values, &chosen, conv, &path, validation_issues);
         Self::populate_type_designator(&mut values, &chosen, sv, conv);
         Ok(LinkMLInstance::Object {
             node_id: new_node_id(),
@@ -1395,8 +1640,27 @@ impl LinkMLInstance {
         )
     }
 
+    /// Build one entry of an inlined mapping.
+    ///
+    /// `entry_key` is the entry's dict key, which the LinkML `inlined` contract
+    /// makes the element's key/identifier *value* — real data, not just an
+    /// address (spec addendum rule 5, finding D5). It is injected into the key
+    /// slot when the payload omits it, which happens before class selection (so
+    /// a designator-keyed dict selects the class its key names), before the
+    /// object constraints run (so a `required` key slot is satisfied by the key
+    /// the document did supply, instead of erroring on legal data), and before
+    /// [`Self::canonicalize_type_designator`] (so an injected designator value
+    /// is canonicalised exactly as a payload-supplied one is). When the payload
+    /// does supply it, [`Self::reconcile_dict_key_with_payload`] speaks.
+    ///
+    /// The key slot is read from the slot's **range** class only. It has to be:
+    /// the key is injected *before* `select_class` runs, so consulting the
+    /// selected class would be circular. A key declared solely by a descendant
+    /// — `slot_usage: {k: {key: true}}` on a subclass, the range class having no
+    /// key of its own — therefore gets neither the injection nor the checks.
     pub(crate) fn build_mapping_entry_for_slot(
         map_slot: &SlotView,
+        entry_key: &str,
         value: JsonValue,
         sv: &SchemaView,
         conv: &Converter,
@@ -1419,7 +1683,20 @@ impl LinkMLInstance {
                 )
             })?;
         match value {
-            JsonValue::Object(m) => {
+            JsonValue::Object(mut m) => {
+                let key_slot = range_cv.key_or_identifier_slot().cloned();
+                // Alias-aware, because the payload may spell the slot by any
+                // name `slot_matches_key` accepts — the same lookup the child
+                // loop below uses, so "did the payload supply it?" and "which
+                // entry is it?" cannot disagree.
+                let payload_states_key = key_slot
+                    .as_ref()
+                    .is_some_and(|ks| m.keys().any(|ck| slot_matches_key(ks, ck)));
+                if let Some(ks) = &key_slot {
+                    if !payload_states_key {
+                        m.insert(ks.name.clone(), Self::dict_key_value(entry_key));
+                    }
+                }
                 let selected = Self::select_class(&m, &range_cv, sv, conv);
                 let mut child_values = HashMap::new();
                 for (ck, cv) in m.into_iter() {
@@ -1455,7 +1732,30 @@ impl LinkMLInstance {
                     path.clone(),
                     validation_issues,
                 );
+                Self::canonicalize_type_designator(
+                    &mut child_values,
+                    &selected,
+                    conv,
+                    &path,
+                    validation_issues,
+                );
                 Self::populate_type_designator(&mut child_values, &selected, sv, conv);
+                // After both designator passes, so the comparison is against
+                // the value the entry will actually carry out. Skipped when the
+                // key was injected: the entry then agrees with its key by
+                // construction, and a rejected *injected* designator value is
+                // `canonicalize_type_designator`'s to report.
+                if let (Some(ks), true) = (key_slot.as_ref(), payload_states_key) {
+                    Self::reconcile_dict_key_with_payload(
+                        entry_key,
+                        ks,
+                        &child_values,
+                        &selected,
+                        conv,
+                        &path,
+                        validation_issues,
+                    );
+                }
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
                     values: child_values,
@@ -1465,10 +1765,8 @@ impl LinkMLInstance {
                 })
             }
             other => {
-                let key_slot_name = range_cv
-                    .key_or_identifier_slot()
-                    .map(|s| s.name.as_str())
-                    .unwrap_or("");
+                let key_slot = range_cv.key_or_identifier_slot().cloned();
+                let key_slot_name = key_slot.as_ref().map(|s| s.name.as_str()).unwrap_or("");
                 let scalar_slot = Self::find_scalar_slot_for_inlined_map(&range_cv, key_slot_name)
                     .ok_or_else(|| {
                         LinkMLError::single(
@@ -1480,6 +1778,34 @@ impl LinkMLInstance {
                             ),
                         )
                     })?;
+                // The compact form states exactly two things: the dict key and
+                // one scalar. Both are named here, because either can be the
+                // class's *designator* and so name the entry's class.
+                //
+                // `find_scalar_slot_for_inlined_map` picks the first non-key
+                // scalar slot, which can be the designator: then
+                // `{"w1": "canon:FancyWidget"}` says "widget w1 is a
+                // FancyWidget", exactly as the object form's `{"typeURI": ...}`
+                // does. The dict key is the designator whenever the key slot
+                // and the designator slot are one — the asset360
+                // `PositioningSystemCoordinate` shape. This arm otherwise
+                // hardwires the slot's range class, so without selecting here
+                // canonicalisation would rewrite that designator to the *range*
+                // class's value and warn about data that was right — the
+                // misclassification spec rule 2 exists to prevent. Selection
+                // stays scoped to that one question: a compact entry that names
+                // no designator at all names no class and keeps the range class.
+                let mut named = serde_json::Map::new();
+                named.insert(scalar_slot.name.clone(), other.clone());
+                if let Some(ks) = &key_slot {
+                    named.insert(ks.name.clone(), Self::dict_key_value(entry_key));
+                }
+                let entry_class = match range_cv.get_type_designator_slot() {
+                    Some(td) if named.contains_key(&td.name) => {
+                        Self::select_class(&named, &range_cv, sv, conv)
+                    }
+                    _ => range_cv.clone(),
+                };
                 let mut child_values = HashMap::new();
                 child_values.insert(
                     scalar_slot.name.clone(),
@@ -1487,22 +1813,44 @@ impl LinkMLInstance {
                         node_id: new_node_id(),
                         value: Self::coerce_scalar_to_range(other, Some(&scalar_slot)),
                         slot: scalar_slot.clone(),
-                        class: Some(range_cv.clone()),
+                        class: Some(entry_class.clone()),
                         sv: sv.clone(),
                     },
                 );
+                // Rule 5: the compact form has no payload for the key slot at
+                // all, so the dict key is the only thing that can fill it —
+                // there is nothing here to diverge from.
+                if let Some(ks) = &key_slot {
+                    child_values.insert(
+                        ks.name.clone(),
+                        LinkMLInstance::Scalar {
+                            node_id: new_node_id(),
+                            value: Self::dict_key_value(entry_key),
+                            slot: ks.clone(),
+                            class: Some(entry_class.clone()),
+                            sv: sv.clone(),
+                        },
+                    );
+                }
                 run_object_constraints(
-                    &range_cv,
+                    &entry_class,
                     &child_values,
                     &HashMap::new(),
                     path.clone(),
                     validation_issues,
                 );
-                Self::populate_type_designator(&mut child_values, &range_cv, sv, conv);
+                Self::canonicalize_type_designator(
+                    &mut child_values,
+                    &entry_class,
+                    conv,
+                    &path,
+                    validation_issues,
+                );
+                Self::populate_type_designator(&mut child_values, &entry_class, sv, conv);
                 Ok(LinkMLInstance::Object {
                     node_id: new_node_id(),
                     values: child_values,
-                    class: range_cv,
+                    class: entry_class,
                     sv: sv.clone(),
                     unknown_fields: HashMap::new(),
                 })
