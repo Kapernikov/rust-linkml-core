@@ -11,8 +11,8 @@
 //! it is `GSA`. A client had to hardcode the IRI to get a readable answer. With
 //! these triples it can ask.
 //!
-//! Scope is *discovery*: names, relationships, allowed values. It is
-//! deliberately not an OWL axiomatisation — see [`SchemaRdfProfile`].
+//! Scope is *discovery*: names, relationships, allowed values, and how many
+//! values are allowed *where* — see [`SchemaRdfProfile`].
 //!
 //! # This module takes no position on graph naming
 //!
@@ -58,11 +58,97 @@
 //!   introduced the `*Includes` pair for exactly this — a non-committal "this
 //!   is one of the places it is used". `rdfs:range` is additionally emitted
 //!   when a slot has exactly one range, where it is not a guess.
+//! * `owl:Restriction` with `owl:onProperty` plus `owl:minCardinality`,
+//!   `owl:maxCardinality` or `owl:allValuesFrom`, hung off the class with
+//!   `rdfs:subClassOf`, for per-class cardinality and per-class range. See
+//!   *Cardinality* below.
 //!
-//! Two of those choices knowingly disagree with linkml's OWL generator, so they
-//! are named rather than implied: they are the [`SchemaRdfProfile::Discovery`]
-//! profile, and a strict-OWL profile can be added beside it without breaking
-//! this API.
+//! # The governing principle
+//!
+//! **Match linkml's own OWL generator (`gen-owl`) wherever it has a spelling;
+//! diverge only where this module already has a stated reason.** Two
+//! divergences are stated above and stay: SKOS concepts rather than OWL
+//! individuals for permissible values, and `schema:domainIncludes` rather than
+//! `rdfs:domain`. Everything else follows `gen-owl` so that a client, or a
+//! reasoner, that already understands linkml's OWL output understands this too.
+//! They are named rather than implied: they are the
+//! [`SchemaRdfProfile::Discovery`] profile, and a strict-OWL profile can be
+//! added beside it without breaking this API.
+//!
+//! Deliberately *not* taken from `gen-owl` are three of its defaults, each an
+//! opinion separate from the ones above: `metaclasses` (which puns every class
+//! as an individual of `ClassDefinition`, the same class/individual punning
+//! this module already refuses for permissible values), `type_objects` (which
+//! mints object shadows for literal types), and its enum encoding.
+//!
+//! # Cardinality
+//!
+//! "Is this slot required here, can it repeat here, what can it hold *here*"
+//! is a discovery question — the answer is per class, not per slot, because
+//! LinkML lets a class refine an inherited slot. It is encoded the way
+//! `gen-owl` encodes it, in OWL restrictions rather than in SHACL shapes:
+//!
+//! ```text
+//! <Class> rdfs:subClassOf [ a owl:Restriction ;
+//!                           owl:onProperty <slot> ;
+//!                           owl:minCardinality "1"^^xsd:integer ] .
+//! ```
+//!
+//! Three restrictions can appear per (class, slot) pair: `owl:minCardinality`
+//! (`1` when required, and an explicit `0` when not — `gen-owl` emits the zero,
+//! so so does this), `owl:maxCardinality 1` when the slot is single-valued, and
+//! `owl:allValuesFrom` for the range. Following `gen-owl`, `required` and
+//! `multivalued` are true if they are true on *either* the class-scoped slot
+//! (`slot_usage`, `attributes`) or the schema-level slot of the same name.
+//!
+//! Also following `gen-owl`, the restrictions are *not* left inside an
+//! `owl:intersectionOf` list. `gen-owl` unrolls that list, adding each member
+//! as its own `rdfs:subClassOf` triple on the class (its `simplify` option,
+//! on by default). Matching that matters for more than fidelity: unrolled, the
+//! answer is one hop plus one blank node,
+//!
+//! ```sparql
+//! ?class rdfs:subClassOf [ owl:onProperty ?slot ; owl:minCardinality ?n ]
+//! ```
+//!
+//! where an intersection list would have forced a client to walk `rdf:first` /
+//! `rdf:rest`.
+//!
+//! ## The per-class range is redundant with the slot-level range, on purpose
+//!
+//! `owl:allValuesFrom` on the restriction and `schema:rangeIncludes` /
+//! `rdfs:range` on the slot say overlapping things, and both are emitted. This
+//! is a choice, not an oversight. They answer different questions — "what can
+//! this slot hold anywhere" versus "what can it hold on this class" — and they
+//! cost differently: the slot-level form is a one-hop lookup, the restriction
+//! needs blank-node traversal. Dropping the slot-level form would make the
+//! cheap, common question expensive; dropping the restriction would make the
+//! per-class answer unavailable.
+//!
+//! ## What `minCardinality` means, honestly
+//!
+//! A LinkML constraint is closed-world: `required: true` is a rule a validator
+//! checks, and the absence of a value is a *violation*. An OWL axiom is
+//! open-world: `owl:minCardinality 1` is an assertion a reasoner *uses*, and
+//! from it a reasoner concludes that a value exists but is unstated, rather
+//! than flagging that one is missing. Converting the first into the second
+//! changes a validation rule into an inference. Similarly, `owl:maxCardinality
+//! 1` licenses a reasoner to conclude two differently-named values are the same
+//! individual, where LinkML meant that having two is an error.
+//!
+//! That caveat has not gone away; the encoding is adopted anyway, for ecosystem
+//! harmony with `gen-owl`, and the open-world reading is a known and accepted
+//! consequence. A consumer that needs closed-world validation semantics must
+//! validate against the LinkML schema (or a SHACL rendering of it), not reason
+//! over these triples. What these triples are *for* is discovery, where "the
+//! schema says at least one, at most one" is exactly the answer wanted.
+//!
+//! For the same reason no `owl:allValuesFrom owl:Thing` is emitted where a
+//! range cannot be resolved. `gen-owl` falls back to `owl:Thing` because it is
+//! building an intersection list that has to have a member; here the
+//! restriction is standalone, and a vacuous "all values are things" costs four
+//! triples to say nothing. An unresolvable range is simply not described, in
+//! keeping with the skip-and-record rule below.
 //!
 //! # IRIs must be absolute
 //!
@@ -91,7 +177,7 @@ use std::collections::BTreeSet;
 use linkml_schemaview::converter::Converter;
 use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::{ClassView, SchemaView, SlotView};
-use oxrdf::{Literal, NamedNode, NamedNodeRef, Term, Triple};
+use oxrdf::{BlankNode, Literal, NamedNode, NamedNodeRef, NamedOrBlankNode, Term, Triple};
 
 /// `rdf:type`.
 pub const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
@@ -119,6 +205,20 @@ pub const SKOS_NOTATION: &str = "http://www.w3.org/2004/02/skos/core#notation";
 pub const SCHEMA_DOMAIN_INCLUDES: &str = "https://schema.org/domainIncludes";
 /// `schema:rangeIncludes`.
 pub const SCHEMA_RANGE_INCLUDES: &str = "https://schema.org/rangeIncludes";
+/// `owl:Restriction`.
+pub const OWL_RESTRICTION: &str = "http://www.w3.org/2002/07/owl#Restriction";
+/// `owl:onProperty`.
+pub const OWL_ON_PROPERTY: &str = "http://www.w3.org/2002/07/owl#onProperty";
+/// `owl:allValuesFrom`.
+pub const OWL_ALL_VALUES_FROM: &str = "http://www.w3.org/2002/07/owl#allValuesFrom";
+/// `owl:minCardinality`.
+pub const OWL_MIN_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#minCardinality";
+/// `owl:maxCardinality`.
+pub const OWL_MAX_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#maxCardinality";
+/// `xsd:integer` — the datatype `gen-owl` gives its cardinality literals,
+/// because rdflib maps a Python `int` to it. OWL 2 asks for
+/// `xsd:nonNegativeInteger`; harmony with `gen-owl` wins, per the module docs.
+pub const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
 
 /// Which vocabulary the schema is expressed in.
 ///
@@ -133,9 +233,20 @@ pub const SCHEMA_RANGE_INCLUDES: &str = "https://schema.org/rangeIncludes";
 #[non_exhaustive]
 pub enum SchemaRdfProfile {
     /// Discovery: what things are called, how they relate, which values are
-    /// allowed. Weakest true type assertions, SKOS for controlled value lists,
-    /// `schema:*Includes` for class↔slot links. See the module docs for why
+    /// allowed, and how many values are allowed on each class.
+    ///
+    /// Weakest true type assertions, SKOS for controlled value lists,
+    /// `schema:*Includes` for class↔slot links — see the module docs for why
     /// each of those is the defensible reading of a LinkML schema.
+    ///
+    /// It is *not* axiom-free. Per-class cardinality and per-class range are
+    /// genuine OWL restrictions, spelled as linkml's own OWL generator spells
+    /// them (`owl:minCardinality` / `owl:maxCardinality` /
+    /// `owl:allValuesFrom`, unrolled onto the class with `rdfs:subClassOf`),
+    /// and a reasoner will read them open-world. It is still not a full OWL
+    /// axiomatisation: `gen-owl`'s metaclass punning, type objects and enum
+    /// individuals are all left out. The module docs give the reasoning and the
+    /// caveat.
     #[default]
     Discovery,
 }
@@ -252,6 +363,26 @@ struct Builder {
     skipped: Vec<String>,
 }
 
+/// A cardinality as `gen-owl` writes it: rdflib turns a Python `int` into an
+/// `xsd:integer`, so this does too.
+fn cardinality_literal(n: u32) -> Literal {
+    Literal::new_typed_literal(n.to_string(), NamedNodeRef::new_unchecked(XSD_INTEGER))
+}
+
+/// FNV-1a, 64 bit. Used only to give a blank node a label that depends on
+/// nothing but the restriction's own content, so that two runs over the same
+/// schema produce byte-identical output. Not a security hash; a collision would
+/// merge two restrictions, which at the few-thousand-restriction scale of a
+/// schema is a probability around 1e-12.
+fn fnv1a64(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in s.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    hash
+}
+
 impl Builder {
     /// An absolute-IRI node, or `None` with the offender recorded.
     fn node(&mut self, iri: &str, what: &str) -> Option<NamedNode> {
@@ -280,8 +411,14 @@ impl Builder {
     /// `predicate` is always one of the constants above, every one of which is
     /// a valid absolute IRI, so it is not re-validated here. A test pins that.
     fn triple(&mut self, subject: &NamedNode, predicate: &str, object: Term) {
+        self.triple_from(subject.clone().into(), predicate, object);
+    }
+
+    /// As [`Builder::triple`], but the subject may be a blank node — which the
+    /// restrictions are.
+    fn triple_from(&mut self, subject: NamedOrBlankNode, predicate: &str, object: Term) {
         self.triples.push(Triple::new(
-            subject.clone(),
+            subject,
             NamedNodeRef::new_unchecked(predicate).into_owned(),
             object,
         ));
@@ -308,6 +445,92 @@ impl Builder {
     fn type_of(&mut self, subject: &NamedNode, class: &str) {
         let object = Term::NamedNode(NamedNodeRef::new_unchecked(class).into_owned());
         self.triple(subject, RDF_TYPE, object);
+    }
+
+    /// One unrolled OWL restriction: the blank node with its `rdf:type`,
+    /// `owl:onProperty` and constraining predicate, plus the
+    /// `rdfs:subClassOf` triple that hangs it off the class.
+    ///
+    /// The blank node's label is a content hash of what the restriction says,
+    /// which is what keeps [`schema_triples`]'s dedup and sort meaningful: a
+    /// freshly minted label would differ between two runs over the same schema
+    /// and the output would stop being deterministic.
+    fn restriction(
+        &mut self,
+        class_node: &NamedNode,
+        slot_node: &NamedNode,
+        predicate: &str,
+        object: Term,
+    ) {
+        let node = BlankNode::new_unchecked(format!(
+            "r{:016x}",
+            fnv1a64(&format!("{class_node}|{slot_node}|{predicate}|{object}"))
+        ));
+        let subject: NamedOrBlankNode = node.clone().into();
+
+        self.triple_from(
+            subject.clone(),
+            RDF_TYPE,
+            Term::NamedNode(NamedNodeRef::new_unchecked(OWL_RESTRICTION).into_owned()),
+        );
+        self.triple_from(subject.clone(), OWL_ON_PROPERTY, slot_node.clone().into());
+        self.triple_from(subject, predicate, object);
+        self.triple(class_node, RDFS_SUBCLASS_OF, node.into());
+    }
+
+    /// The per-class cardinality and range restrictions for one (class, slot)
+    /// pair, spelled as `gen-owl` spells them. See the module docs.
+    fn slot_restrictions(
+        &mut self,
+        class_node: &NamedNode,
+        slot_node: &NamedNode,
+        slot: &SlotView,
+        ranges: &[NamedNode],
+    ) {
+        // `gen-owl` takes `slot.required or top_slot.required`: the class-scoped
+        // refinement and the schema-level slot, either one being true making it
+        // true. A `ClassView`'s `SlotView` carries exactly that chain in
+        // `definitions()` — the top-level slot's definitions first, then the
+        // `slot_usage` refinements — so "any link in the chain says so" is the
+        // same disjunction, and generalises correctly when the chain is deeper
+        // than two.
+        let any = |pick: fn(&linkml_meta::SlotDefinition) -> Option<bool>| {
+            slot.definitions()
+                .iter()
+                .any(|def| pick(def).unwrap_or(false))
+        };
+        let required = any(|def| def.required);
+        let multivalued = any(|def| def.multivalued);
+
+        // Only where it is not a guess: exactly one resolved range, the same
+        // condition under which `rdfs:range` is emitted on the slot. Several
+        // ranges would need an `owl:unionOf` list, which is the blank-node
+        // walking this encoding exists to avoid; none is not described at all,
+        // rather than falling back to `gen-owl`'s vacuous `owl:Thing`.
+        if let [only] = ranges {
+            self.restriction(
+                class_node,
+                slot_node,
+                OWL_ALL_VALUES_FROM,
+                only.clone().into(),
+            );
+        }
+
+        // The explicit `0` is `gen-owl`'s, not an accident.
+        self.restriction(
+            class_node,
+            slot_node,
+            OWL_MIN_CARDINALITY,
+            cardinality_literal(if required { 1 } else { 0 }).into(),
+        );
+        if !multivalued {
+            self.restriction(
+                class_node,
+                slot_node,
+                OWL_MAX_CARDINALITY,
+                cardinality_literal(1).into(),
+            );
+        }
     }
 
     fn classes_and_slots(&mut self, sv: &SchemaView, conv: &Converter) {
@@ -364,6 +587,10 @@ impl Builder {
                 if let [only] = ranges.as_slice() {
                     self.triple(&slot_node, RDFS_RANGE, only.clone().into());
                 }
+
+                // Per class, alongside the per-slot statements above and
+                // knowingly overlapping them: see the module docs.
+                self.slot_restrictions(&class_node, &slot_node, slot, &ranges);
             }
         }
     }
@@ -484,6 +711,12 @@ mod tests {
             SKOS_NOTATION,
             SCHEMA_DOMAIN_INCLUDES,
             SCHEMA_RANGE_INCLUDES,
+            OWL_RESTRICTION,
+            OWL_ON_PROPERTY,
+            OWL_ALL_VALUES_FROM,
+            OWL_MIN_CARDINALITY,
+            OWL_MAX_CARDINALITY,
+            XSD_INTEGER,
         ] {
             NamedNode::new(iri).unwrap_or_else(|err| panic!("{iri} is not absolute: {err}"));
         }
@@ -498,8 +731,12 @@ mod tests {
             // `NamedNode::new` on the way in already rejected relative IRIs;
             // re-check here so the invariant is asserted on the output, not on
             // the code path that produced it.
+            // Blank nodes are exempt: a restriction has no IRI by design.
             for iri in [
-                Some(triple.subject.to_string()),
+                match &triple.subject {
+                    NamedOrBlankNode::NamedNode(node) => Some(node.to_string()),
+                    NamedOrBlankNode::BlankNode(_) => None,
+                },
                 Some(triple.predicate.to_string()),
                 match &triple.object {
                     Term::NamedNode(node) => Some(node.to_string()),
@@ -677,6 +914,225 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Evaluate, by hand, the exact basic graph pattern a client writes:
+    ///
+    /// ```sparql
+    /// ?class rdfs:subClassOf ?r . ?r owl:onProperty ?slot . ?r <predicate> ?n
+    /// ```
+    ///
+    /// The point is that the restriction is reachable in *one hop plus one
+    /// blank node* — no `rdf:first`/`rdf:rest` walk — which is the whole reason
+    /// `gen-owl`'s unrolled form is matched rather than its intersection list.
+    /// There is no SPARQL engine in this crate, so the join is spelled out;
+    /// downstream (asset360-rust) runs the same shape through oxigraph.
+    fn cardinality_of(
+        out: &SchemaTriples,
+        class_iri: &str,
+        slot_iri: &str,
+        predicate: &str,
+    ) -> Vec<String> {
+        let restrictions: BTreeSet<String> = out
+            .triples
+            .iter()
+            .filter(|t| {
+                t.subject.to_string() == format!("<{class_iri}>")
+                    && t.predicate.as_str() == RDFS_SUBCLASS_OF
+            })
+            .filter_map(|t| match &t.object {
+                Term::BlankNode(node) => Some(node.to_string()),
+                _ => None,
+            })
+            .collect();
+
+        let on_slot: BTreeSet<String> = out
+            .triples
+            .iter()
+            .filter(|t| {
+                t.predicate.as_str() == OWL_ON_PROPERTY
+                    && t.object.to_string() == format!("<{slot_iri}>")
+                    && restrictions.contains(&t.subject.to_string())
+            })
+            .map(|t| t.subject.to_string())
+            .collect();
+
+        // Every restriction reached this way must really be typed as one.
+        for r in &on_slot {
+            assert!(
+                out.triples.iter().any(|t| t.subject.to_string() == *r
+                    && t.predicate.as_str() == RDF_TYPE
+                    && t.object.to_string() == format!("<{OWL_RESTRICTION}>")),
+                "{r} is hung off a class with owl:onProperty but is not an owl:Restriction"
+            );
+        }
+
+        out.triples
+            .iter()
+            .filter(|t| {
+                t.predicate.as_str() == predicate && on_slot.contains(&t.subject.to_string())
+            })
+            .map(|t| t.object.to_string())
+            .collect()
+    }
+
+    fn class_iri(sv: &SchemaView, name: &str) -> String {
+        let conv = sv.converter();
+        let cv = sv
+            .class_views()
+            .unwrap()
+            .into_iter()
+            .find(|cv| cv.name() == name)
+            .unwrap_or_else(|| panic!("personinfo has a {name} class"));
+        instance_type_iri(&cv, &conv).unwrap_or_else(|| panic!("{name} has no expandable URI"))
+    }
+
+    fn slot_iri(sv: &SchemaView, class: &str, slot_name: &str) -> String {
+        let conv = sv.converter();
+        let cv = sv
+            .class_views()
+            .unwrap()
+            .into_iter()
+            .find(|cv| cv.name() == class)
+            .unwrap_or_else(|| panic!("personinfo has a {class} class"));
+        let slot = cv
+            .slots()
+            .iter()
+            .find(|s| s.name == slot_name)
+            .unwrap_or_else(|| panic!("{class} has no slot {slot_name}"));
+        slot_predicate_iri(slot, &conv)
+            .unwrap_or_else(|raw| panic!("slot URI {raw} not expandable"))
+    }
+
+    /// `FamilialRelationship.type` is `required: true` in `slot_usage` only —
+    /// the schema-level `type` slot is not required. `gen-owl` takes
+    /// `slot.required or top_slot.required`, so the refinement wins and the
+    /// class gets `owl:minCardinality 1`. `Relationship.type` is the same slot
+    /// without the refinement and must get the explicit `0`, which is what
+    /// makes the answer per-class rather than per-slot.
+    #[test]
+    fn a_required_slot_is_queryable_as_min_cardinality_one() {
+        let sv = personinfo();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let one = format!("\"1\"^^<{XSD_INTEGER}>");
+        let zero = format!("\"0\"^^<{XSD_INTEGER}>");
+
+        let refined = class_iri(&sv, "FamilialRelationship");
+        let base = class_iri(&sv, "Relationship");
+        let slot = slot_iri(&sv, "FamilialRelationship", "type");
+        assert_eq!(
+            slot,
+            slot_iri(&sv, "Relationship", "type"),
+            "the two classes must share the slot for this to be about the class"
+        );
+
+        assert_eq!(
+            cardinality_of(&out, &refined, &slot, OWL_MIN_CARDINALITY),
+            vec![one.clone()],
+            "FamilialRelationship.type is required in slot_usage"
+        );
+        assert_eq!(
+            cardinality_of(&out, &base, &slot, OWL_MIN_CARDINALITY),
+            vec![zero],
+            "Relationship.type is not required, and gen-owl emits the explicit 0"
+        );
+        // Single-valued, so it is also capped.
+        assert_eq!(
+            cardinality_of(&out, &refined, &slot, OWL_MAX_CARDINALITY),
+            vec![one],
+        );
+    }
+
+    /// `Person.has_familial_relationships` is `multivalued: true` on the
+    /// *schema-level* slot, the other half of `gen-owl`'s disjunction. It must
+    /// therefore get no `owl:maxCardinality` at all, and — not being required —
+    /// an `owl:minCardinality 0`. Its range resolves to exactly one class, so
+    /// the per-class `owl:allValuesFrom` is there too.
+    #[test]
+    fn a_multivalued_slot_gets_no_max_cardinality() {
+        let sv = personinfo();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+
+        let person = class_iri(&sv, "Person");
+        let slot = slot_iri(&sv, "Person", "has_familial_relationships");
+
+        assert_eq!(
+            cardinality_of(&out, &person, &slot, OWL_MIN_CARDINALITY),
+            vec![format!("\"0\"^^<{XSD_INTEGER}>")],
+        );
+        assert!(
+            cardinality_of(&out, &person, &slot, OWL_MAX_CARDINALITY).is_empty(),
+            "a multivalued slot must not be capped at one"
+        );
+        assert_eq!(
+            cardinality_of(&out, &person, &slot, OWL_ALL_VALUES_FROM),
+            vec![format!("<{}>", class_iri(&sv, "FamilialRelationship"))],
+        );
+    }
+
+    /// A restriction's blank node is a content hash, so nothing about the
+    /// output depends on iteration order or on how many times a schema is
+    /// triplified. `output_is_deterministic` covers the whole graph; this pins
+    /// the reason, because a randomly minted label would break it invisibly
+    /// only once blank nodes appeared.
+    #[test]
+    fn restriction_blank_nodes_are_content_addressed() {
+        let sv = personinfo();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let blanks: BTreeSet<String> = out
+            .triples
+            .iter()
+            .filter_map(|t| match &t.object {
+                Term::BlankNode(node) => Some(node.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert!(!blanks.is_empty(), "expected restrictions in the output");
+
+        let again = schema_triples(&sv, &SchemaRdfOptions::default());
+        let blanks_again: BTreeSet<String> = again
+            .triples
+            .iter()
+            .filter_map(|t| match &t.object {
+                Term::BlankNode(node) => Some(node.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(blanks, blanks_again);
+
+        // Every blank node used as an object is a restriction hung off a class,
+        // and every one of them carries all three of its triples.
+        for blank in &blanks {
+            let predicates: BTreeSet<&str> = out
+                .triples
+                .iter()
+                .filter(|t| t.subject.to_string() == *blank)
+                .map(|t| t.predicate.as_str())
+                .collect();
+            assert!(
+                predicates.contains(RDF_TYPE) && predicates.contains(OWL_ON_PROPERTY),
+                "restriction {blank} is incomplete: {predicates:?}"
+            );
+            assert!(
+                predicates.contains(OWL_MIN_CARDINALITY)
+                    || predicates.contains(OWL_MAX_CARDINALITY)
+                    || predicates.contains(OWL_ALL_VALUES_FROM),
+                "restriction {blank} constrains nothing: {predicates:?}"
+            );
+        }
+    }
+
+    /// `gen-owl` falls back to `owl:allValuesFrom owl:Thing` when it cannot
+    /// resolve a range, because it is building an intersection list that needs
+    /// a member. This module does not, so `owl:Thing` must appear nowhere.
+    #[test]
+    fn no_vacuous_owl_thing_range() {
+        let out = schema_triples(&personinfo(), &SchemaRdfOptions::default());
+        assert!(
+            !out.to_ntriples()
+                .contains("<http://www.w3.org/2002/07/owl#Thing>"),
+            "owl:Thing says nothing and should not have been emitted"
+        );
     }
 
     #[test]
