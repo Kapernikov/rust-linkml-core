@@ -158,6 +158,12 @@
 //! converter cannot expand is *skipped* and named in [`SchemaTriples::skipped`],
 //! never emitted as a bare CURIE, which would not re-parse.
 //!
+//! The converter comes from every schema in the view, so two schemas that bind
+//! one prefix to different namespaces make some IRIs here expand through the
+//! wrong namespace. That is strictly worse than a skip — the term is present
+//! and looks fine — so it is reported too, in
+//! [`SchemaTriples::prefix_collisions`].
+//!
 //! # Which IRI names a class
 //!
 //! A class can have two legitimate spellings: its schema-native URI
@@ -175,7 +181,7 @@
 use std::collections::BTreeSet;
 
 use linkml_schemaview::converter::Converter;
-use linkml_schemaview::identifier::Identifier;
+use linkml_schemaview::identifier::{Identifier, PrefixCollision};
 use linkml_schemaview::schemaview::{ClassView, SchemaView, SlotView};
 use oxrdf::{BlankNode, Literal, NamedNode, NamedNodeRef, NamedOrBlankNode, Term, Triple};
 
@@ -276,6 +282,16 @@ pub struct SchemaTriples {
     /// rather than discarded so a caller can say *what* is missing instead of a
     /// client wondering why a label does not resolve.
     pub skipped: Vec<String>,
+    /// Prefixes the view's schemas bound to more than one namespace, so only
+    /// one binding could survive. Empty for any schema set whose prefixes are
+    /// unambiguous, which is the normal case.
+    ///
+    /// This is reported for the same reason `skipped` is, and is the more
+    /// dangerous of the two: a term named here is not missing from `triples`,
+    /// it is *present under an IRI that may be wrong*, and nothing downstream
+    /// can tell. A caller that treats a non-empty `skipped` as a problem should
+    /// treat this as at least as serious.
+    pub prefix_collisions: Vec<PrefixCollision>,
 }
 
 impl SchemaTriples {
@@ -334,7 +350,7 @@ pub fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> Result<String, S
 pub fn schema_triples(sv: &SchemaView, options: &SchemaRdfOptions) -> SchemaTriples {
     let SchemaRdfProfile::Discovery = options.profile;
 
-    let conv = sv.converter();
+    let (conv, prefix_collisions) = sv.converter_with_collisions();
     let mut builder = Builder {
         triples: Vec::new(),
         skipped: Vec::new(),
@@ -355,6 +371,7 @@ pub fn schema_triples(sv: &SchemaView, options: &SchemaRdfOptions) -> SchemaTrip
     SchemaTriples {
         triples: builder.triples,
         skipped: builder.skipped,
+        prefix_collisions,
     }
 }
 
@@ -1141,5 +1158,48 @@ mod tests {
         let first = schema_triples(&sv, &SchemaRdfOptions::default()).to_ntriples();
         let second = schema_triples(&sv, &SchemaRdfOptions::default()).to_ntriples();
         assert_eq!(first, second, "output must not depend on map order");
+    }
+    /// A schema set with unambiguous prefixes reports no collision, so a
+    /// non-empty `prefix_collisions` really does mean something is wrong.
+    #[test]
+    fn an_unambiguous_schema_reports_no_prefix_collision() {
+        let built = schema_triples(&personinfo(), &SchemaRdfOptions::default());
+        assert!(
+            built.prefix_collisions.is_empty(),
+            "got {:?}",
+            built.prefix_collisions
+        );
+    }
+
+    /// The hazard this field exists for: two schemas in one view bind `shared:`
+    /// to different namespaces, so some emitted IRI is built from the wrong
+    /// namespace and nothing about the triples themselves gives that away.
+    /// Unlike `skipped`, the term is present — just possibly misnamed.
+    #[test]
+    fn a_prefix_collision_across_schemas_is_reported() {
+        let base = from_yaml(Path::new(&data_path("prefix_conflict_base.yaml"))).unwrap();
+        let derived = from_yaml(Path::new(&data_path("prefix_conflict_derived.yaml"))).unwrap();
+        let mut sv = SchemaView::new();
+        sv.add_schema(derived.clone()).unwrap();
+        sv.add_schema_with_import_ref(
+            base,
+            Some((derived.id.clone(), "./prefix_conflict_base".to_string())),
+        )
+        .unwrap();
+
+        let built = schema_triples(&sv, &SchemaRdfOptions::default());
+        assert_eq!(
+            built
+                .prefix_collisions
+                .iter()
+                .map(|c| c.to_string())
+                .collect::<Vec<_>>(),
+            vec![concat!(
+                "prefix 'shared' expands to <https://example.com/a/>,",
+                " not to <https://example.com/b/>"
+            )
+            .to_string()]
+        );
+        assert!(!built.triples.is_empty(), "the triples are still produced");
     }
 }

@@ -1,0 +1,11 @@
+id: https://example.com/prefix-collision-alpha
+name: prefix_collision_alpha
+prefixes:
+  shared: https://example.com/aaa/
+  onlyalpha: https://example.com/only-alpha/
+default_prefix: shared
+classes:
+  AlphaItem:
+    attributes:
+      alpha_field:
+        range: string

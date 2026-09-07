@@ -1,0 +1,10 @@
+id: https://example.com/prefix-synonym-geosparql
+name: prefix_synonym_geosparql
+prefixes:
+  geosparql: http://www.opengis.net/ont/geosparql#
+default_prefix: geosparql
+classes:
+  GeosparqlItem:
+    attributes:
+      geosparql_field:
+        range: string

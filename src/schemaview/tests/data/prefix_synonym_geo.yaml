@@ -1,0 +1,10 @@
+id: https://example.com/prefix-synonym-geo
+name: prefix_synonym_geo
+prefixes:
+  geo: http://www.opengis.net/ont/geosparql#
+default_prefix: geo
+classes:
+  GeoItem:
+    attributes:
+      geo_field:
+        range: string

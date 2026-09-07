@@ -1,5 +1,6 @@
 use crate::converter::{Converter, ConverterError, Record};
 use linkml_meta::SchemaDefinition;
+use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 /// Error type for Identifier conversions
@@ -192,35 +193,149 @@ fn add_missing_prefix(prefix: &str, uri: &str, conv: &mut Converter) {
     }
 }
 
+/// One prefix bound to two different namespaces by the schemas a [`Converter`]
+/// was built from.
+///
+/// A converter can only expand a prefix one way, so [`converter_from_schemas`]
+/// has to drop one of the two bindings. That is a silent-wrong-answer hazard:
+/// an *unexpandable* CURIE fails loudly, but a *mis-expanded* one produces a
+/// plausible IRI with no signal at all. Every dropped binding is reported here
+/// so a caller that cares can refuse to trust the result, or name the conflict.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PrefixCollision {
+    /// The prefix (or prefix synonym) that two schemas bound differently.
+    pub prefix: String,
+    /// The namespace `prefix` expands to in the returned converter.
+    pub retained_namespace: String,
+    /// The namespace that is *not* reachable through `prefix`.
+    pub discarded_namespace: String,
+}
+
+impl std::fmt::Display for PrefixCollision {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "prefix '{}' expands to <{}>, not to <{}>",
+            self.prefix, self.retained_namespace, self.discarded_namespace
+        )
+    }
+}
+
 /// Build a [`Converter`] from one or more [`SchemaDefinition`]s.
 ///
-/// All prefixes declared in the schemas are added to the converter. Duplicate
-/// prefixes are ignored.
+/// All prefixes declared in the schemas are added to the converter. Schemas
+/// that bind *different* prefixes to the *same* namespace merge into a single
+/// record carrying the extra prefixes as `prefix_synonyms`.
+///
+/// Schemas that bind the *same* prefix to *different* namespaces cannot be
+/// merged: only one namespace keeps the prefix, and a CURIE using it then
+/// expands to a plausible but possibly wrong IRI. Use
+/// [`converter_from_schemas_reporting`] if you need to know when that happened;
+/// this function discards the report, which is safe only when you know the
+/// schema set has no such conflict.
+///
+/// # Resolution rule
+///
+/// Every choice the build has to make is pinned to lexicographic order of the
+/// schema data, never to iteration order of a hash map, so the same schema set
+/// always yields the same converter — across runs of the same program included:
+///
+/// * of several namespaces claiming one prefix, the lexicographically smallest
+///   namespace keeps it;
+/// * the canonical `prefix` of a namespace is the lexicographically smallest of
+///   the prefixes still available to it; the rest become `prefix_synonyms`.
+///
+/// A namespace that loses one prefix to a collision keeps its other prefixes —
+/// the underlying `add_record` is all-or-nothing per record, so the prefixes
+/// are split across records here rather than letting one clash discard an
+/// unrelated, unambiguous binding for the same namespace.
+///
+/// None of this depends on the order `schemas` are supplied in.
 pub fn converter_from_schemas<'a, I>(schemas: I) -> Converter
 where
     I: IntoIterator<Item = &'a SchemaDefinition>,
 {
+    converter_from_schemas_reporting(schemas).0
+}
+
+/// [`converter_from_schemas`], plus every prefix collision it had to resolve.
+///
+/// The vector is empty for every schema set whose prefixes are unambiguous,
+/// which is the normal case. It is sorted, and its contents do not depend on
+/// hash-map iteration order.
+pub fn converter_from_schemas_reporting<'a, I>(schemas: I) -> (Converter, Vec<PrefixCollision>)
+where
+    I: IntoIterator<Item = &'a SchemaDefinition>,
+{
     let mut conv = Converter::default();
-    use std::collections::HashMap;
-    let mut map: HashMap<String, Record> = HashMap::new();
+    // Keyed on the *namespace*, so different prefixes for one namespace collapse
+    // into one record with synonyms. `BTreeMap`/`BTreeSet` rather than the hash
+    // equivalents: `SchemaDefinition::prefixes` is a `HashMap` and so is the
+    // schema set behind `SchemaView::converter`, and Rust's `HashMap` is
+    // randomly seeded per process, so anything read out of one in order would
+    // make the converter differ between runs of the same binary.
+    let mut namespaces: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for schema in schemas {
         if let Some(prefixes) = &schema.prefixes {
             for (pfx, pref) in prefixes {
-                match map.get_mut(&pref.prefix_reference) {
-                    Some(rec) => {
-                        rec.prefix_synonyms.insert(pfx.clone());
-                    }
-                    None => {
-                        let r = Record::new(pfx, &pref.prefix_reference);
-                        map.insert(pref.prefix_reference.clone(), r);
-                    }
-                }
+                namespaces
+                    .entry(pref.prefix_reference.clone())
+                    .or_default()
+                    .insert(pfx.clone());
             }
         }
     }
-    for record in map.into_values() {
-        let _ = conv.add_record(record);
+
+    let mut collisions: Vec<PrefixCollision> = Vec::new();
+    for (namespace, prefixes) in namespaces {
+        // A prefix already bound by an earlier (lexicographically smaller)
+        // namespace cannot be rebound: `add_record` rejects the whole record if
+        // any single prefix is taken. Split the prefixes rather than lose the
+        // record wholesale, so a collision on one prefix does not also throw
+        // away an unrelated, unambiguous prefix for the same namespace.
+        let (taken, free): (Vec<String>, Vec<String>) = prefixes
+            .into_iter()
+            .partition(|pfx| conv.find_by_prefix(pfx).is_ok());
+
+        // `add_record`'s `Err` is the collision signal. Report it instead of
+        // discarding it: an unexpandable CURIE fails loudly later, a
+        // mis-expanded one never does.
+        for pfx in taken {
+            let retained = match conv.find_by_prefix(&pfx) {
+                Ok(rec) => rec.uri_prefix.clone(),
+                // Unreachable: `partition` just established the binding exists.
+                Err(_) => continue,
+            };
+            collisions.push(PrefixCollision {
+                prefix: pfx,
+                retained_namespace: retained,
+                discarded_namespace: namespace.clone(),
+            });
+        }
+
+        let mut free = free.into_iter();
+        let canonical = match free.next() {
+            Some(p) => p,
+            // Every prefix for this namespace was already taken, so the
+            // namespace has no CURIE spelling at all. Already reported above.
+            None => continue,
+        };
+        let mut record = Record::new(&canonical, &namespace);
+        for synonym in free {
+            record.prefix_synonyms.insert(synonym);
+        }
+        // Records are keyed on namespace and every prefix here is unbound, so
+        // this cannot fail. Report it rather than swallow it if it ever does.
+        if let Err(err) = conv.add_record(record) {
+            collisions.push(PrefixCollision {
+                prefix: canonical,
+                retained_namespace: String::new(),
+                discarded_namespace: format!("{namespace} (rejected by converter: {err})"),
+            });
+        }
     }
+    collisions.sort();
+
     add_missing_prefix("rdfs", "http://www.w3.org/2000/01/rdf-schema#", &mut conv);
     add_missing_prefix(
         "rdf",
@@ -229,7 +344,7 @@ where
     );
     add_missing_prefix("dcterms", "http://purl.org/dc/terms/", &mut conv);
 
-    conv
+    (conv, collisions)
 }
 
 /// Convenience function for a single [`SchemaDefinition`].

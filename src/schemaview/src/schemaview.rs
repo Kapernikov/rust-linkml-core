@@ -7,7 +7,8 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::converter::Converter;
 use crate::identifier::{
-    converter_from_schema, converter_from_schemas, Identifier, IdentifierError, Uri,
+    converter_from_schema, converter_from_schemas_reporting, Identifier, IdentifierError,
+    PrefixCollision, Uri,
 };
 use crate::snapshot::{
     ResolvedImport, SchemaEntry, SchemaViewSnapshot, SCHEMAVIEW_SNAPSHOT_VERSION,
@@ -842,12 +843,25 @@ impl SchemaView {
 
     /// Returns a converter built from every schema loaded into this view.
     ///
-    /// Note that prefix collisions across schemas will resolve to whichever
-    /// expansion appears last; avoid this helper if you expect conflicting
-    /// CURIE mappings and instead use `converter_for_schema` with a specific
-    /// schema URI.
+    /// Where two schemas bind the same prefix to different namespaces only one
+    /// binding survives, and a CURIE using that prefix may expand to the wrong
+    /// namespace without any error. Which one survives is deterministic (see
+    /// [`converter_from_schemas`](crate::identifier::converter_from_schemas)) but it is still a guess: use
+    /// [`SchemaView::converter_with_collisions`] to find out that it happened,
+    /// or `converter_for_schema` with a specific schema URI to avoid the
+    /// question entirely.
     pub fn converter(&self) -> Converter {
-        self.with_data(|data| converter_from_schemas(data.schema_definitions.values()))
+        self.converter_with_collisions().0
+    }
+
+    /// [`SchemaView::converter`], plus every prefix collision building it had to
+    /// resolve — empty for any schema set whose prefixes are unambiguous.
+    ///
+    /// Note that the schema definitions are held in a `HashMap` and so are
+    /// yielded in an arbitrary order; the converter build deliberately does not
+    /// depend on that order.
+    pub fn converter_with_collisions(&self) -> (Converter, Vec<PrefixCollision>) {
+        self.with_data(|data| converter_from_schemas_reporting(data.schema_definitions.values()))
     }
 
     /// Returns the CURIE converter for a single schema, built from that
