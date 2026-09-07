@@ -98,12 +98,12 @@ fn encode_path_part(s: &str) -> String {
 }
 
 fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> String {
-    // Get the canonical URI from the slot (respects slot_uri and originating schema's default_prefix)
-    let canonical = slot.canonical_uri();
-    canonical
-        .to_uri(conv)
-        .map(|u| u.0)
-        .unwrap_or_else(|_| canonical.to_string())
+    // The canonical URI (respects slot_uri and the originating schema's
+    // default_prefix), expanded. Shared with `schema_rdf` so the predicate an
+    // instance is written with and the subject the schema describes cannot
+    // drift apart; on a CURIE the converter cannot expand this writer emits it
+    // anyway, which is the long-standing behaviour.
+    crate::schema_rdf::slot_predicate_iri(slot, conv).unwrap_or_else(|raw| raw)
 }
 
 fn literal_and_type(value: &JsonValue, slot: &SlotView) -> (String, Option<String>) {
@@ -283,8 +283,10 @@ fn serialize_map<W: Write>(
     id_slot: Option<&str>,
 ) -> IoResult<()> {
     if let Some(cv) = class {
-        if let Ok(id) = cv.get_uri(conv, false, true) {
-            let id_string = id.to_string();
+        // Shared with `schema_rdf` so the `rdf:type` object here and the class
+        // subject the schema triples describe are the same spelling by
+        // construction, not by coincidence.
+        if let Some(id_string) = crate::schema_rdf::instance_type_iri(cv, conv) {
             let triple = Triple {
                 subject: subject.as_subject(),
                 predicate: NamedNode::new_unchecked(

@@ -38,6 +38,8 @@ pub mod rdf_import_store_disk;
 #[cfg(feature = "ttl")]
 pub mod rdf_streaming;
 #[cfg(feature = "ttl")]
+pub mod schema_rdf;
+#[cfg(feature = "ttl")]
 pub mod triple_source;
 #[cfg(feature = "ttl")]
 pub mod turtle;
