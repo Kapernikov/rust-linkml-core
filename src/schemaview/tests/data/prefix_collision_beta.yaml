@@ -1,0 +1,11 @@
+id: https://example.com/prefix-collision-beta
+name: prefix_collision_beta
+prefixes:
+  shared: https://example.com/bbb/
+  altbeta: https://example.com/bbb/
+default_prefix: shared
+classes:
+  BetaItem:
+    attributes:
+      beta_field:
+        range: string
