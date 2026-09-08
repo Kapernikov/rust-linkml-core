@@ -5487,7 +5487,7 @@ def lint_element_identity(schema_view:SchemaView) -> builtins.list[ValidationRes
     r"""
     Schema-level lint: warn where a multivalued inlined slot's element identity
     is absent, ambiguous, or cannot address the list.
-
+    
     Five rules: (1) no identity declared at all; (2) the declared identity is
     the element class's type designator, whose value describes the class rather
     than the element; (3) several ``unique_keys`` entries to choose from across
@@ -5495,7 +5495,7 @@ def lint_element_identity(schema_view:SchemaView) -> builtins.list[ValidationRes
     load-bearing; (4) those classes labelled in different ways, so one list
     carries two label spaces; (5) two classes of one ``is_a`` hierarchy
     declaring the same ``class_uri`` while the hierarchy designates its type.
-
+    
     Warnings only — the schema stays usable. Results are deterministic: sorted
     by subject, deduplicated across class URIs, and an inherited slot is
     reported once, at the class that introduces the problem. Rules 1-4 are
@@ -5508,7 +5508,7 @@ def lint_element_identity(schema_view:SchemaView) -> builtins.list[ValidationRes
 def lint_instance_identity(instance:LinkMLInstance) -> builtins.list[ValidationResult]:
     r"""
     Data-level lint: warn where loaded data defeats a declared element identity.
-
+    
     Two rules: a list whose elements repeat a declared identity — key/identifier
     or ``unique_keys`` value — reported as ``duplicate_element_identity``; and a
     list addressed positionally *despite* a declared identity, because some
@@ -5516,7 +5516,7 @@ def lint_instance_identity(instance:LinkMLInstance) -> builtins.list[ValidationR
     ``ambiguous_element_identity``. Neither is visible in the schema: an
     identity slot that is not ``required`` may be absent, and repeated or
     missing values are alike valid data.
-
+    
     Warnings only. ``subject`` is the container's instance path.
     """
 
