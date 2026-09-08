@@ -714,6 +714,62 @@ impl PyEnumView {
     }
 }
 
+/// Make every type the stubs attribute to this module importable from it.
+///
+/// `pyo3-stub-gen` files a `#[gen_stub_pyclass]` under the extension module by
+/// default, so `_native.pyi` declares all of these — and the metamodel structs
+/// are named 148 times over in its own signatures (`Annotation` alone). Until
+/// they are registered, `from linkml_runtime_rust._native import Annotation`
+/// type-checks and raises `ImportError`, and a consumer cannot annotate a
+/// value the API hands them. Registration is what makes the stub true.
+fn add_metamodel_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<linkml_meta::AltDescription>()?;
+    m.add_class::<linkml_meta::Annotatable>()?;
+    m.add_class::<linkml_meta::Annotation>()?;
+    m.add_class::<linkml_meta::AnonymousClassExpression>()?;
+    m.add_class::<linkml_meta::AnonymousEnumExpression>()?;
+    m.add_class::<linkml_meta::AnonymousExpression>()?;
+    m.add_class::<linkml_meta::AnonymousSlotExpression>()?;
+    m.add_class::<linkml_meta::AnonymousTypeExpression>()?;
+    m.add_class::<linkml_meta::ArrayExpression>()?;
+    m.add_class::<linkml_meta::ClassDefinition>()?;
+    m.add_class::<linkml_meta::ClassExpression>()?;
+    m.add_class::<linkml_meta::ClassLevelRule>()?;
+    m.add_class::<linkml_meta::ClassRule>()?;
+    m.add_class::<linkml_meta::CommonMetadata>()?;
+    m.add_class::<linkml_meta::Definition>()?;
+    m.add_class::<linkml_meta::DimensionExpression>()?;
+    m.add_class::<linkml_meta::Element>()?;
+    m.add_class::<linkml_meta::EnumBinding>()?;
+    m.add_class::<linkml_meta::EnumDefinition>()?;
+    m.add_class::<linkml_meta::EnumExpression>()?;
+    m.add_class::<linkml_meta::Example>()?;
+    m.add_class::<linkml_meta::Expression>()?;
+    m.add_class::<linkml_meta::Extensible>()?;
+    m.add_class::<linkml_meta::Extension>()?;
+    m.add_class::<linkml_meta::ExtraSlotsExpression>()?;
+    m.add_class::<linkml_meta::ImportExpression>()?;
+    m.add_class::<linkml_meta::LocalName>()?;
+    m.add_class::<linkml_meta::MatchQuery>()?;
+    m.add_class::<linkml_meta::PathExpression>()?;
+    m.add_class::<linkml_meta::PatternExpression>()?;
+    m.add_class::<linkml_meta::PermissibleValue>()?;
+    m.add_class::<linkml_meta::Prefix>()?;
+    m.add_class::<linkml_meta::ReachabilityQuery>()?;
+    m.add_class::<linkml_meta::SchemaDefinition>()?;
+    m.add_class::<linkml_meta::Setting>()?;
+    m.add_class::<linkml_meta::SlotDefinition>()?;
+    m.add_class::<linkml_meta::SlotExpression>()?;
+    m.add_class::<linkml_meta::StructuredAlias>()?;
+    m.add_class::<linkml_meta::SubsetDefinition>()?;
+    m.add_class::<linkml_meta::TypeDefinition>()?;
+    m.add_class::<linkml_meta::TypeExpression>()?;
+    m.add_class::<linkml_meta::TypeMapping>()?;
+    m.add_class::<linkml_meta::UniqueKey>()?;
+    m.add_class::<linkml_meta::UnitOfMeasure>()?;
+    Ok(())
+}
+
 #[pymodule(name = "linkml_schemaview")]
 pub fn schemaview_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
@@ -739,6 +795,14 @@ fn make_schema_view(source: Option<&Bound<'_, PyAny>>) -> PyResult<PySchemaView>
 #[pymodule(name = "_native")]
 pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pymodule!(schemaview_module))?;
+    // The `linkml_schemaview` submodule stays for the shims that read it, but
+    // the stubs place these at the top level, so register them here as well.
+    m.add_class::<PySchemaView>()?;
+    m.add_class::<PyClassView>()?;
+    m.add_class::<PySlotView>()?;
+    m.add_class::<PyEnumView>()?;
+    add_metamodel_classes(m)?;
+    m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(make_schema_view, m)?)?;
     m.add_function(wrap_pyfunction!(load_yaml, m)?)?;
     m.add_function(wrap_pyfunction!(load_json, m)?)?;
