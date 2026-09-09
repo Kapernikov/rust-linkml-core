@@ -50,7 +50,8 @@ pub use blame::{
     record_blame_from_trace,
 };
 pub use diff::{
-    diff, patch, Delta, DeltaOp, DiffOptions, PatchOptions, PatchTrace, OPAQUE_ANNOTATION,
+    diff, list_path_segment, list_path_segments, patch, Delta, DeltaOp, DiffOptions, PatchOptions,
+    PatchTrace, OPAQUE_ANNOTATION,
 };
 pub use identity_lint::{lint_element_identity, lint_instance_identity};
 #[derive(Debug)]

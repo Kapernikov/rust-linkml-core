@@ -79,6 +79,12 @@ classes:
         range: Label
         multivalued: true
         inlined_as_list: true
+      # integer key counting from 1: label space and position space overlap,
+      # so a positional segment aimed here addresses the neighbouring element
+      coveredSections:
+        range: CoveredSection
+        multivalued: true
+        inlined_as_list: true
       # reference list (not inlined): out of the linter's scope
       operators:
         range: Operator
@@ -113,6 +119,11 @@ classes:
     attributes:
       kind: {range: string, required: true}
       phone: {range: string, required: true}
+      note: {range: string}
+
+  CoveredSection:
+    attributes:
+      sequenceNumber: {range: integer, key: true, required: true}
       note: {range: string}
 
   Label:
