@@ -94,7 +94,14 @@ pub fn blame_map_to_paths<M: Clone>(
                 // join a blame path against a delta path ("which change last
                 // wrote what this delta addresses?"), and a list element named
                 // by position here would never match a keyed list's label.
-                for (segment, child) in list_path_segments(values).into_iter().zip(values) {
+                let segments = list_path_segments(values);
+                // `zip` would silently stop at the shorter side, dropping the
+                // trailing elements' blame entries with no error at all — the
+                // very failure mode this walk is being fixed for. The lengths
+                // agree by construction; say so, so a future change cannot
+                // quietly break it.
+                debug_assert_eq!(segments.len(), values.len());
+                for (segment, child) in segments.into_iter().zip(values) {
                     path.push(segment);
                     collect_paths(child, blame, path, out);
                     path.pop();
