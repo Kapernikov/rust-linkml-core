@@ -1001,6 +1001,54 @@ pub(crate) fn resolve_list_segment(values: &[LinkMLInstance], key: &str) -> Opti
     unique_normalised()
 }
 
+/// The path segment that addresses element `ix` of `values`: the element's
+/// identity label when the list is addressed by label, the position otherwise.
+/// `None` when `ix` is out of bounds.
+///
+/// The emission half of the pair [`resolve_list_segment`] resolves, for a
+/// caller that walks an instance and has to *name* an element of a list it is
+/// standing in — a delta path it assembles itself, a reference it reports back
+/// with a path for a later rewrite, a location it records.
+///
+/// Such a caller cannot name elements positionally. On a keyed-shaped list
+/// [`resolve_list_segment`] accepts nothing but the label, deliberately, so a
+/// positional segment is at best unappliable — and at worst lands on the wrong
+/// element, because position space and label space overlap: a list of rows
+/// keyed by a sequence number counting from 1 answers position `"k"` with the
+/// row labelled `k`, one place earlier, and reports it as a successful update.
+///
+/// So this is the same rule, offered for emission, and it round-trips by
+/// construction:
+///
+/// ```text
+/// resolve_list_segment(values, &list_path_segment(values, ix)?) == Some(ix)
+/// ```
+pub fn list_path_segment(values: &[LinkMLInstance], ix: usize) -> Option<String> {
+    let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
+    let label = labels.get(ix)?;
+    if list_is_keyed_shaped_from_labels(&labels) {
+        // Keyed-shaped means every element carries a label, this one included.
+        return label.clone();
+    }
+    Some(ix.to_string())
+}
+
+/// [`list_path_segment`] for every element of `values`, deriving each label
+/// once.
+///
+/// A walker that names the whole list — the common case — must not ask
+/// element by element: deriving a label walks the class's merged `unique_keys`
+/// and IRI-expands the components, and the keyed-shaped question needs all the
+/// labels, so the per-element call is quadratic in the length of the list.
+pub fn list_path_segments(values: &[LinkMLInstance]) -> Vec<String> {
+    let labels: Vec<Option<String>> = values.iter().map(element_identity_label).collect();
+    if list_is_keyed_shaped_from_labels(&labels) {
+        // Keyed-shaped means every label is `Some`; the filter cannot drop one.
+        return labels.into_iter().flatten().collect();
+    }
+    (0..values.len()).map(|i| i.to_string()).collect()
+}
+
 fn try_update_scalar_in_place(
     existing: &mut LinkMLInstance,
     new_child: &LinkMLInstance,

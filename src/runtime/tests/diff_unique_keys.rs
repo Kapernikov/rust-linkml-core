@@ -1,5 +1,6 @@
 use linkml_runtime::{
-    diff, load_json_str, patch, Delta, DeltaOp, DiffOptions, LinkMLInstance, PatchOptions,
+    diff, list_path_segment, list_path_segments, load_json_str, patch, Delta, DeltaOp, DiffOptions,
+    LinkMLInstance, PatchOptions,
 };
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -546,6 +547,89 @@ fn m1() -> JsonValue {
 }
 fn m2() -> JsonValue {
     json!({"code": "M2", "label": "two"})
+}
+
+fn list_of<'a>(v: &'a LinkMLInstance, slot: &str) -> &'a [LinkMLInstance] {
+    match v.navigate_path([slot]) {
+        Some(LinkMLInstance::List { values, .. }) => values,
+        other => panic!(
+            "{slot} should have loaded as a list, got {:?}",
+            other.map(|v| v.to_json())
+        ),
+    }
+}
+
+#[test]
+fn list_path_segments_are_the_segments_the_resolver_accepts() {
+    // A walker that reports a path into a list it is standing in — a
+    // foreign-reference collector whose paths become deltas later, a
+    // provenance recorder — has to name elements the way `diff` does.
+    // `list_path_segments` is that rule offered for emission, and what makes it
+    // worth having over a local `ix.to_string()` is this round trip: what it
+    // emits is what `navigate_path` and `patch` resolve, per element, per list.
+    let f = fixture();
+    let loaded = f.load(json!({
+        "name": "svc",
+        "hasPhoneNumber": [e(), n()],
+        "coveredSections": [{"sequenceNumber": 1, "note": "one"}, {"sequenceNumber": 2, "note": "two"}],
+        "contacts": [{"kind": "home", "phone": "555-0100"}, {"kind": "work", "phone": "555-0199"}],
+        "plainPhoneNumber": [e(), n()],
+    }));
+
+    for (slot, expected) in [
+        // a unique_keys label
+        (
+            "hasPhoneNumber",
+            vec!["Emergency_Number", "Non_Urgent_Communication"],
+        ),
+        // a key label that happens to be a number: "1" names the FIRST
+        // element, so emitting positions here would land every rewrite one
+        // element early and call it a success
+        ("coveredSections", vec!["1", "2"]),
+        // a composite unique key: the label is a JSON array, the segment shape
+        // whose spelling an emitter is likeliest to get subtly wrong on its own
+        (
+            "contacts",
+            vec![r#"["home","555-0100"]"#, r#"["work","555-0199"]"#],
+        ),
+        // no element identity at all: positional, and staying that way
+        ("plainPhoneNumber", vec!["0", "1"]),
+    ] {
+        let values = list_of(&loaded, slot);
+        assert_eq!(
+            list_path_segments(values),
+            expected,
+            "unexpected segments for {slot}"
+        );
+        for (ix, seg) in expected.iter().enumerate() {
+            assert_eq!(
+                list_path_segment(values, ix).as_deref(),
+                Some(*seg),
+                "the per-element emitter must agree with the whole-list one ({slot}[{ix}])"
+            );
+            let landed = loaded.navigate_path([slot, seg]);
+            assert!(
+                landed.is_some_and(|v| v.to_json() == values[ix].to_json()),
+                "segment {seg:?} of {slot} must lead back to element {ix}, got {:?}",
+                landed.map(|v| v.to_json())
+            );
+        }
+        assert_eq!(
+            list_path_segment(values, values.len()),
+            None,
+            "an element past the end of {slot} has no segment"
+        );
+    }
+
+    // And the reason a positional segment cannot simply be tolerated on the
+    // keyed list: it is not a miss, it is a hit on the wrong element.
+    let sections = list_of(&loaded, "coveredSections");
+    assert!(
+        loaded
+            .navigate_path(["coveredSections", "0"])
+            .is_none_or(|v| v.to_json() != sections[0].to_json()),
+        "position 0 must not address the element labelled 1"
+    );
 }
 
 #[test]
