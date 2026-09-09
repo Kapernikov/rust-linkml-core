@@ -8,7 +8,7 @@
 //! deterministic order or render them alongside a YAML-style view of the
 //! instance tree.
 
-use crate::diff::{patch, Delta, PatchOptions, PatchTrace};
+use crate::diff::{list_path_segments, patch, Delta, PatchOptions, PatchTrace};
 use crate::{LResult, LinkMLInstance, NodeId};
 use serde_json::Value as JsonValue;
 use std::collections::{BTreeMap, HashMap};
@@ -90,8 +90,19 @@ pub fn blame_map_to_paths<M: Clone>(
                 }
             }
             LinkMLInstance::List { values, .. } => {
-                for (idx, child) in values.iter().enumerate() {
-                    path.push(idx.to_string());
+                // The same segments `diff` emits and `patch` resolves: callers
+                // join a blame path against a delta path ("which change last
+                // wrote what this delta addresses?"), and a list element named
+                // by position here would never match a keyed list's label.
+                let segments = list_path_segments(values);
+                // `zip` would silently stop at the shorter side, dropping the
+                // trailing elements' blame entries with no error at all — the
+                // very failure mode this walk is being fixed for. The lengths
+                // agree by construction; say so, so a future change cannot
+                // quietly break it.
+                debug_assert_eq!(segments.len(), values.len());
+                for (segment, child) in segments.into_iter().zip(values) {
+                    path.push(segment);
                     collect_paths(child, blame, path, out);
                     path.pop();
                 }
@@ -548,6 +559,91 @@ mod tests {
             !blame.contains_key(&event_node.node_id()),
             "parent event should not be blamed"
         );
+    }
+
+    /// A blame path and a delta path have to be the same path.
+    ///
+    /// Callers join the two — "which change last wrote the node this delta
+    /// addresses?" — by comparing the segment lists, so a list element named
+    /// one way here and another way by `diff` makes that join silently miss.
+    /// On a keyed list it does worse than miss: the caller walks up to the
+    /// parent and attributes the row to whatever last touched the whole list.
+    #[test]
+    fn blame_paths_are_the_paths_diff_emits() {
+        let schema = from_yaml(&data_path("identity.yaml")).expect("schema should load");
+        let mut sv = SchemaView::new();
+        sv.add_schema(schema.clone()).unwrap();
+        let conv = converter_from_schema(&schema);
+        let class = sv
+            .get_class(&Identifier::new("Service"), &conv)
+            .unwrap()
+            .expect("class not found");
+        let load = |v: &JsonValue| {
+            load_json_str(&v.to_string(), &sv, &class, &conv)
+                .unwrap()
+                .into_instance()
+                .unwrap()
+        };
+
+        // `coveredSections` is keyed by an integer counting from 1, so its
+        // labels and its positions are both numbers and overlap; the plain
+        // phone numbers have no element identity and stay positional.
+        let before = json!({
+            "name": "svc",
+            "coveredSections": [
+                {"sequenceNumber": 1, "note": "one"},
+                {"sequenceNumber": 2, "note": "two"},
+            ],
+            "plainPhoneNumber": [
+                {"phoneNumber": "09/241.25.00", "hasNumberFunction": "Emergency_Number"},
+                {"phoneNumber": "09/241.25.03", "hasNumberFunction": "Operator"},
+            ],
+        });
+        let mut after = before.clone();
+        after["coveredSections"][0]["note"] = json!("ONE");
+        after["plainPhoneNumber"][0]["phoneNumber"] = json!("09/241.25.99");
+
+        let base = load(&before);
+        let deltas = diff(&base, &load(&after), DiffOptions::new(false));
+        let mut blame = HashMap::new();
+        let (patched, trace) = patch_with_blame(
+            &base,
+            &deltas,
+            PatchOptions::default(),
+            DummyMeta("change"),
+            &mut blame,
+        )
+        .expect("patch should succeed");
+        assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+
+        let paths = blame_map_to_paths(&patched, &blame);
+        for delta in &deltas {
+            assert!(
+                paths.iter().any(|(path, _)| path == &delta.path),
+                "no blame path matches the delta path {:?}; blame reported {:?}",
+                delta.path,
+                paths.iter().map(|(p, _)| p).collect::<Vec<_>>()
+            );
+        }
+
+        // The keyed row addressed by its label, the plain one by its position —
+        // the same split `diff` makes, so this is not "labels everywhere".
+        let reported: Vec<&[String]> = paths.iter().map(|(path, _)| path.as_slice()).collect();
+        assert_eq!(
+            reported,
+            vec![
+                ["coveredSections", "1", "note"].as_slice(),
+                ["plainPhoneNumber", "0", "phoneNumber"].as_slice(),
+            ]
+        );
+
+        // And every path blame reports must address something.
+        for (path, _) in &paths {
+            assert!(
+                patched.navigate_path(path).is_some(),
+                "blame path {path:?} addresses nothing"
+            );
+        }
     }
 
     #[test]
