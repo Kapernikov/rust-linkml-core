@@ -2797,6 +2797,34 @@ class LinkMLInstance:
         nothing rather than to that position.
         Returns a new LinkMLInstance if found, otherwise None.
         """
+    def element_identity_label(self) -> typing.Optional[builtins.str]:
+        r"""
+        The identity label addressing this element among its list siblings:
+        its key/identifier value, else a value derived from the class's
+        `unique_keys` — a single-slot key contributes the bare scalar, a
+        composite one the JSON array of its values in `unique_key_slots`
+        order. `None` when the element declares no identity, and for anything
+        that is not an object.
+        
+        Deliberately per-element: it answers for *this* element alone and
+        never consults its siblings, which is the whole point of having it
+        next to `list_path_segments`. A caller matching one element against a
+        published list — an editable table row keeping its provenance while
+        the row beside it is still being filled in — must not lose its label
+        because a neighbour has none.
+        """
+    def list_path_segments(self) -> typing.Optional[builtins.list[builtins.str]]:
+        r"""
+        The path segments addressing this list's elements, in order: every
+        element's identity label when all of them carry distinct labels,
+        positions otherwise. `None` when this value is not a list.
+        
+        The addressing `diff` emits and `patch` applies, so it is all-or-
+        nothing by design: one element without a label turns the *whole* list
+        positional, and the labelled elements are then addressed by position
+        too. Ask `element_identity_label` when what you need is an element's
+        own identity regardless of the company it keeps.
+        """
     def keys(self) -> builtins.list[builtins.str]: ...
     def values(self) -> builtins.list[LinkMLInstance]: ...
     def unknown_fields(self) -> dict: ...

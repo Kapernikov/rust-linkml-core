@@ -143,3 +143,170 @@ assert patched_valid.value.as_python() == valid_container.as_python()
         );
     });
 }
+
+/// The identity label a single element answers with, and the segments the
+/// whole list answers with, are two different questions — and a consumer that
+/// renders an inlined list as an editable table needs both.
+///
+/// `list_path_segments` is all-or-nothing by design: the moment one element
+/// carries no label the entire list is addressed positionally, so a table that
+/// asked it per row would drop every row's provenance as soon as a user added
+/// a row with the identity slot still empty. `element_identity_label` is the
+/// per-element rule, which never consults the siblings.
+///
+/// Both must agree with what `diff` emits for the same data, or a path one
+/// side records is a path the other cannot resolve.
+#[test]
+fn identity_labels_and_list_segments_via_python() {
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let module = PyModule::new(py, "linkml_runtime").unwrap();
+        runtime_module(&module).unwrap();
+        let sys = py.import("sys").unwrap();
+        let modules = sys.getattr("modules").unwrap();
+        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        sys_modules.set_item("linkml_runtime", module).unwrap();
+
+        let locals = PyDict::new(py);
+        locals
+            .set_item(
+                "identity_schema",
+                r#"id: https://example.org/identity_labels
+name: identity_labels
+prefixes:
+  ex: https://example.org/
+default_prefix: ex
+default_range: string
+classes:
+  Sheet:
+    attributes:
+      # single-slot unique_keys: the label is the bare value
+      rows:
+        range: Row
+        multivalued: true
+        inlined_as_list: true
+      # composite unique_keys: the label is a JSON array
+      readings:
+        range: Reading
+        multivalued: true
+        inlined_as_list: true
+      # no identity declared at all
+      vertices:
+        range: Vertex
+        multivalued: true
+        inlined_as_list: true
+  Row:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+    attributes:
+      # deliberately NOT required: a freshly added row may leave it empty
+      code: {range: string}
+      note: {range: string}
+  Reading:
+    unique_keys:
+      by_station_and_kind:
+        unique_key_slots: [station, primary]
+    attributes:
+      station: {range: string}
+      primary: {range: boolean}
+      value: {range: string}
+  Vertex:
+    attributes:
+      x: {range: float}
+      y: {range: float}
+"#,
+            )
+            .unwrap();
+
+        pyo3::py_run!(
+            py,
+            *locals,
+            r#"
+import json
+import linkml_runtime as lr
+
+sv = lr.make_schema_view()
+sv.add_schema_str(identity_schema)
+sheet = sv.get_class_view('Sheet')
+
+# `py_run!` gives the script a locals dict, so a function body — which looks
+# names up in globals — cannot see `lr`, `sv` or `sheet`. Bind them as
+# defaults, the way `python_navigate` passes the module in as an argument.
+def load(payload, lr=lr, json=json, sv=sv, sheet=sheet):
+    value, issues = lr.load_json(json.dumps(payload), sv, sheet)
+    assert value is not None
+    assert all(issue.severity != 'error' for issue in issues), issues
+    return value
+
+def row(code, note):
+    return {'note': note} if code is None else {'code': code, 'note': note}
+
+def reading(primary, value):
+    return {'station': 'A', 'primary': primary, 'value': value}
+
+full = load({
+    'rows': [row('R1', 'one'), row('R2', 'two')],
+    'readings': [reading(True, '1.0'), reading(False, '2.0')],
+    'vertices': [{'x': 0.0, 'y': 0.0}, {'x': 1.0, 'y': 1.0}],
+})
+
+def labels(node):
+    return [element.element_identity_label() for element in node.values()]
+
+# Single-slot unique_keys: the bare value, per element and for the list.
+rows = full.navigate(['rows'])
+assert labels(rows) == ['R1', 'R2'], labels(rows)
+assert rows.list_path_segments() == ['R1', 'R2'], rows.list_path_segments()
+
+# Composite unique_keys: a compact JSON array in `unique_key_slots` order,
+# booleans spelled the JSON way (`true`), not the Python way (`True`).
+readings = full.navigate(['readings'])
+assert labels(readings) == ['["A","true"]', '["A","false"]'], labels(readings)
+assert readings.list_path_segments() == ['["A","true"]', '["A","false"]']
+
+# No identity declared: no label, and the list is addressed by position.
+vertices = full.navigate(['vertices'])
+assert labels(vertices) == [None, None], labels(vertices)
+assert vertices.list_path_segments() == ['0', '1'], vertices.list_path_segments()
+
+# `list_path_segments` is a question only a list can answer.
+assert full.list_path_segments() is None
+assert full.navigate(['rows', 'R1']).list_path_segments() is None
+assert full.navigate(['rows', 'R1', 'note']).list_path_segments() is None
+# ...and an object with no identity has no label either.
+assert full.element_identity_label() is None
+
+# Those labels are exactly the segments `diff` emits for the same data.
+edited = load({
+    'rows': [row('R1', 'one'), row('R2', 'TWO')],
+    'readings': [reading(True, '1.0'), reading(False, '9.9')],
+    'vertices': [{'x': 0.0, 'y': 0.0}, {'x': 1.0, 'y': 1.0}],
+})
+paths = {tuple(d.path) for d in lr.diff(full, edited, treat_missing_as_null=False)}
+assert paths == {
+    ('rows', 'R2', 'note'),
+    ('readings', '["A","false"]', 'value'),
+}, paths
+
+# The case the per-element call exists for: a user adds a row and has not
+# filled its identity slot in yet. The whole table flips to positional
+# addressing — `diff` included, so the segments stay resolvable...
+partial = load({'rows': [row('R1', 'one'), row('R2', 'two'), row(None, 'fresh')]})
+partial_rows = partial.navigate(['rows'])
+assert partial_rows.list_path_segments() == ['0', '1', '2'], partial_rows.list_path_segments()
+
+# ...while every labelled element still answers with its own label, which is
+# what lets a row keep its provenance across the neighbour's empty slot.
+assert labels(partial_rows) == ['R1', 'R2', None], labels(partial_rows)
+
+partial_edited = load({'rows': [row('R1', 'one'), row('R2', 'TWO'), row(None, 'fresh')]})
+partial_paths = {
+    tuple(d.path)
+    for d in lr.diff(partial, partial_edited, treat_missing_as_null=False)
+}
+assert partial_paths == {('rows', '1', 'note')}, partial_paths
+"#
+        );
+    });
+}
