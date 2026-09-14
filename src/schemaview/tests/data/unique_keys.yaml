@@ -30,6 +30,16 @@ classes:
         unique_key_slots: [child_field]
     attributes:
       child_field: {range: string}
+  # Declares nothing itself: the answer has to come out of the is_a walk.
+  Derived:
+    is_a: Base
+    attributes:
+      derived_field: {range: string}
+  # Declares nothing itself: the answer has to come out of the mixin walk.
+  MixinUser:
+    mixins: [MixinCls]
+    attributes:
+      user_field: {range: string}
   Plain:
     attributes:
       whatever: {range: string}

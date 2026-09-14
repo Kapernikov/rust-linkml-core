@@ -25,6 +25,8 @@ pub struct ClassViewData {
     pub sv: SchemaView,
     descendants_index: DescendantsIndex,
     slot_lookup: OnceLock<SlotLookup>,
+    /// Memoised [`ClassView::has_any_unique_key`]; see that method for why.
+    has_uk: OnceLock<bool>,
 }
 
 // NOTE: `class` and `slots` are cloned snapshots taken at construction time.
@@ -45,6 +47,7 @@ impl ClassViewData {
             schema_uri: schema_uri.to_string(),
             descendants_index: HashMap::new(),
             slot_lookup: OnceLock::new(),
+            has_uk: OnceLock::new(),
         }
     }
 }
@@ -183,6 +186,7 @@ impl ClassView {
                 sv: sv.clone(),
                 descendants_index: hm,
                 slot_lookup: OnceLock::new(),
+                has_uk: OnceLock::new(),
             }),
         })
     }
@@ -665,6 +669,58 @@ impl ClassView {
         let mut out: Vec<(String, UniqueKey)> = merged.into_iter().collect();
         out.sort_by(|a, b| a.0.cmp(&b.0));
         out
+    }
+
+    /// Whether [`Self::unique_keys`] would return anything — the same question,
+    /// answered without building the merged map.
+    ///
+    /// `unique_keys()` walks the whole `is_a`/mixin graph, clones every entry it
+    /// finds, collects and sorts. Callers that only need "does this class offer
+    /// a `unique_keys` identity at all?" were paying all of that per call, on a
+    /// question whose answer is fixed for the life of the view — `ClassViewData`
+    /// is an immutable snapshot taken at construction — so it is memoised here,
+    /// alongside the existing `slot_lookup` and `descendants_index` caches.
+    ///
+    /// The cache is what makes the check free: the early exit alone saves
+    /// nothing measurable, because the cost is the graph walk, not the
+    /// allocations. `linkml_runtime`'s `diff` asks this of every list slot whose
+    /// elements it is about to address, so it is on a hot path.
+    ///
+    /// Matches `!self.unique_keys().is_empty()` exactly, including counting an
+    /// entry that names no slots.
+    pub fn has_any_unique_key(&self) -> bool {
+        *self.data.has_uk.get_or_init(|| {
+            let mut queue: VecDeque<ClassView> = VecDeque::from([self.clone()]);
+            let mut seen: HashSet<String> = HashSet::new();
+            while let Some(cv) = queue.pop_front() {
+                if !seen.insert(cv.canonical_uri().to_string()) {
+                    continue;
+                }
+                if cv
+                    .def()
+                    .unique_keys
+                    .as_ref()
+                    .is_some_and(|uks| !uks.is_empty())
+                {
+                    return true;
+                }
+                if let Ok(Some(parent)) = cv.parent_class() {
+                    queue.push_back(parent);
+                }
+                if let Some(mixins) = &cv.data.class.mixins {
+                    if let Some(conv) = cv.data.sv.converter_for_schema(&cv.data.schema_uri) {
+                        for mixin in mixins {
+                            if let Ok(Some(mixin_view)) =
+                                cv.data.sv.get_class(&Identifier::new(mixin), &conv)
+                            {
+                                queue.push_back(mixin_view);
+                            }
+                        }
+                    }
+                }
+            }
+            false
+        })
     }
 
     fn collect_ancestors_map(

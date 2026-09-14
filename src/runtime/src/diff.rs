@@ -231,8 +231,10 @@ where
 /// single list. `diff` needs the same answer of both sides at once (a keyed
 /// match needs identity on both), but every consumer that has only one list in
 /// front of it — `patch`'s segment resolver, `navigate_path`, and diff's
-/// keyed-source fallback — must agree, or a path one of them emits is a path
-/// another cannot resolve.
+/// whole-slot fallback — must agree, or a path one of them emits is a path
+/// another cannot resolve. It is a question about *data*; for the question about
+/// the schema, which is what makes a stored delta mean one thing everywhere, see
+/// [`slot_declares_element_identity`].
 ///
 /// Derives labels lazily and stops at the first element that has none — the
 /// answer for an unlabelled list is settled by its first bare element, however
@@ -242,6 +244,41 @@ pub(crate) fn list_is_keyed_shaped(values: &[LinkMLInstance]) -> bool {
     !values.is_empty()
         && values.iter().all(|v| element_identity_label(v).is_some())
         && labels_are_unique(values, element_identity_label)
+}
+
+/// Whether the *schema* says this slot's elements have an identity: an inlined
+/// list (not a reference list, dict, `opaque` or `ignore`d slot) whose range
+/// class offers a non-designator key/identifier or any `unique_keys` entry.
+///
+/// The schema-side twin of [`list_is_keyed_shaped`], and the reason both exist.
+/// `list_is_keyed_shaped` asks the *data* in front of you; every caller has
+/// different data, so it answers differently for each of them and a delta means
+/// whatever the base it is read against happens to look like. This asks the
+/// *declaration*, which everyone shares — so "is this list addressed by key or
+/// by position?" has one answer wherever a delta travels.
+///
+/// The two are used together, not interchangeably: `diff` refuses positional
+/// segments when *either* is true (the data has coherent identity, or the class
+/// claims an identity its data fails to honour), which is the same statement
+/// twice — this list cannot be addressed element-by-element.
+///
+/// `&&`, not a negation of `slot_lacks_element_identity`: that returns `false`
+/// for reference/dict/opaque slots, which would wrongly pull them in here.
+///
+/// Deliberately the *declared* range class only, not the class family: a
+/// polymorphic list ranged on a class declaring nothing, whose descendants each
+/// declare `unique_keys`, still answers `false` and stays positional. That
+/// mirrors `slot_lacks_element_identity` and keeps the two consistent; widening
+/// to `identity_class_family` is a separate decision.
+pub(crate) fn slot_declares_element_identity(slot: &SlotView) -> bool {
+    crate::identity_lint::slot_addresses_elements_by_position_or_label(slot)
+        && slot.get_range_class().is_some_and(|rc| {
+            // Cheap first: a linear scan of the class's own effective slots.
+            // Only a class with no usable key reaches `has_any_unique_key`,
+            // which walks the `is_a`/mixin graph — memoised on the view, since
+            // this is asked of every list slot `diff` is about to address.
+            identity_key_slot(&rc).is_some() || rc.has_any_unique_key()
+        })
 }
 
 /// [`list_is_keyed_shaped`] for a caller that already has the labels.
@@ -275,11 +312,28 @@ pub enum DeltaOp {
 /// The `path` identifies the location within the instance tree. Each segment is a
 /// slot name, mapping key, list index, or — for inlined objects in lists matched
 /// by identity — the element's identity label: its identifier/key slot value, or
-/// failing that a value derived from the range class's `unique_keys`. Lists whose
-/// elements do not all carry a *unique* identity label are addressed by numeric
-/// index instead. A key/identifier that is the class's type designator does not
-/// count: it labels the class, not the element, so identity falls through to
-/// `unique_keys` or to the index (see [`identity_key_slot`]).
+/// failing that a value derived from the range class's `unique_keys`. A
+/// key/identifier that is the class's type designator does not count: it labels
+/// the class, not the element, so identity falls through to `unique_keys` or to
+/// the index (see [`identity_key_slot`]).
+///
+/// Whether a list is addressed by label or by index is a question about the
+/// **schema**, not about the data `diff` happened to be given — a delta is
+/// routinely stored and replayed against a different base, and a segment has to
+/// mean the same thing there. So:
+///
+/// - the range class declares no element identity (no non-designator
+///   key/identifier, no `unique_keys`): numeric index segments;
+/// - it declares one and the data honours it — every element labelled, labels
+///   unique on both sides: identity-label segments;
+/// - it declares one and the data does not — a label repeated or missing: no
+///   per-element segments at all. The change is reported as a single `Update`
+///   at the slot itself, carrying the whole old and new list. Addressing an
+///   element of such a list is not possible without knowing which base the
+///   reader will apply it to, and that is exactly what a stored delta does not
+///   know. (Two elements sharing a label are still never merged; they are
+///   simply not addressed individually.) [`crate::lint_instance_identity`]
+///   reports the offending data.
 ///
 /// For a `unique_keys`-derived segment, a single-slot key contributes the bare
 /// value of that slot, while a composite key contributes the JSON array encoding
@@ -547,7 +601,14 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                     }
                 }
             }
-            (LinkMLInstance::List { values: sl, .. }, LinkMLInstance::List { values: tl, .. }) => {
+            (
+                LinkMLInstance::List {
+                    values: sl,
+                    slot: s_slot,
+                    ..
+                },
+                LinkMLInstance::List { values: tl, .. },
+            ) => {
                 let identity = |v: &LinkMLInstance| -> Option<String> { element_identity_label(v) };
                 // Uniform rule (spec, Non-goal section): keyed matching iff every
                 // element on both sides carries an identity label and the labels
@@ -595,14 +656,32 @@ pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions)
                             path.pop();
                         }
                     }
-                } else if list_is_keyed_shaped(sl) {
+                } else if list_is_keyed_shaped(sl) || slot_declares_element_identity(s_slot) {
+                    // Two ways for a list to have no coherent element identity,
+                    // and one honest description of both.
+                    //
                     // The source alone is keyed-shaped: `patch` resolves such a
                     // list by label ONLY, so positional segments aimed at it are
                     // unappliable by design and `patch(a, diff(a, b))` would
-                    // refuse the very deltas we just emitted. What actually
-                    // happened is honestly a whole-value change — this list
-                    // stopped having coherent element identity — so say that,
-                    // once, at the slot.
+                    // refuse the very deltas we just emitted.
+                    //
+                    // Or the slot's range class *declares* an identity that this
+                    // data does not honour — a repeated or missing label. Then a
+                    // numeric segment is not a location at all: `patch` resolves
+                    // it positionally against a base that looks like this one and
+                    // by label against a base whose data does honour the claim,
+                    // so the same delta edits different elements depending on
+                    // where it is replayed (issue #400; `sequence`-keyed pictures
+                    // in #399 were rebuilt wrong on 456 of 1309 replays, with an
+                    // empty `PatchTrace::failed`). The addressing of a list has to
+                    // be a function of the schema, which everybody shares, not of
+                    // whichever base happened to be in front of `diff`.
+                    //
+                    // Either way what actually happened is a whole-value change —
+                    // this list stopped having coherent element identity — so say
+                    // that, once, at the slot. Note this still never *collapses*
+                    // two elements sharing a label: it declines to address them
+                    // individually at all.
                     if !s.equals(t, opts.treat_missing_as_null) {
                         out.push(Delta {
                             path: path.clone(),

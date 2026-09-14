@@ -132,7 +132,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// identifiers, an `opaque` slot by nothing (the value is replaced whole) and
 /// an `ignore`d slot not at all. None of them can be mis-addressed by a
 /// mis-declared element identity, so none of them is any rule's business.
-fn slot_addresses_elements_by_position_or_label(slot: &SlotView) -> bool {
+pub(crate) fn slot_addresses_elements_by_position_or_label(slot: &SlotView) -> bool {
     use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
     slot.determine_slot_container_mode() == SlotContainerMode::List
         && slot.determine_slot_inline_mode() != SlotInlineMode::Reference
