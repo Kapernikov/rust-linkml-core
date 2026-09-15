@@ -156,6 +156,14 @@ assert patched_valid.value.as_python() == valid_container.as_python()
 ///
 /// Both must agree with what `diff` emits for the same data, or a path one
 /// side records is a path the other cannot resolve.
+///
+/// Deliberately one list slot: *which* label a class yields — a bare scalar, a
+/// composite key's JSON array, none at all — is settled once in
+/// `runtime/tests/diff_unique_keys.rs`, and restating that matrix here would
+/// only re-test the runtime through a second door. What is only answerable
+/// from Python is this binding: that the two calls are reachable, that they
+/// return `None` rather than raising off a list, and that the per-element one
+/// keeps answering when the whole-list one has gone positional.
 #[test]
 fn identity_labels_and_list_segments_via_python() {
     pyo3::prepare_freethreaded_python();
@@ -180,19 +188,8 @@ default_range: string
 classes:
   Sheet:
     attributes:
-      # single-slot unique_keys: the label is the bare value
       rows:
         range: Row
-        multivalued: true
-        inlined_as_list: true
-      # composite unique_keys: the label is a JSON array
-      readings:
-        range: Reading
-        multivalued: true
-        inlined_as_list: true
-      # no identity declared at all
-      vertices:
-        range: Vertex
         multivalued: true
         inlined_as_list: true
   Row:
@@ -203,18 +200,6 @@ classes:
       # deliberately NOT required: a freshly added row may leave it empty
       code: {range: string}
       note: {range: string}
-  Reading:
-    unique_keys:
-      by_station_and_kind:
-        unique_key_slots: [station, primary]
-    attributes:
-      station: {range: string}
-      primary: {range: boolean}
-      value: {range: string}
-  Vertex:
-    attributes:
-      x: {range: float}
-      y: {range: float}
 "#,
             )
             .unwrap();
@@ -242,33 +227,15 @@ def load(payload, lr=lr, json=json, sv=sv, sheet=sheet):
 def row(code, note):
     return {'note': note} if code is None else {'code': code, 'note': note}
 
-def reading(primary, value):
-    return {'station': 'A', 'primary': primary, 'value': value}
-
-full = load({
-    'rows': [row('R1', 'one'), row('R2', 'two')],
-    'readings': [reading(True, '1.0'), reading(False, '2.0')],
-    'vertices': [{'x': 0.0, 'y': 0.0}, {'x': 1.0, 'y': 1.0}],
-})
+full = load({'rows': [row('R1', 'one'), row('R2', 'two')]})
 
 def labels(node):
     return [element.element_identity_label() for element in node.values()]
 
-# Single-slot unique_keys: the bare value, per element and for the list.
+# A labelled list answers with its labels, element by element and as a whole.
 rows = full.navigate(['rows'])
 assert labels(rows) == ['R1', 'R2'], labels(rows)
 assert rows.list_path_segments() == ['R1', 'R2'], rows.list_path_segments()
-
-# Composite unique_keys: a compact JSON array in `unique_key_slots` order,
-# booleans spelled the JSON way (`true`), not the Python way (`True`).
-readings = full.navigate(['readings'])
-assert labels(readings) == ['["A","true"]', '["A","false"]'], labels(readings)
-assert readings.list_path_segments() == ['["A","true"]', '["A","false"]']
-
-# No identity declared: no label, and the list is addressed by position.
-vertices = full.navigate(['vertices'])
-assert labels(vertices) == [None, None], labels(vertices)
-assert vertices.list_path_segments() == ['0', '1'], vertices.list_path_segments()
 
 # `list_path_segments` is a question only a list can answer.
 assert full.list_path_segments() is None
@@ -278,16 +245,9 @@ assert full.navigate(['rows', 'R1', 'note']).list_path_segments() is None
 assert full.element_identity_label() is None
 
 # Those labels are exactly the segments `diff` emits for the same data.
-edited = load({
-    'rows': [row('R1', 'one'), row('R2', 'TWO')],
-    'readings': [reading(True, '1.0'), reading(False, '9.9')],
-    'vertices': [{'x': 0.0, 'y': 0.0}, {'x': 1.0, 'y': 1.0}],
-})
+edited = load({'rows': [row('R1', 'one'), row('R2', 'TWO')]})
 paths = {tuple(d.path) for d in lr.diff(full, edited, treat_missing_as_null=False)}
-assert paths == {
-    ('rows', 'R2', 'note'),
-    ('readings', '["A","false"]', 'value'),
-}, paths
+assert paths == {('rows', 'R2', 'note')}, paths
 
 # The case the per-element call exists for: a user adds a row and has not
 # filled its identity slot in yet. The whole table flips to positional
