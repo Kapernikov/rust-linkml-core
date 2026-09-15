@@ -227,14 +227,18 @@ where
 /// Whether this one list is addressed by identity label: it is non-empty,
 /// every element carries an identity label, and the labels are unique.
 ///
-/// This is the predicate that decides how a list is *addressed*, asked of a
-/// single list. `diff` needs the same answer of both sides at once (a keyed
-/// match needs identity on both), but every consumer that has only one list in
-/// front of it — `patch`'s segment resolver, `navigate_path`, and diff's
-/// whole-slot fallback — must agree, or a path one of them emits is a path
-/// another cannot resolve. It is a question about *data*; for the question about
-/// the schema, which is what makes a stored delta mean one thing everywhere, see
-/// [`slot_declares_element_identity`].
+/// This is the *data* half of "how is this list addressed?", asked of a single
+/// list. The consumers that have only one list in front of them — `patch`'s
+/// [`resolve_list_segment`], `navigate_path`, [`list_path_segments`] — decide
+/// from this predicate alone. `diff` asks it of both sides at once (a keyed
+/// match needs identity on both) *and* asks the schema, via
+/// [`slot_declares_element_identity`]: when the schema declares an identity
+/// the data does not honour, `diff` emits no per-element segment at all, only a
+/// whole-slot `Update`. That is what keeps the two in agreement today — every
+/// segment `diff` emits is one this predicate resolves the same way — but the
+/// resolvers themselves are still data-shaped, so a numeric segment minted
+/// elsewhere into a declared-identity list still resolves positionally.
+/// Making them schema-shaped as well is tracked as issue #126.
 ///
 /// Derives labels lazily and stops at the first element that has none — the
 /// answer for an unlabelled list is settled by its first bare element, however
@@ -438,12 +442,15 @@ impl DiffOptions {
 /// still an improvement on the field-level recursion this replaced, which
 /// produced deltas that could not apply *and* had no single path to report.
 ///
-/// Lists are matched by element identity when both sides carry unique identity
-/// labels, and positionally otherwise — with one exception: when the *source*
-/// list alone is label-addressed (the target repeats or lacks a label), the
-/// change is described as a single whole-value `Update` at the list's path.
-/// `patch` addresses a label-addressed list by label only, so positional
-/// segments aimed at one could never be applied.
+/// Lists are addressed as the **schema** says, not as the data happens to look
+/// (see [`Delta`] for the three cases): a range class declaring no element
+/// identity gets positional segments; one declaring an identity gets label
+/// segments when the data on both sides honours it — every element labelled,
+/// labels unique — and no per-element segments at all when it does not (a
+/// label repeated or missing on either side). In that last case the change is
+/// one whole-value `Update` at the list's path, because a positional segment
+/// into such a list means a different element against every base it is
+/// replayed on, and `patch` addresses a label-addressed list by label only.
 pub fn diff(source: &LinkMLInstance, target: &LinkMLInstance, opts: DiffOptions) -> Vec<Delta> {
     fn inner(
         path: &mut Vec<String>,

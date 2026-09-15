@@ -4,7 +4,7 @@
 **Reported as:** `#400` (pepibru GitLab issue, `asset360/consolidator-server`) — "diff() switches between positional and key addressing on a keyed list, with no signal in the delta"
 **Reported against:** `asset360-rust` 0.8.8
 **Branch:** `fix/keyed-list-addressing-is-schema-shaped`
-**Status:** implemented in `79e1e2f` — *fix(runtime): a list whose class declares an identity never gets positional segments*
+**Status:** implemented in PR #124, commit *fix(runtime): a list whose class declares an identity never gets positional segments* (the hash moves with every rebase, so it is not recorded here)
 
 ---
 
