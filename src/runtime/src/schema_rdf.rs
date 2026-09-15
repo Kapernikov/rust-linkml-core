@@ -50,7 +50,9 @@
 //!   for enums and their permissible values. SKOS is what a controlled value
 //!   list *is*; modelling permissible values as OWL individuals of an
 //!   `owl:Class`, as linkml's own OWL generator does, asserts an ontological
-//!   commitment the schema never made.
+//!   commitment the schema never made. *Every* permissible value is a member of
+//!   its scheme, and is named by the IRI `gen-owl` names it by — see
+//!   *Permissible values, and which IRI each one gets* below.
 //! * `schema:domainIncludes` / `schema:rangeIncludes` for the class↔slot and
 //!   slot↔range links. Not `rdfs:domain`: a LinkML slot is reused across
 //!   unrelated classes, and several `rdfs:domain` triples on one property mean
@@ -79,7 +81,45 @@
 //! opinion separate from the ones above: `metaclasses` (which puns every class
 //! as an individual of `ClassDefinition`, the same class/individual punning
 //! this module already refuses for permissible values), `type_objects` (which
-//! mints object shadows for literal types), and its enum encoding.
+//! mints object shadows for literal types), and its enum *encoding* — the
+//! `owl:unionOf` list of permissible-value classes. Its enum *identifiers*,
+//! which are a separate decision, are taken: see below.
+//!
+//! # Permissible values, and which IRI each one gets
+//!
+//! `meaning` is optional in LinkML and, in practice, usually absent: a schema
+//! can easily declare forty enums and give exactly one of their several hundred
+//! values a `meaning`. An enum whose values were described only when they
+//! carried one would answer "which values does this permit?" with silence for
+//! almost every enum, which is the question this module exists to answer. So
+//! *every* permissible value is described.
+//!
+//! `meaning` decides not *whether* a value is described but which IRI names it,
+//! and that decision is `gen-owl`'s, taken verbatim from its
+//! `_permissible_value_uri` — per the governing principle above, this module
+//! does not mint IRIs of its own design where `gen-owl` has a spelling:
+//!
+//! * With a `meaning`: that IRI, expanded through the schema's converter.
+//! * Without one: `<enum_uri>#<code>`, the code percent-encoded (`gen-owl`'s
+//!   `enum_iri_separator`, whose default `#` is [`ENUM_IRI_SEPARATOR`], and its
+//!   `quote(text.strip(), safe="")`).
+//!
+//! ## Joining the schema graph to instance data
+//!
+//! The two cases join to instance data differently, and a client has to know
+//! which it is in. The asymmetry is the *instance* writer's, not this module's:
+//!
+//! * A value with a `meaning` is written by [`turtle`](crate::turtle) as that
+//!   same IRI, through the same converter. So the instance object *is* the
+//!   concept subject: `?s ?slot ?concept` joins `?concept skos:notation ?code`.
+//! * A value with no `meaning` is written by [`turtle`](crate::turtle) as a
+//!   plain literal — the code itself. Its `<enum_uri>#<code>` IRI appears
+//!   nowhere in the data, so that join finds nothing; the join that works is on
+//!   the literal, `?s ?slot ?code` against `?concept skos:notation ?code`.
+//!
+//! Both cases therefore meet at `skos:notation`, which is the one term a client
+//! can rely on for every value of every enum, and the reason `skos:notation` is
+//! emitted for values that carry a `meaning` too.
 //!
 //! # Cardinality
 //!
@@ -221,6 +261,11 @@ pub const OWL_ALL_VALUES_FROM: &str = "http://www.w3.org/2002/07/owl#allValuesFr
 pub const OWL_MIN_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#minCardinality";
 /// `owl:maxCardinality`.
 pub const OWL_MAX_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#maxCardinality";
+/// What `gen-owl` puts between an enum's IRI and a permissible value's code
+/// when the value has no `meaning` to be identified by — its
+/// `enum_iri_separator`, whose default is `#`. Matched rather than chosen: see
+/// the module docs.
+pub const ENUM_IRI_SEPARATOR: &str = "#";
 /// `xsd:integer` — the datatype `gen-owl` gives its cardinality literals,
 /// because rdflib maps a Python `int` to it. OWL 2 asks for
 /// `xsd:nonNegativeInteger`; harmony with `gen-owl` wins, per the module docs.
@@ -464,6 +509,42 @@ impl Builder {
         self.triple(subject, RDF_TYPE, object);
     }
 
+    /// The IRI that identifies one permissible value's `skos:Concept`.
+    ///
+    /// This is `gen-owl`'s `_permissible_value_uri`, term for term, and it is
+    /// deliberately not a fresh decision — see the module docs:
+    ///
+    /// * With a `meaning`, that IRI, expanded through the schema's converter.
+    ///   Which is also the IRI [`turtle`](crate::turtle) writes for the value in
+    ///   instance data, so instance object and schema subject join directly.
+    /// * Without one, `<enum_uri>#<code>` with the code percent-encoded — the
+    ///   same minting, separator and encoding `gen-owl` uses. Note that this IRI
+    ///   does *not* appear in instance data, where such a value is a plain
+    ///   literal; `skos:notation` is the join for those. The module docs say so
+    ///   in full.
+    fn concept_iri(
+        &mut self,
+        enum_name: &str,
+        code: &str,
+        pv: &linkml_meta::PermissibleValue,
+        enum_node: &NamedNode,
+        conv: &Converter,
+    ) -> Option<NamedNode> {
+        match pv.meaning.as_ref() {
+            Some(meaning) => {
+                self.expanded(meaning, conv, &format!("enum value {enum_name}.{code}"))
+            }
+            None => {
+                let minted = format!(
+                    "{}{ENUM_IRI_SEPARATOR}{}",
+                    enum_node.as_str(),
+                    crate::turtle::encode_path_part(code.trim())
+                );
+                self.node(&minted, &format!("enum value {enum_name}.{code}"))
+            }
+        }
+    }
+
     /// One unrolled OWL restriction: the blank node with its `rdf:type`,
     /// `owl:onProperty` and constraining predicate, plus the
     /// `rdfs:subClassOf` triple that hangs it off the class.
@@ -658,22 +739,16 @@ impl Builder {
                 continue;
             };
             for (code, pv) in values {
-                // A value with no `meaning` is rendered by the instance writer
-                // as a plain literal. There is no IRI to hang a label on, and
-                // minting one would describe a resource that appears nowhere in
-                // the data — so it gets no triples, and the code is already
-                // legible in the instance data without them.
-                let Some(meaning) = pv.meaning.as_ref() else {
-                    continue;
-                };
-                let Some(value_node) =
-                    self.expanded(meaning, conv, &format!("enum value {}.{code}", ev.name()))
+                // Every permissible value is a member of the scheme. What
+                // differs between values is only what *identifies* the concept:
+                // see `concept_iri`.
+                let Some(value_node) = self.concept_iri(ev.name(), code, pv, &enum_node, conv)
                 else {
                     continue;
                 };
 
                 self.type_of(&value_node, SKOS_CONCEPT);
-                // The code, on `rdfs:label`, is the whole motivation: this is
+                // The code, on `rdfs:label`, as `gen-owl` puts it there: this is
                 // what turns an opaque IRI back into a readable code.
                 self.label(&value_node, code);
                 self.triple(
@@ -902,19 +977,167 @@ mod tests {
         );
     }
 
-    /// A permissible value with no `meaning` renders as a plain literal in
-    /// instance data. There is no IRI to describe, and inventing one would
-    /// describe a resource that appears nowhere — so nothing is emitted.
-    #[test]
-    fn enum_values_without_a_meaning_get_no_iri() {
-        let sv = personinfo();
-        let out = schema_triples(&sv, &SchemaRdfOptions::default());
-        let subjects: BTreeSet<String> = out
+    /// `StatusEnum` mixes the two cases in one scheme: `active` and `retired`
+    /// carry a `meaning`, `unknown` does not. It is the fixture the instance
+    /// writer's own enum tests use, which is what makes the IRI comparisons
+    /// below comparisons against the real instance-side spelling.
+    fn mixed_enum() -> SchemaView {
+        let schema = from_yaml(Path::new(&data_path("enum_meaning_schema.yaml"))).unwrap();
+        let mut sv = SchemaView::new();
+        sv.add_schema(schema).unwrap();
+        sv
+    }
+
+    /// The members of one scheme, as `(subject, notation)`.
+    fn members_of(out: &SchemaTriples, scheme_iri: &str) -> BTreeSet<(String, String)> {
+        let in_scheme: BTreeSet<String> = out
             .triples
             .iter()
-            .map(|triple| triple.subject.to_string())
+            .filter(|t| {
+                t.predicate.as_str() == SKOS_IN_SCHEME
+                    && t.object.to_string() == format!("<{scheme_iri}>")
+            })
+            .map(|t| t.subject.to_string())
             .collect();
 
+        out.triples
+            .iter()
+            .filter(|t| t.predicate.as_str() == SKOS_NOTATION)
+            .filter(|t| in_scheme.contains(&t.subject.to_string()))
+            .map(|t| {
+                let Term::Literal(lit) = &t.object else {
+                    panic!("skos:notation object is not a literal: {}", t.object);
+                };
+                (t.subject.to_string(), lit.value().to_string())
+            })
+            .collect()
+    }
+
+    /// The regression this was reported for: on a real datamodel, 43 schemes
+    /// with 1 member between them, because 357 of its 358 permissible values
+    /// carry no `meaning` and only meaning-carrying values were emitted. Every
+    /// permissible value is a member of its scheme, `meaning` or not.
+    #[test]
+    fn every_permissible_value_is_a_member_of_its_scheme() {
+        for sv in [mixed_enum(), personinfo()] {
+            let out = schema_triples(&sv, &SchemaRdfOptions::default());
+
+            let mut checked = 0usize;
+            for ev in sv.enum_views().unwrap() {
+                let Some(values) = ev.definition().permissible_values.clone() else {
+                    continue;
+                };
+                if values.is_empty() {
+                    continue;
+                }
+                let scheme = ev.canonical_uri().to_uri(&sv.converter()).unwrap().0;
+                let codes: BTreeSet<String> = members_of(&out, &scheme)
+                    .into_iter()
+                    .map(|(_, code)| code)
+                    .collect();
+                let expected: BTreeSet<String> = values.keys().cloned().collect();
+                assert_eq!(
+                    codes,
+                    expected,
+                    "enum {} does not have every permissible value as a member",
+                    ev.name()
+                );
+                checked += 1;
+            }
+            assert!(checked > 0, "fixture has no enum with values");
+        }
+    }
+
+    /// A scheme that mixes meaning-carrying and meaning-less values emits
+    /// *all* of them, each exactly once, each typed `skos:Concept`.
+    #[test]
+    fn a_scheme_emits_all_of_its_values_once_each() {
+        let sv = mixed_enum();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-meaning-test/StatusEnum";
+
+        let members = members_of(&out, scheme);
+        let codes: BTreeSet<String> = members.iter().map(|(_, code)| code.clone()).collect();
+        assert_eq!(
+            codes,
+            ["active", "retired", "unknown"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<BTreeSet<String>>()
+        );
+        assert_eq!(
+            members.len(),
+            3,
+            "one subject per value, no duplicates: {members:?}"
+        );
+
+        let ntriples = out.to_ntriples();
+        for (subject, code) in &members {
+            assert!(
+                ntriples.contains(&format!("{subject} <{RDF_TYPE}> <{SKOS_CONCEPT}>")),
+                "{code} is a member but not a skos:Concept"
+            );
+            assert!(
+                ntriples.contains(&format!("{subject} <{RDFS_LABEL}> \"{code}\"")),
+                "{code} is a member but has no rdfs:label"
+            );
+        }
+    }
+
+    /// The consistency that makes the schema graph joinable to instance data:
+    /// the subject a meaning-carrying value gets here is, IRI for IRI, the term
+    /// [`crate::turtle`] writes for that same value. `enum_map` is not a
+    /// re-derivation — it is the very table the turtle writer indexes.
+    #[test]
+    fn a_meaning_carrying_concept_is_the_instance_side_iri() {
+        let sv = mixed_enum();
+        let conv = sv.converter();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-meaning-test/StatusEnum";
+        let members = members_of(&out, scheme);
+
+        let slot = sv
+            .get_class(&Identifier::new("Item"), &conv)
+            .unwrap()
+            .unwrap()
+            .slot(&Identifier::Name("status".to_string()))
+            .expect("Item.status");
+        let descriptor = slot
+            .term_descriptor(&conv)
+            .expect("status has a descriptor");
+        assert!(
+            !descriptor.enum_map.is_empty(),
+            "fixture has no meaning-carrying value, so this would test nothing"
+        );
+
+        for (code, instance_iri) in &descriptor.enum_map {
+            let found = members
+                .iter()
+                .find(|(_, notation)| notation == code)
+                .unwrap_or_else(|| panic!("{code} is not a member of its scheme"));
+            assert_eq!(
+                found.0,
+                format!("<{instance_iri}>"),
+                "instance data writes {code} as <{instance_iri}>, but the schema \
+                 graph describes it under {}",
+                found.0
+            );
+        }
+    }
+
+    /// A permissible value with no `meaning` is named the way `gen-owl` names
+    /// it: `<enum_uri>#<percent-encoded code>`. That IRI is *not* the term
+    /// instance data carries for the value (a plain literal), which is why
+    /// `skos:notation` is emitted and documented as the join for these.
+    #[test]
+    fn enum_values_without_a_meaning_are_named_as_gen_owl_names_them() {
+        let sv = mixed_enum();
+        let conv = sv.converter();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-meaning-test/StatusEnum";
+        let members = members_of(&out, scheme);
+
+        let mut checked = 0usize;
         for ev in sv.enum_views().unwrap() {
             let Some(values) = ev.definition().permissible_values.clone() else {
                 continue;
@@ -923,14 +1146,44 @@ mod tests {
                 if pv.meaning.is_some() {
                     continue;
                 }
-                let enum_iri = ev.canonical_uri().to_string();
-                let minted = format!("<{}/{code}>", enum_iri.trim_end_matches('/'));
-                assert!(
-                    !subjects.contains(&minted),
-                    "meaning-less value {code} should not have been given an IRI"
+                let (subject, _) = members
+                    .iter()
+                    .find(|(_, notation)| notation == &code)
+                    .unwrap_or_else(|| panic!("{code} is not a member of its scheme"));
+
+                let enum_iri = ev.canonical_uri().to_uri(&conv).unwrap().0;
+                assert_eq!(
+                    subject,
+                    &format!("<{enum_iri}{ENUM_IRI_SEPARATOR}{code}>"),
+                    "meaning-less value {code} is not named the gen-owl way"
                 );
+                checked += 1;
             }
         }
+        assert!(checked > 0, "fixture has no meaning-less value");
+    }
+
+    /// A code that is not IRI-safe is percent-encoded into the minted IRI, as
+    /// `gen-owl`'s `quote(text.strip(), safe="")` encodes it — so a code with a
+    /// space cannot produce a term that is not a valid IRI at all.
+    #[test]
+    fn a_minted_concept_iri_percent_encodes_the_code() {
+        let schema = from_yaml(Path::new(&data_path("enum_code_needs_encoding.yaml"))).unwrap();
+        let mut sv = SchemaView::new();
+        sv.add_schema(schema).unwrap();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-encoding-test/StatusEnum";
+
+        let members = members_of(&out, scheme);
+        let subjects: Vec<&String> = members.iter().map(|(subject, _)| subject).collect();
+        assert!(
+            subjects.contains(&&format!("<{scheme}#not%20known>")),
+            "expected a percent-encoded minted IRI, got {subjects:?}"
+        );
+        // The notation stays the code as written, spaces and all: that literal
+        // is what instance data carries.
+        let codes: Vec<String> = members.into_iter().map(|(_, code)| code).collect();
+        assert!(codes.contains(&"not known".to_string()), "{codes:?}");
     }
 
     /// Evaluate, by hand, the exact basic graph pattern a client writes:
