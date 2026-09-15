@@ -123,47 +123,83 @@ fn changing_the_key_slot_is_remove_plus_add() {
 }
 
 #[test]
-fn duplicate_unique_key_data_falls_back_to_positional() {
+fn duplicate_unique_key_data_is_one_whole_slot_update() {
     let f = fixture();
-    // two Emergency numbers: violates the class claim; data must keep
-    // today's positional behaviour, with numeric path segments
+    // Two Emergency numbers: the data violates the class's own `unique_keys`
+    // claim. There is no honest per-element address for such a list — a numeric
+    // segment into it resolves positionally here and by label against a base
+    // whose data does honour the claim — so the change is described once, at
+    // the slot. (This used to emit `["hasPhoneNumber", "1", "phoneNumber"]`.)
     let e2 = json!({"phoneNumber": "09/000.00.00", "hasNumberFunction": "Emergency_Number"});
     let mut e2_edit = e2.clone();
     e2_edit["phoneNumber"] = json!("09/111.11.11");
-    let deltas = diff2(&f, phones(vec![e(), e2]), phones(vec![e(), e2_edit]));
+    let before = phones(vec![e(), e2.clone()]);
+    let after = phones(vec![e(), e2_edit.clone()]);
+    let deltas = diff2(&f, before.clone(), after.clone());
     let delta = only(&deltas);
     assert_eq!(
         delta.path,
-        vec![
-            "hasPhoneNumber".to_string(),
-            "1".to_string(),
-            "phoneNumber".to_string()
-        ],
-        "positional fallback must use numeric segments, never the duplicate label"
+        vec!["hasPhoneNumber".to_string()],
+        "an identity-declaring slot never gets numeric segments"
+    );
+    assert_eq!(delta.op, DeltaOp::Update);
+    assert_eq!(delta.old, Some(json!([e(), e2])));
+    assert_eq!(delta.new, Some(json!([e(), e2_edit])));
+
+    let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(after), true),
+        "patch(a, diff(a,b)) must equal b: {}",
+        patched.to_json()
     );
 }
 
 #[test]
-fn duplicate_key_data_falls_back_to_positional_not_collapse() {
+fn duplicate_key_data_is_one_whole_slot_update_not_collapse() {
     let f = fixture();
-    // Label declares `lang` as key; a list that repeats the key must not be
-    // silently collapsed by keyed matching — uniform guard, positional fallback.
+    // `Label` declares `lang` as key; a list that repeats the key must not be
+    // silently collapsed by keyed matching. That guarantee is unchanged — we
+    // still never merge two elements sharing a label. What changed is the other
+    // half: we no longer address them individually either, because a numeric
+    // segment into a key-declaring list means position here and label
+    // elsewhere. (This used to emit `["labelList", "1", "text"]`.)
     let before = json!({"name": "svc", "labelList": [
         {"lang": "nl", "text": "a"}, {"lang": "nl", "text": "b"}]});
     let after = json!({"name": "svc", "labelList": [
         {"lang": "nl", "text": "a"}, {"lang": "nl", "text": "B"}]});
-    let deltas = diff2(&f, before, after);
+    let deltas = diff2(&f, before.clone(), after.clone());
     let delta = only(&deltas);
     assert_eq!(
         delta.path,
-        vec!["labelList".to_string(), "1".to_string(), "text".to_string()],
-        "duplicate key labels must fall back to plain numeric segments"
+        vec!["labelList".to_string()],
+        "duplicate key labels yield one whole-slot Update, never numeric segments"
+    );
+    assert_eq!(delta.op, DeltaOp::Update);
+    assert_eq!(
+        delta.new,
+        Some(json!([{"lang": "nl", "text": "a"}, {"lang": "nl", "text": "B"}])),
+        "both elements survive: declining to address them is not collapsing them"
+    );
+
+    let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(after), true),
+        "patch(a, diff(a,b)) must equal b: {}",
+        patched.to_json()
     );
 }
 
 #[test]
 fn undeclared_class_keeps_positional_cascade() {
     let f = fixture();
+    // The guard that the identity-declaring fallback did not swallow the
+    // legitimate positional case: `PlainPhoneNumber` declares no key and no
+    // `unique_keys`, so `slot_declares_element_identity` is false for
+    // `plainPhoneNumber` and numeric segments remain the right address. This
+    // test must keep passing unchanged.
+    //
     // PlainPhoneNumber has no unique_keys: removal still cascades as today.
     // Both surviving elements shift up, and each differs from the element that
     // used to sit at its index in both slots: 2 x 2 shifted-slot Updates plus
@@ -462,38 +498,88 @@ fn keyed_source_to_duplicated_target_is_one_whole_slot_update() {
 }
 
 #[test]
-fn duplicated_source_to_keyed_target_stays_positional_and_round_trips() {
+fn duplicated_source_to_keyed_target_is_one_whole_slot_update() {
     let f = fixture();
-    // The mirror image: the source is NOT keyed-shaped, so numeric segments
-    // are exactly what patch resolves against it. Keep positional deltas.
+    // The mirror image of the test above, and issue #400's exact scenario.
+    //
+    // This used to keep positional deltas, on the reasoning that "the source is
+    // NOT keyed-shaped, so numeric segments are exactly what patch resolves
+    // against it". That is true of `patch(a, diff(a, b))` and false of
+    // `patch(c, diff(a, b))`, which is what production does: deltas are
+    // harvested against a source snapshot and replayed against golden records
+    // weeks later. By then `c` may honour the declared identity, and the same
+    // numeric segment resolves as a label against it — a different element, no
+    // error. See `duplicate_labels_delta_replayed_against_a_renumbered_base`.
     //
     // The second element differs from its target only in the key-bearing slot,
-    // so the whole edit is one delta. A multi-delta variant is order-dependent
+    // so the whole edit was one delta. A multi-delta variant was order-dependent
     // for a reason unrelated to the source-keyed fallback, documented on
     // `patch`: once the key edit lands the list becomes keyed-shaped, and any
-    // numeric segment still queued is reported failed rather than guessed.
+    // numeric segment still queued is reported failed rather than guessed. The
+    // whole-slot Update has no such ordering hazard — there is one delta.
     let dup = json!({"phoneNumber": "09/241.25.03", "hasNumberFunction": "Emergency_Number"});
-    let before = phones(vec![e(), dup]);
+    let before = phones(vec![e(), dup.clone()]);
     let after = phones(vec![e(), n()]);
     let deltas = diff2(&f, before.clone(), after.clone());
-    assert!(!deltas.is_empty(), "expected positional deltas");
-    for d in &deltas {
-        assert_eq!(
-            d.path[0], "hasPhoneNumber",
-            "unexpected delta path: {:?}",
-            d.path
-        );
-        assert!(
-            d.path.len() > 1 && d.path[1].parse::<usize>().is_ok(),
-            "a non-keyed-shaped source keeps numeric segments: {:?}",
-            d.path
-        );
-    }
+    let delta = only(&deltas);
+    assert_eq!(delta.path, vec!["hasPhoneNumber".to_string()]);
+    assert_eq!(delta.op, DeltaOp::Update);
+    assert_eq!(delta.old, Some(json!([e(), dup])));
+    assert_eq!(delta.new, Some(json!([e(), n()])));
+
     let (patched, trace) = patch(&f.load(before), &deltas, PatchOptions::default()).unwrap();
     assert!(trace.failed.is_empty(), "{:?}", trace.failed);
     assert!(
         patched.equals(&f.load(after), true),
         "patch(a, diff(a,b)) must equal b: {}",
+        patched.to_json()
+    );
+}
+
+/// Issue #400 / #399: the delta must mean the same thing against a base that is
+/// not the one it was computed from.
+///
+/// `CoveredSection` is keyed on a small integer, so label space and position
+/// space are the *same strings*. `A` repeats a key, so the old engine described
+/// the edit with numeric segments; replayed against `C` — the same elements,
+/// renumbered so the keys are unique — `resolve_list_segment` reads those
+/// numerals as *labels* and silently rebuilds the wrong list, with an empty
+/// `trace.failed`. Nothing in the delta said which addressing was meant.
+#[test]
+fn duplicate_labels_delta_replayed_against_a_renumbered_base() {
+    let f = fixture();
+    let sec = |seq: i64, note: &str| json!({"sequenceNumber": seq, "note": note});
+    let sections = |items: Vec<JsonValue>| json!({"name": "svc", "coveredSections": items});
+
+    // The harvested base: `sequenceNumber` repeats, so the data does not honour
+    // the key the class declares.
+    let a = sections(vec![sec(1, "a"), sec(1, "b"), sec(3, "c")]);
+    let b = sections(vec![sec(1, "a"), sec(1, "B"), sec(3, "c")]);
+    // The golden record: the list has since been renumbered, so its keys are
+    // unique — and label "1" now sits at position 0, one place earlier.
+    let c = sections(vec![sec(1, "p"), sec(2, "q"), sec(3, "r")]);
+    //
+    // Against `HEAD` this test failed by *succeeding quietly*: the delta came
+    // out as `Update ["coveredSections", "1", "note"]`, patch read the "1" as
+    // a label, and `c` became
+    //   [{1,"B"}, {2,"q"}, {3,"r"}]   <- position 0 edited, not position 1
+    // with `trace.failed` empty. Wrong element, no error anywhere.
+
+    let deltas = diff2(&f, a, b.clone());
+    let delta = only(&deltas);
+    assert_eq!(
+        delta.path,
+        vec!["coveredSections".to_string()],
+        "an identity-declaring list whose data repeats a label yields one \
+         whole-slot Update, never numeric segments: {deltas:#?}"
+    );
+    assert_eq!(delta.op, DeltaOp::Update);
+
+    let (patched, trace) = patch(&f.load(c), &deltas, PatchOptions::default()).unwrap();
+    assert!(trace.failed.is_empty(), "{:?}", trace.failed);
+    assert!(
+        patched.equals(&f.load(b.clone()), true),
+        "replay against a different base must still yield b, got {}",
         patched.to_json()
     );
 }

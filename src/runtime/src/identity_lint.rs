@@ -132,7 +132,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// identifiers, an `opaque` slot by nothing (the value is replaced whole) and
 /// an `ignore`d slot not at all. None of them can be mis-addressed by a
 /// mis-declared element identity, so none of them is any rule's business.
-fn slot_addresses_elements_by_position_or_label(slot: &SlotView) -> bool {
+pub(crate) fn slot_addresses_elements_by_position_or_label(slot: &SlotView) -> bool {
     use linkml_schemaview::slotview::{SlotContainerMode, SlotInlineMode};
     slot.determine_slot_container_mode() == SlotContainerMode::List
         && slot.determine_slot_inline_mode() != SlotInlineMode::Reference
@@ -171,9 +171,9 @@ fn slot_lacks_element_identity(slot: &SlotView) -> bool {
 /// not a candidate and does not make an otherwise-single-entry class ambiguous.
 fn identity_unique_key_names(rc: &ClassView) -> Vec<String> {
     rc.unique_keys()
-        .into_iter()
+        .iter()
         .filter(|(_, uk)| !uk.unique_key_slots.is_empty())
-        .map(|(name, _)| name)
+        .map(|(name, _)| name.clone())
         .collect()
 }
 

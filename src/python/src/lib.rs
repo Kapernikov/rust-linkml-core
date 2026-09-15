@@ -1327,11 +1327,14 @@ impl PyLinkMLInstance {
     /// element's identity label when all of them carry distinct labels,
     /// positions otherwise. `None` when this value is not a list.
     ///
-    /// The addressing `diff` emits and `patch` applies, so it is all-or-
+    /// The segments `patch` resolves and blame records, so it is all-or-
     /// nothing by design: one element without a label turns the *whole* list
-    /// positional, and the labelled elements are then addressed by position
-    /// too. Ask `element_identity_label` when what you need is an element's
-    /// own identity regardless of the company it keeps.
+    /// positional, and the labelled elements are then named by position too.
+    /// `diff` emits these only for a class that declares no element identity;
+    /// where the class declares one its data does not honour, `diff` reports
+    /// the whole slot rather than address any element. Ask
+    /// `element_identity_label` when what you need is an element's own
+    /// identity regardless of the company it keeps.
     fn list_path_segments(&self) -> Option<Vec<String>> {
         match &self.value {
             LinkMLInstance::List { values, .. } => Some(list_path_segments(values)),

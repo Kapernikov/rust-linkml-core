@@ -155,7 +155,8 @@ assert patched_valid.value.as_python() == valid_container.as_python()
 /// per-element rule, which never consults the siblings.
 ///
 /// Both must agree with what `diff` emits for the same data, or a path one
-/// side records is a path the other cannot resolve.
+/// side records is a path the other cannot resolve — and where `diff` declines
+/// to address elements at all, the segments are still what `patch` resolves.
 ///
 /// Deliberately one list slot: *which* label a class yields — a bare scalar, a
 /// composite key's JSON array, none at all — is settled once in
@@ -251,7 +252,7 @@ assert paths == {('rows', 'R2', 'note')}, paths
 
 # The case the per-element call exists for: a user adds a row and has not
 # filled its identity slot in yet. The whole table flips to positional
-# addressing — `diff` included, so the segments stay resolvable...
+# *naming* — these are the segments `patch` resolves and blame records...
 partial = load({'rows': [row('R1', 'one'), row('R2', 'two'), row(None, 'fresh')]})
 partial_rows = partial.navigate(['rows'])
 assert partial_rows.list_path_segments() == ['0', '1', '2'], partial_rows.list_path_segments()
@@ -260,12 +261,15 @@ assert partial_rows.list_path_segments() == ['0', '1', '2'], partial_rows.list_p
 # what lets a row keep its provenance across the neighbour's empty slot.
 assert labels(partial_rows) == ['R1', 'R2', None], labels(partial_rows)
 
+# `diff`, though, addresses none of these rows: `Row` declares an identity
+# its data does not honour, so a numeric segment would mean a different row
+# against every base it is replayed on. It reports the whole slot instead.
 partial_edited = load({'rows': [row('R1', 'one'), row('R2', 'TWO'), row(None, 'fresh')]})
 partial_paths = {
     tuple(d.path)
     for d in lr.diff(partial, partial_edited, treat_missing_as_null=False)
 }
-assert partial_paths == {('rows', '1', 'note')}, partial_paths
+assert partial_paths == {('rows',)}, partial_paths
 "#
         );
     });
