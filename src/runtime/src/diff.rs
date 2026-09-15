@@ -275,8 +275,7 @@ pub(crate) fn slot_declares_element_identity(slot: &SlotView) -> bool {
         && slot.get_range_class().is_some_and(|rc| {
             // Cheap first: a linear scan of the class's own effective slots.
             // Only a class with no usable key reaches `has_any_unique_key`,
-            // which walks the `is_a`/mixin graph — memoised on the view, since
-            // this is asked of every list slot `diff` is about to address.
+            // which reads the merged `unique_keys` memoised on the view.
             identity_key_slot(&rc).is_some() || rc.has_any_unique_key()
         })
 }

@@ -171,9 +171,9 @@ fn slot_lacks_element_identity(slot: &SlotView) -> bool {
 /// not a candidate and does not make an otherwise-single-entry class ambiguous.
 fn identity_unique_key_names(rc: &ClassView) -> Vec<String> {
     rc.unique_keys()
-        .into_iter()
+        .iter()
         .filter(|(_, uk)| !uk.unique_key_slots.is_empty())
-        .map(|(name, _)| name)
+        .map(|(name, _)| name.clone())
         .collect()
 }
 

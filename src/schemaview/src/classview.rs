@@ -25,8 +25,8 @@ pub struct ClassViewData {
     pub sv: SchemaView,
     descendants_index: DescendantsIndex,
     slot_lookup: OnceLock<SlotLookup>,
-    /// Memoised [`ClassView::has_any_unique_key`]; see that method for why.
-    has_uk: OnceLock<bool>,
+    /// Memoised [`ClassView::unique_keys`]; see that method for why.
+    unique_keys: OnceLock<Vec<(String, UniqueKey)>>,
 }
 
 // NOTE: `class` and `slots` are cloned snapshots taken at construction time.
@@ -47,7 +47,7 @@ impl ClassViewData {
             schema_uri: schema_uri.to_string(),
             descendants_index: HashMap::new(),
             slot_lookup: OnceLock::new(),
-            has_uk: OnceLock::new(),
+            unique_keys: OnceLock::new(),
         }
     }
 }
@@ -186,7 +186,7 @@ impl ClassView {
                 sv: sv.clone(),
                 descendants_index: hm,
                 slot_lookup: OnceLock::new(),
-                has_uk: OnceLock::new(),
+                unique_keys: OnceLock::new(),
             }),
         })
     }
@@ -636,73 +636,29 @@ impl ClassView {
     /// The result is sorted by unique key name: declaration order is lost in the
     /// underlying map, and consumers (such as diff path segments) need a
     /// deterministic order.
-    pub fn unique_keys(&self) -> Vec<(String, UniqueKey)> {
-        let mut merged: HashMap<String, UniqueKey> = HashMap::new();
-        let mut queue: VecDeque<ClassView> = VecDeque::from([self.clone()]);
-        let mut seen: HashSet<String> = HashSet::new();
-
-        while let Some(cv) = queue.pop_front() {
-            if !seen.insert(cv.canonical_uri().to_string()) {
-                continue;
-            }
-            if let Some(uks) = cv.def().unique_keys.as_ref() {
-                for (name, uk) in uks {
-                    merged.entry(name.clone()).or_insert_with(|| (**uk).clone());
-                }
-            }
-            if let Ok(Some(parent)) = cv.parent_class() {
-                queue.push_back(parent);
-            }
-            if let Some(mixins) = &cv.data.class.mixins {
-                if let Some(conv) = cv.data.sv.converter_for_schema(&cv.data.schema_uri) {
-                    for mixin in mixins {
-                        if let Ok(Some(mixin_view)) =
-                            cv.data.sv.get_class(&Identifier::new(mixin), &conv)
-                        {
-                            queue.push_back(mixin_view);
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut out: Vec<(String, UniqueKey)> = merged.into_iter().collect();
-        out.sort_by(|a, b| a.0.cmp(&b.0));
-        out
-    }
-
-    /// Whether [`Self::unique_keys`] would return anything — the same question,
-    /// answered without building the merged map.
     ///
-    /// `unique_keys()` walks the whole `is_a`/mixin graph, clones every entry it
-    /// finds, collects and sorts. Callers that only need "does this class offer
-    /// a `unique_keys` identity at all?" were paying all of that per call, on a
-    /// question whose answer is fixed for the life of the view — `ClassViewData`
-    /// is an immutable snapshot taken at construction — so it is memoised here,
-    /// alongside the existing `slot_lookup` and `descendants_index` caches.
-    ///
-    /// The cache is what makes the check free: the early exit alone saves
-    /// nothing measurable, because the cost is the graph walk, not the
-    /// allocations. `linkml_runtime`'s `diff` asks this of every list slot whose
-    /// elements it is about to address, so it is on a hot path.
-    ///
-    /// Matches `!self.unique_keys().is_empty()` exactly, including counting an
-    /// entry that names no slots.
-    pub fn has_any_unique_key(&self) -> bool {
-        *self.data.has_uk.get_or_init(|| {
+    /// Memoised on the view. The merge walks the whole `is_a`/mixin graph and
+    /// clones every entry it finds, and `linkml_runtime` asks for it per list
+    /// *element* — deriving an element's identity label, resolving a path
+    /// segment — so an unmemoised merge was paid once per element on both sides
+    /// of every diff. The answer is fixed for the life of the view
+    /// (`ClassViewData` is an immutable snapshot taken at construction), so it is
+    /// computed once, alongside the existing `slot_lookup` and
+    /// `descendants_index` caches.
+    pub fn unique_keys(&self) -> &[(String, UniqueKey)] {
+        self.data.unique_keys.get_or_init(|| {
+            let mut merged: HashMap<String, UniqueKey> = HashMap::new();
             let mut queue: VecDeque<ClassView> = VecDeque::from([self.clone()]);
             let mut seen: HashSet<String> = HashSet::new();
+
             while let Some(cv) = queue.pop_front() {
                 if !seen.insert(cv.canonical_uri().to_string()) {
                     continue;
                 }
-                if cv
-                    .def()
-                    .unique_keys
-                    .as_ref()
-                    .is_some_and(|uks| !uks.is_empty())
-                {
-                    return true;
+                if let Some(uks) = cv.def().unique_keys.as_ref() {
+                    for (name, uk) in uks {
+                        merged.entry(name.clone()).or_insert_with(|| (**uk).clone());
+                    }
                 }
                 if let Ok(Some(parent)) = cv.parent_class() {
                     queue.push_back(parent);
@@ -719,8 +675,20 @@ impl ClassView {
                     }
                 }
             }
-            false
+
+            let mut out: Vec<(String, UniqueKey)> = merged.into_iter().collect();
+            out.sort_by(|a, b| a.0.cmp(&b.0));
+            out
         })
+    }
+
+    /// Whether [`Self::unique_keys`] returns anything: the class offers a
+    /// `unique_keys` identity, its own or inherited. `linkml_runtime`'s `diff`
+    /// asks this of every list slot whose elements it is about to address.
+    ///
+    /// Counts an entry that names no slots, exactly as `unique_keys()` does.
+    pub fn has_any_unique_key(&self) -> bool {
+        !self.unique_keys().is_empty()
     }
 
     fn collect_ancestors_map(
