@@ -1,6 +1,7 @@
 use linkml_meta::{ClassDefinition, EnumDefinition, SchemaDefinition, SlotDefinition};
 use linkml_runtime::diff::{
-    diff as diff_internal, patch as patch_internal, Delta, DeltaOp, DiffOptions, PatchTrace,
+    diff as diff_internal, element_identity_label, list_path_segments, patch as patch_internal,
+    Delta, DeltaOp, DiffOptions, PatchTrace,
 };
 use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
 use linkml_runtime::{
@@ -1302,6 +1303,39 @@ impl PyLinkMLInstance {
             )))
         } else {
             Ok(None)
+        }
+    }
+
+    /// The identity label addressing this element among its list siblings:
+    /// its key/identifier value, else a value derived from the class's
+    /// `unique_keys` — a single-slot key contributes the bare scalar, a
+    /// composite one the JSON array of its values in `unique_key_slots`
+    /// order. `None` when the element declares no identity, and for anything
+    /// that is not an object.
+    ///
+    /// Deliberately per-element: it answers for *this* element alone and
+    /// never consults its siblings, which is the whole point of having it
+    /// next to `list_path_segments`. A caller matching one element against a
+    /// published list — an editable table row keeping its provenance while
+    /// the row beside it is still being filled in — must not lose its label
+    /// because a neighbour has none.
+    fn element_identity_label(&self) -> Option<String> {
+        element_identity_label(&self.value)
+    }
+
+    /// The path segments addressing this list's elements, in order: every
+    /// element's identity label when all of them carry distinct labels,
+    /// positions otherwise. `None` when this value is not a list.
+    ///
+    /// The addressing `diff` emits and `patch` applies, so it is all-or-
+    /// nothing by design: one element without a label turns the *whole* list
+    /// positional, and the labelled elements are then addressed by position
+    /// too. Ask `element_identity_label` when what you need is an element's
+    /// own identity regardless of the company it keeps.
+    fn list_path_segments(&self) -> Option<Vec<String>> {
+        match &self.value {
+            LinkMLInstance::List { values, .. } => Some(list_path_segments(values)),
+            _ => None,
         }
     }
 

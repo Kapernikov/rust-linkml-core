@@ -161,7 +161,7 @@ pub(crate) fn element_unique_key_label(v: &LinkMLInstance) -> Option<String> {
 /// Identity for keyed list matching: a key/identifier slot outranks a
 /// `unique_keys` claim — unless that key is the class's type designator, which
 /// is never element identity (see [`identity_key_slot`]).
-pub(crate) fn element_identity_label(v: &LinkMLInstance) -> Option<String> {
+pub fn element_identity_label(v: &LinkMLInstance) -> Option<String> {
     element_key_label(v).or_else(|| element_unique_key_label(v))
 }
 

@@ -143,3 +143,130 @@ assert patched_valid.value.as_python() == valid_container.as_python()
         );
     });
 }
+
+/// The identity label a single element answers with, and the segments the
+/// whole list answers with, are two different questions — and a consumer that
+/// renders an inlined list as an editable table needs both.
+///
+/// `list_path_segments` is all-or-nothing by design: the moment one element
+/// carries no label the entire list is addressed positionally, so a table that
+/// asked it per row would drop every row's provenance as soon as a user added
+/// a row with the identity slot still empty. `element_identity_label` is the
+/// per-element rule, which never consults the siblings.
+///
+/// Both must agree with what `diff` emits for the same data, or a path one
+/// side records is a path the other cannot resolve.
+///
+/// Deliberately one list slot: *which* label a class yields — a bare scalar, a
+/// composite key's JSON array, none at all — is settled once in
+/// `runtime/tests/diff_unique_keys.rs`, and restating that matrix here would
+/// only re-test the runtime through a second door. What is only answerable
+/// from Python is this binding: that the two calls are reachable, that they
+/// return `None` rather than raising off a list, and that the per-element one
+/// keeps answering when the whole-list one has gone positional.
+#[test]
+fn identity_labels_and_list_segments_via_python() {
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let module = PyModule::new(py, "linkml_runtime").unwrap();
+        runtime_module(&module).unwrap();
+        let sys = py.import("sys").unwrap();
+        let modules = sys.getattr("modules").unwrap();
+        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        sys_modules.set_item("linkml_runtime", module).unwrap();
+
+        let locals = PyDict::new(py);
+        locals
+            .set_item(
+                "identity_schema",
+                r#"id: https://example.org/identity_labels
+name: identity_labels
+prefixes:
+  ex: https://example.org/
+default_prefix: ex
+default_range: string
+classes:
+  Sheet:
+    attributes:
+      rows:
+        range: Row
+        multivalued: true
+        inlined_as_list: true
+  Row:
+    unique_keys:
+      by_code:
+        unique_key_slots: [code]
+    attributes:
+      # deliberately NOT required: a freshly added row may leave it empty
+      code: {range: string}
+      note: {range: string}
+"#,
+            )
+            .unwrap();
+
+        pyo3::py_run!(
+            py,
+            *locals,
+            r#"
+import json
+import linkml_runtime as lr
+
+sv = lr.make_schema_view()
+sv.add_schema_str(identity_schema)
+sheet = sv.get_class_view('Sheet')
+
+# `py_run!` gives the script a locals dict, so a function body — which looks
+# names up in globals — cannot see `lr`, `sv` or `sheet`. Bind them as
+# defaults, the way `python_navigate` passes the module in as an argument.
+def load(payload, lr=lr, json=json, sv=sv, sheet=sheet):
+    value, issues = lr.load_json(json.dumps(payload), sv, sheet)
+    assert value is not None
+    assert all(issue.severity != 'error' for issue in issues), issues
+    return value
+
+def row(code, note):
+    return {'note': note} if code is None else {'code': code, 'note': note}
+
+full = load({'rows': [row('R1', 'one'), row('R2', 'two')]})
+
+def labels(node):
+    return [element.element_identity_label() for element in node.values()]
+
+# A labelled list answers with its labels, element by element and as a whole.
+rows = full.navigate(['rows'])
+assert labels(rows) == ['R1', 'R2'], labels(rows)
+assert rows.list_path_segments() == ['R1', 'R2'], rows.list_path_segments()
+
+# `list_path_segments` is a question only a list can answer.
+assert full.list_path_segments() is None
+assert full.navigate(['rows', 'R1']).list_path_segments() is None
+assert full.navigate(['rows', 'R1', 'note']).list_path_segments() is None
+# ...and an object with no identity has no label either.
+assert full.element_identity_label() is None
+
+# Those labels are exactly the segments `diff` emits for the same data.
+edited = load({'rows': [row('R1', 'one'), row('R2', 'TWO')]})
+paths = {tuple(d.path) for d in lr.diff(full, edited, treat_missing_as_null=False)}
+assert paths == {('rows', 'R2', 'note')}, paths
+
+# The case the per-element call exists for: a user adds a row and has not
+# filled its identity slot in yet. The whole table flips to positional
+# addressing — `diff` included, so the segments stay resolvable...
+partial = load({'rows': [row('R1', 'one'), row('R2', 'two'), row(None, 'fresh')]})
+partial_rows = partial.navigate(['rows'])
+assert partial_rows.list_path_segments() == ['0', '1', '2'], partial_rows.list_path_segments()
+
+# ...while every labelled element still answers with its own label, which is
+# what lets a row keep its provenance across the neighbour's empty slot.
+assert labels(partial_rows) == ['R1', 'R2', None], labels(partial_rows)
+
+partial_edited = load({'rows': [row('R1', 'one'), row('R2', 'TWO'), row(None, 'fresh')]})
+partial_paths = {
+    tuple(d.path)
+    for d in lr.diff(partial, partial_edited, treat_missing_as_null=False)
+}
+assert partial_paths == {('rows', '1', 'note')}, partial_paths
+"#
+        );
+    });
+}
