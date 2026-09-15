@@ -50,7 +50,9 @@
 //!   for enums and their permissible values. SKOS is what a controlled value
 //!   list *is*; modelling permissible values as OWL individuals of an
 //!   `owl:Class`, as linkml's own OWL generator does, asserts an ontological
-//!   commitment the schema never made.
+//!   commitment the schema never made. *Every* permissible value is a member of
+//!   its scheme, and is named by the IRI `gen-owl` names it by — see
+//!   *Permissible values, and which IRI each one gets* below.
 //! * `schema:domainIncludes` / `schema:rangeIncludes` for the class↔slot and
 //!   slot↔range links. Not `rdfs:domain`: a LinkML slot is reused across
 //!   unrelated classes, and several `rdfs:domain` triples on one property mean
@@ -62,6 +64,12 @@
 //!   `owl:maxCardinality` or `owl:allValuesFrom`, hung off the class with
 //!   `rdfs:subClassOf`, for per-class cardinality and per-class range. See
 //!   *Cardinality* below.
+//! * `skos:exactMatch` / `closeMatch` / `relatedMatch` / `narrowMatch` /
+//!   `broadMatch` / `mappingRelation` for the mappings a class or slot declares
+//!   to terms in another vocabulary. Not chosen here: each is the `slot_uri`
+//!   the LinkML metamodel itself gives that mapping slot. See *Mappings and
+//!   keys* below.
+//! * `owl:hasKey` for `unique_keys`. See *Mappings and keys* below.
 //!
 //! # The governing principle
 //!
@@ -79,7 +87,92 @@
 //! opinion separate from the ones above: `metaclasses` (which puns every class
 //! as an individual of `ClassDefinition`, the same class/individual punning
 //! this module already refuses for permissible values), `type_objects` (which
-//! mints object shadows for literal types), and its enum encoding.
+//! mints object shadows for literal types), and its enum *encoding* — the
+//! `owl:unionOf` list of permissible-value classes. Its enum *identifiers*,
+//! which are a separate decision, are taken: see below.
+//!
+//! # Permissible values, and which IRI each one gets
+//!
+//! `meaning` is optional in LinkML and, in practice, usually absent: a schema
+//! can easily declare forty enums and give exactly one of their several hundred
+//! values a `meaning`. An enum whose values were described only when they
+//! carried one would answer "which values does this permit?" with silence for
+//! almost every enum, which is the question this module exists to answer. So
+//! *every* permissible value is described.
+//!
+//! `meaning` decides not *whether* a value is described but which IRI names it,
+//! and that decision is `gen-owl`'s, taken verbatim from its
+//! `_permissible_value_uri` — per the governing principle above, this module
+//! does not mint IRIs of its own design where `gen-owl` has a spelling:
+//!
+//! * With a `meaning`: that IRI, expanded through the schema's converter.
+//! * Without one: `<enum_uri>#<code>`, the code percent-encoded (`gen-owl`'s
+//!   `enum_iri_separator`, whose default `#` is [`ENUM_IRI_SEPARATOR`], and its
+//!   `quote(text.strip(), safe="")`).
+//!
+//! ## Joining the schema graph to instance data
+//!
+//! The two cases join to instance data differently, and a client has to know
+//! which it is in. The asymmetry is the *instance* writer's, not this module's:
+//!
+//! * A value with a `meaning` is written by [`turtle`](crate::turtle) as that
+//!   same IRI, through the same converter. So the instance object *is* the
+//!   concept subject: `?s ?slot ?concept` joins `?concept skos:notation ?code`.
+//! * A value with no `meaning` is written by [`turtle`](crate::turtle) as a
+//!   plain literal — the code itself. Its `<enum_uri>#<code>` IRI appears
+//!   nowhere in the data, so that join finds nothing; the join that works is on
+//!   the literal, `?s ?slot ?code` against `?concept skos:notation ?code`.
+//!
+//! Both cases therefore meet at `skos:notation`, which is the one term a client
+//! can rely on for every value of every enum, and the reason `skos:notation` is
+//! emitted for values that carry a `meaning` too.
+//!
+//! # Mappings and keys
+//!
+//! `gen-owl` reaches both of these through its `add_metadata`, and both are
+//! taken from it rather than designed here.
+//!
+//! **Mappings.** `add_metadata` walks every set metamodel slot whose own
+//! `slot_uri` is not `linkml:`-prefixed and emits it under exactly that
+//! `slot_uri`. For the six mapping slots those URIs are declared in the
+//! metamodel's `mappings.yaml` and are the `SKOS_*` constants above; the
+//! `uriorcurie` range is why the object is expanded through the schema's
+//! converter instead of written as a literal. Mappings are emitted on classes
+//! and slots, which is where `gen-owl` calls `add_metadata` — not on enums or
+//! permissible values, where it does not.
+//!
+//! Two things `gen-owl` does here are deliberately *not* matched:
+//!
+//! * It also emits `skos:exactMatch` between a class's **native** URI and its
+//!   `class_uri`, bridging two spellings of one class. This module has only one
+//!   spelling for a class (see *Which IRI names a class*), so there is no second
+//!   subject for that bridge to connect, and emitting it would state that a
+//!   class is a mapping of itself. On the asset360 datamodel that accounts for
+//!   54 of `gen-owl`'s 185 `skos:exactMatch` triples.
+//! * It **drops all metadata**, mappings included, for any attribute whose slot
+//!   URI is shared by attributes on more than one class — its "Ambiguous
+//!   attribute" branch returns before `add_metadata` runs. That is a bailout,
+//!   not a spelling: this module already holds that a slot is legitimately
+//!   reused across unrelated classes (which is why it emits
+//!   `schema:domainIncludes` rather than `rdfs:domain`), so a shared slot
+//!   carries the union of the mappings declared on it. On asset360 that is 17
+//!   `skos:exactMatch` triples `gen-owl` omits.
+//!
+//! **Keys.** `unique_keys` becomes `?class owl:hasKey ( ?slot … )`, one per
+//! declared entry, name-sorted, with the members in their declared order. Three
+//! details are `gen-owl`'s: `unique_keys` is the *only* source — an `identifier`
+//! or a `key` slot produces no `owl:hasKey`, in `gen-owl` or here — the entries
+//! are the ones the class itself declares rather than an inheritance-merged
+//! view, and the members are an RDF collection.
+//!
+//! That collection is the one place this module walks `rdf:first` / `rdf:rest`,
+//! which it avoids everywhere else. It is not avoidable here: `owl:hasKey`
+//! takes a list, and a one-hop spelling of a composite key would no longer be
+//! `owl:hasKey`. A key's members are named by [`slot_predicate_iri`] — the same
+//! IRI the graph uses for that slot as a predicate and the instance writer
+//! writes in data — so the key joins to what it is a key of. `gen-owl`, whose
+//! `use_native_uris` defaults on, names them by the native spelling instead,
+//! which on asset360 differs for two RSM classes.
 //!
 //! # Cardinality
 //!
@@ -207,6 +300,26 @@ pub const SKOS_CONCEPT: &str = "http://www.w3.org/2004/02/skos/core#Concept";
 pub const SKOS_IN_SCHEME: &str = "http://www.w3.org/2004/02/skos/core#inScheme";
 /// `skos:notation`.
 pub const SKOS_NOTATION: &str = "http://www.w3.org/2004/02/skos/core#notation";
+/// `skos:mappingRelation` — the metamodel's `slot_uri` for LinkML `mappings`.
+pub const SKOS_MAPPING_RELATION: &str = "http://www.w3.org/2004/02/skos/core#mappingRelation";
+/// `skos:exactMatch` — the metamodel's `slot_uri` for `exact_mappings`.
+pub const SKOS_EXACT_MATCH: &str = "http://www.w3.org/2004/02/skos/core#exactMatch";
+/// `skos:closeMatch` — the metamodel's `slot_uri` for `close_mappings`.
+pub const SKOS_CLOSE_MATCH: &str = "http://www.w3.org/2004/02/skos/core#closeMatch";
+/// `skos:relatedMatch` — the metamodel's `slot_uri` for `related_mappings`.
+pub const SKOS_RELATED_MATCH: &str = "http://www.w3.org/2004/02/skos/core#relatedMatch";
+/// `skos:narrowMatch` — the metamodel's `slot_uri` for `narrow_mappings`.
+pub const SKOS_NARROW_MATCH: &str = "http://www.w3.org/2004/02/skos/core#narrowMatch";
+/// `skos:broadMatch` — the metamodel's `slot_uri` for `broad_mappings`.
+pub const SKOS_BROAD_MATCH: &str = "http://www.w3.org/2004/02/skos/core#broadMatch";
+/// `owl:hasKey`.
+pub const OWL_HAS_KEY: &str = "http://www.w3.org/2002/07/owl#hasKey";
+/// `rdf:first` — one cell of the `owl:hasKey` collection.
+pub const RDF_FIRST: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#first";
+/// `rdf:rest` — the tail of the `owl:hasKey` collection.
+pub const RDF_REST: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#rest";
+/// `rdf:nil` — the end of the `owl:hasKey` collection.
+pub const RDF_NIL: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#nil";
 /// `schema:domainIncludes`.
 pub const SCHEMA_DOMAIN_INCLUDES: &str = "https://schema.org/domainIncludes";
 /// `schema:rangeIncludes`.
@@ -221,6 +334,11 @@ pub const OWL_ALL_VALUES_FROM: &str = "http://www.w3.org/2002/07/owl#allValuesFr
 pub const OWL_MIN_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#minCardinality";
 /// `owl:maxCardinality`.
 pub const OWL_MAX_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#maxCardinality";
+/// What `gen-owl` puts between an enum's IRI and a permissible value's code
+/// when the value has no `meaning` to be identified by — its
+/// `enum_iri_separator`, whose default is `#`. Matched rather than chosen: see
+/// the module docs.
+pub const ENUM_IRI_SEPARATOR: &str = "#";
 /// `xsd:integer` — the datatype `gen-owl` gives its cardinality literals,
 /// because rdflib maps a Python `int` to it. OWL 2 asks for
 /// `xsd:nonNegativeInteger`; harmony with `gen-owl` wins, per the module docs.
@@ -386,6 +504,26 @@ fn cardinality_literal(n: u32) -> Literal {
     Literal::new_typed_literal(n.to_string(), NamedNodeRef::new_unchecked(XSD_INTEGER))
 }
 
+/// The six LinkML mapping slots paired with the SKOS predicate the metamodel
+/// gives each of them, in one place, for a `ClassDefinition` or a
+/// `SlotDefinition`.
+///
+/// A macro rather than a function because the two metamodel structs share the
+/// field names but no trait that exposes them.
+macro_rules! mapping_groups {
+    ($def:expr) => {{
+        let def = $def;
+        [
+            (SKOS_MAPPING_RELATION, def.mappings.as_ref()),
+            (SKOS_EXACT_MATCH, def.exact_mappings.as_ref()),
+            (SKOS_CLOSE_MATCH, def.close_mappings.as_ref()),
+            (SKOS_RELATED_MATCH, def.related_mappings.as_ref()),
+            (SKOS_NARROW_MATCH, def.narrow_mappings.as_ref()),
+            (SKOS_BROAD_MATCH, def.broad_mappings.as_ref()),
+        ]
+    }};
+}
+
 /// FNV-1a, 64 bit. Used only to give a blank node a label that depends on
 /// nothing but the restriction's own content, so that two runs over the same
 /// schema produce byte-identical output. Not a security hash; a collision would
@@ -462,6 +600,141 @@ impl Builder {
     fn type_of(&mut self, subject: &NamedNode, class: &str) {
         let object = Term::NamedNode(NamedNodeRef::new_unchecked(class).into_owned());
         self.triple(subject, RDF_TYPE, object);
+    }
+
+    /// The IRI that identifies one permissible value's `skos:Concept`.
+    ///
+    /// This is `gen-owl`'s `_permissible_value_uri`, term for term, and it is
+    /// deliberately not a fresh decision — see the module docs:
+    ///
+    /// * With a `meaning`, that IRI, expanded through the schema's converter.
+    ///   Which is also the IRI [`turtle`](crate::turtle) writes for the value in
+    ///   instance data, so instance object and schema subject join directly.
+    /// * Without one, `<enum_uri>#<code>` with the code percent-encoded — the
+    ///   same minting, separator and encoding `gen-owl` uses. Note that this IRI
+    ///   does *not* appear in instance data, where such a value is a plain
+    ///   literal; `skos:notation` is the join for those. The module docs say so
+    ///   in full.
+    fn concept_iri(
+        &mut self,
+        enum_name: &str,
+        code: &str,
+        pv: &linkml_meta::PermissibleValue,
+        enum_node: &NamedNode,
+        conv: &Converter,
+    ) -> Option<NamedNode> {
+        match pv.meaning.as_ref() {
+            Some(meaning) => {
+                self.expanded(meaning, conv, &format!("enum value {enum_name}.{code}"))
+            }
+            None => {
+                let minted = format!(
+                    "{}{ENUM_IRI_SEPARATOR}{}",
+                    enum_node.as_str(),
+                    crate::turtle::encode_path_part(code.trim())
+                );
+                self.node(&minted, &format!("enum value {enum_name}.{code}"))
+            }
+        }
+    }
+
+    /// The mappings declared on one class or slot, each under the SKOS
+    /// predicate the *metamodel* gives that mapping slot.
+    ///
+    /// No predicate is chosen here. `gen-owl` reaches mappings through
+    /// `add_metadata`, which emits every set metamodel slot whose own
+    /// `slot_uri` is not `linkml:`-prefixed under exactly that `slot_uri`; for
+    /// the six mapping slots those URIs are declared in the metamodel's
+    /// `mappings.yaml` and are the constants above. The `uriorcurie` range is
+    /// why the object is expanded through the schema's converter rather than
+    /// written as a literal — again `gen-owl`'s rule, for the same reason.
+    ///
+    /// An object whose CURIE will not expand is skipped and recorded, as
+    /// everywhere else in this module; `gen-owl` would emit the bare CURIE.
+    fn mappings(
+        &mut self,
+        subject: &NamedNode,
+        conv: &Converter,
+        what: &str,
+        groups: &[(&str, Option<&Vec<String>>)],
+    ) {
+        for (predicate, values) in groups {
+            let Some(values) = values else { continue };
+            for raw in *values {
+                if let Some(object) = self.expanded(raw, conv, &format!("{what} mapping")) {
+                    self.triple(subject, predicate, object.into());
+                }
+            }
+        }
+    }
+
+    /// `?class owl:hasKey ( ?slot … )` for each `unique_keys` entry the class
+    /// *declares*, spelled as `gen-owl` spells it.
+    ///
+    /// Three details are `gen-owl`'s and not fresh decisions. The source is
+    /// `unique_keys` alone — `gen-owl` reads no other keyword here, so an
+    /// `identifier` or a `key` slot produces no `owl:hasKey`, in this module or
+    /// in `gen-owl`. The entries are the ones the class declares
+    /// ([`ClassView::def`]), not [`ClassView::unique_keys`]'s inheritance-merged
+    /// view, because `gen-owl` reads the raw `ClassDefinition`. And the members
+    /// are an RDF collection, which is the one place this module walks
+    /// `rdf:first` / `rdf:rest` — `owl:hasKey` takes a list and there is no
+    /// one-hop spelling of it that a reasoner would still read as a key.
+    ///
+    /// The entries are emitted name-sorted and their cells carry content-hashed
+    /// labels, for the determinism reason [`Builder::restriction`] gives.
+    ///
+    /// A key none of whose slots resolve to an IRI is dropped whole and
+    /// recorded: a key missing one member is not a weaker key, it is a
+    /// different and false one.
+    fn has_keys(&mut self, class_node: &NamedNode, cv: &ClassView, conv: &Converter) {
+        let Some(unique_keys) = cv.def().unique_keys.as_ref() else {
+            return;
+        };
+        let mut entries: Vec<_> = unique_keys.iter().collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
+
+        for (name, uk) in entries {
+            let mut members: Vec<NamedNode> = Vec::new();
+            for slot_name in &uk.unique_key_slots {
+                let Some(slot) = cv.slots().iter().find(|s| s.name == *slot_name) else {
+                    self.skipped
+                        .push(format!("unique key {}.{name} slot: {slot_name}", cv.name()));
+                    members.clear();
+                    break;
+                };
+                let slot_id = match slot_predicate_iri(slot, conv) {
+                    Ok(iri) => iri,
+                    Err(raw) => raw,
+                };
+                let Some(slot_node) = self.expanded(
+                    &slot_id,
+                    conv,
+                    &format!("unique key {}.{name} slot", cv.name()),
+                ) else {
+                    members.clear();
+                    break;
+                };
+                members.push(slot_node);
+            }
+            if members.is_empty() {
+                continue;
+            }
+
+            // Built tail first, so each cell's content hash covers the whole
+            // remainder of the list and two equal keys collapse on dedup.
+            let mut rest: Term = NamedNodeRef::new_unchecked(RDF_NIL).into_owned().into();
+            for member in members.iter().rev() {
+                let cell = BlankNode::new_unchecked(format!(
+                    "k{:016x}",
+                    fnv1a64(&format!("{class_node}|{name}|{member}|{rest}"))
+                ));
+                self.triple_from(cell.clone().into(), RDF_FIRST, member.clone().into());
+                self.triple_from(cell.clone().into(), RDF_REST, rest);
+                rest = cell.into();
+            }
+            self.triple(class_node, OWL_HAS_KEY, rest);
+        }
     }
 
     /// One unrolled OWL restriction: the blank node with its `rdf:type`,
@@ -568,6 +841,8 @@ impl Builder {
             self.type_of(&class_node, OWL_CLASS);
             self.label(&class_node, cv.name());
             self.comment(&class_node, cv.def().description.as_ref());
+            self.mappings(&class_node, conv, cv.name(), &mapping_groups!(cv.def()));
+            self.has_keys(&class_node, cv, conv);
 
             if let Ok(Some(parent)) = cv.parent_class() {
                 if let Some(parent_id) = instance_type_iri(&parent, conv) {
@@ -589,6 +864,12 @@ impl Builder {
                 self.type_of(&slot_node, RDF_PROPERTY);
                 self.label(&slot_node, &slot.name);
                 self.comment(&slot_node, slot.definition().description.as_ref());
+                self.mappings(
+                    &slot_node,
+                    conv,
+                    &slot.name,
+                    &mapping_groups!(slot.definition()),
+                );
                 self.triple(
                     &slot_node,
                     SCHEMA_DOMAIN_INCLUDES,
@@ -658,22 +939,16 @@ impl Builder {
                 continue;
             };
             for (code, pv) in values {
-                // A value with no `meaning` is rendered by the instance writer
-                // as a plain literal. There is no IRI to hang a label on, and
-                // minting one would describe a resource that appears nowhere in
-                // the data — so it gets no triples, and the code is already
-                // legible in the instance data without them.
-                let Some(meaning) = pv.meaning.as_ref() else {
-                    continue;
-                };
-                let Some(value_node) =
-                    self.expanded(meaning, conv, &format!("enum value {}.{code}", ev.name()))
+                // Every permissible value is a member of the scheme. What
+                // differs between values is only what *identifies* the concept:
+                // see `concept_iri`.
+                let Some(value_node) = self.concept_iri(ev.name(), code, pv, &enum_node, conv)
                 else {
                     continue;
                 };
 
                 self.type_of(&value_node, SKOS_CONCEPT);
-                // The code, on `rdfs:label`, is the whole motivation: this is
+                // The code, on `rdfs:label`, as `gen-owl` puts it there: this is
                 // what turns an opaque IRI back into a readable code.
                 self.label(&value_node, code);
                 self.triple(
@@ -726,6 +1001,16 @@ mod tests {
             SKOS_CONCEPT,
             SKOS_IN_SCHEME,
             SKOS_NOTATION,
+            SKOS_MAPPING_RELATION,
+            SKOS_EXACT_MATCH,
+            SKOS_CLOSE_MATCH,
+            SKOS_RELATED_MATCH,
+            SKOS_NARROW_MATCH,
+            SKOS_BROAD_MATCH,
+            OWL_HAS_KEY,
+            RDF_FIRST,
+            RDF_REST,
+            RDF_NIL,
             SCHEMA_DOMAIN_INCLUDES,
             SCHEMA_RANGE_INCLUDES,
             OWL_RESTRICTION,
@@ -902,19 +1187,167 @@ mod tests {
         );
     }
 
-    /// A permissible value with no `meaning` renders as a plain literal in
-    /// instance data. There is no IRI to describe, and inventing one would
-    /// describe a resource that appears nowhere — so nothing is emitted.
-    #[test]
-    fn enum_values_without_a_meaning_get_no_iri() {
-        let sv = personinfo();
-        let out = schema_triples(&sv, &SchemaRdfOptions::default());
-        let subjects: BTreeSet<String> = out
+    /// `StatusEnum` mixes the two cases in one scheme: `active` and `retired`
+    /// carry a `meaning`, `unknown` does not. It is the fixture the instance
+    /// writer's own enum tests use, which is what makes the IRI comparisons
+    /// below comparisons against the real instance-side spelling.
+    fn mixed_enum() -> SchemaView {
+        let schema = from_yaml(Path::new(&data_path("enum_meaning_schema.yaml"))).unwrap();
+        let mut sv = SchemaView::new();
+        sv.add_schema(schema).unwrap();
+        sv
+    }
+
+    /// The members of one scheme, as `(subject, notation)`.
+    fn members_of(out: &SchemaTriples, scheme_iri: &str) -> BTreeSet<(String, String)> {
+        let in_scheme: BTreeSet<String> = out
             .triples
             .iter()
-            .map(|triple| triple.subject.to_string())
+            .filter(|t| {
+                t.predicate.as_str() == SKOS_IN_SCHEME
+                    && t.object.to_string() == format!("<{scheme_iri}>")
+            })
+            .map(|t| t.subject.to_string())
             .collect();
 
+        out.triples
+            .iter()
+            .filter(|t| t.predicate.as_str() == SKOS_NOTATION)
+            .filter(|t| in_scheme.contains(&t.subject.to_string()))
+            .map(|t| {
+                let Term::Literal(lit) = &t.object else {
+                    panic!("skos:notation object is not a literal: {}", t.object);
+                };
+                (t.subject.to_string(), lit.value().to_string())
+            })
+            .collect()
+    }
+
+    /// The regression this was reported for: on a real datamodel, 43 schemes
+    /// with 1 member between them, because 357 of its 358 permissible values
+    /// carry no `meaning` and only meaning-carrying values were emitted. Every
+    /// permissible value is a member of its scheme, `meaning` or not.
+    #[test]
+    fn every_permissible_value_is_a_member_of_its_scheme() {
+        for sv in [mixed_enum(), personinfo()] {
+            let out = schema_triples(&sv, &SchemaRdfOptions::default());
+
+            let mut checked = 0usize;
+            for ev in sv.enum_views().unwrap() {
+                let Some(values) = ev.definition().permissible_values.clone() else {
+                    continue;
+                };
+                if values.is_empty() {
+                    continue;
+                }
+                let scheme = ev.canonical_uri().to_uri(&sv.converter()).unwrap().0;
+                let codes: BTreeSet<String> = members_of(&out, &scheme)
+                    .into_iter()
+                    .map(|(_, code)| code)
+                    .collect();
+                let expected: BTreeSet<String> = values.keys().cloned().collect();
+                assert_eq!(
+                    codes,
+                    expected,
+                    "enum {} does not have every permissible value as a member",
+                    ev.name()
+                );
+                checked += 1;
+            }
+            assert!(checked > 0, "fixture has no enum with values");
+        }
+    }
+
+    /// A scheme that mixes meaning-carrying and meaning-less values emits
+    /// *all* of them, each exactly once, each typed `skos:Concept`.
+    #[test]
+    fn a_scheme_emits_all_of_its_values_once_each() {
+        let sv = mixed_enum();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-meaning-test/StatusEnum";
+
+        let members = members_of(&out, scheme);
+        let codes: BTreeSet<String> = members.iter().map(|(_, code)| code.clone()).collect();
+        assert_eq!(
+            codes,
+            ["active", "retired", "unknown"]
+                .into_iter()
+                .map(str::to_string)
+                .collect::<BTreeSet<String>>()
+        );
+        assert_eq!(
+            members.len(),
+            3,
+            "one subject per value, no duplicates: {members:?}"
+        );
+
+        let ntriples = out.to_ntriples();
+        for (subject, code) in &members {
+            assert!(
+                ntriples.contains(&format!("{subject} <{RDF_TYPE}> <{SKOS_CONCEPT}>")),
+                "{code} is a member but not a skos:Concept"
+            );
+            assert!(
+                ntriples.contains(&format!("{subject} <{RDFS_LABEL}> \"{code}\"")),
+                "{code} is a member but has no rdfs:label"
+            );
+        }
+    }
+
+    /// The consistency that makes the schema graph joinable to instance data:
+    /// the subject a meaning-carrying value gets here is, IRI for IRI, the term
+    /// [`crate::turtle`] writes for that same value. `enum_map` is not a
+    /// re-derivation — it is the very table the turtle writer indexes.
+    #[test]
+    fn a_meaning_carrying_concept_is_the_instance_side_iri() {
+        let sv = mixed_enum();
+        let conv = sv.converter();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-meaning-test/StatusEnum";
+        let members = members_of(&out, scheme);
+
+        let slot = sv
+            .get_class(&Identifier::new("Item"), &conv)
+            .unwrap()
+            .unwrap()
+            .slot(&Identifier::Name("status".to_string()))
+            .expect("Item.status");
+        let descriptor = slot
+            .term_descriptor(&conv)
+            .expect("status has a descriptor");
+        assert!(
+            !descriptor.enum_map.is_empty(),
+            "fixture has no meaning-carrying value, so this would test nothing"
+        );
+
+        for (code, instance_iri) in &descriptor.enum_map {
+            let found = members
+                .iter()
+                .find(|(_, notation)| notation == code)
+                .unwrap_or_else(|| panic!("{code} is not a member of its scheme"));
+            assert_eq!(
+                found.0,
+                format!("<{instance_iri}>"),
+                "instance data writes {code} as <{instance_iri}>, but the schema \
+                 graph describes it under {}",
+                found.0
+            );
+        }
+    }
+
+    /// A permissible value with no `meaning` is named the way `gen-owl` names
+    /// it: `<enum_uri>#<percent-encoded code>`. That IRI is *not* the term
+    /// instance data carries for the value (a plain literal), which is why
+    /// `skos:notation` is emitted and documented as the join for these.
+    #[test]
+    fn enum_values_without_a_meaning_are_named_as_gen_owl_names_them() {
+        let sv = mixed_enum();
+        let conv = sv.converter();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-meaning-test/StatusEnum";
+        let members = members_of(&out, scheme);
+
+        let mut checked = 0usize;
         for ev in sv.enum_views().unwrap() {
             let Some(values) = ev.definition().permissible_values.clone() else {
                 continue;
@@ -923,14 +1356,44 @@ mod tests {
                 if pv.meaning.is_some() {
                     continue;
                 }
-                let enum_iri = ev.canonical_uri().to_string();
-                let minted = format!("<{}/{code}>", enum_iri.trim_end_matches('/'));
-                assert!(
-                    !subjects.contains(&minted),
-                    "meaning-less value {code} should not have been given an IRI"
+                let (subject, _) = members
+                    .iter()
+                    .find(|(_, notation)| notation == &code)
+                    .unwrap_or_else(|| panic!("{code} is not a member of its scheme"));
+
+                let enum_iri = ev.canonical_uri().to_uri(&conv).unwrap().0;
+                assert_eq!(
+                    subject,
+                    &format!("<{enum_iri}{ENUM_IRI_SEPARATOR}{code}>"),
+                    "meaning-less value {code} is not named the gen-owl way"
                 );
+                checked += 1;
             }
         }
+        assert!(checked > 0, "fixture has no meaning-less value");
+    }
+
+    /// A code that is not IRI-safe is percent-encoded into the minted IRI, as
+    /// `gen-owl`'s `quote(text.strip(), safe="")` encodes it — so a code with a
+    /// space cannot produce a term that is not a valid IRI at all.
+    #[test]
+    fn a_minted_concept_iri_percent_encodes_the_code() {
+        let schema = from_yaml(Path::new(&data_path("enum_code_needs_encoding.yaml"))).unwrap();
+        let mut sv = SchemaView::new();
+        sv.add_schema(schema).unwrap();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+        let scheme = "https://example.com/enum-encoding-test/StatusEnum";
+
+        let members = members_of(&out, scheme);
+        let subjects: Vec<&String> = members.iter().map(|(subject, _)| subject).collect();
+        assert!(
+            subjects.contains(&&format!("<{scheme}#not%20known>")),
+            "expected a percent-encoded minted IRI, got {subjects:?}"
+        );
+        // The notation stays the code as written, spaces and all: that literal
+        // is what instance data carries.
+        let codes: Vec<String> = members.into_iter().map(|(_, code)| code).collect();
+        assert!(codes.contains(&"not known".to_string()), "{codes:?}");
     }
 
     /// Evaluate, by hand, the exact basic graph pattern a client writes:
@@ -1149,6 +1612,161 @@ mod tests {
             !out.to_ntriples()
                 .contains("<http://www.w3.org/2002/07/owl#Thing>"),
             "owl:Thing says nothing and should not have been emitted"
+        );
+    }
+
+    /// `identity` is the fixture that declares `unique_keys`, both the
+    /// single-slot and the composite shape, alongside classes that have an
+    /// `identifier` and classes that have neither.
+    fn identity() -> SchemaView {
+        let schema = from_yaml(Path::new(&data_path("identity.yaml"))).unwrap();
+        let mut sv = SchemaView::new();
+        sv.add_schema(schema).unwrap();
+        sv
+    }
+
+    /// The `(subject, predicate, object)` triples under one predicate, as
+    /// plain strings without their angle brackets.
+    fn under(out: &SchemaTriples, predicate: &str) -> BTreeSet<(String, String)> {
+        out.triples
+            .iter()
+            .filter(|t| t.predicate.as_str() == predicate)
+            .map(|t| {
+                let strip = |s: String| s.trim_matches(['<', '>']).to_owned();
+                (strip(t.subject.to_string()), strip(t.object.to_string()))
+            })
+            .collect()
+    }
+
+    /// Every `owl:hasKey` on one class, each as its ordered member IRIs —
+    /// walking `rdf:first` / `rdf:rest` the way a client would have to.
+    fn key_lists(out: &SchemaTriples, class_iri: &str) -> Vec<Vec<String>> {
+        let object_of = |subject: &str, predicate: &str| -> Option<String> {
+            out.triples
+                .iter()
+                .find(|t| t.subject.to_string() == subject && t.predicate.as_str() == predicate)
+                .map(|t| t.object.to_string())
+        };
+
+        let mut lists = Vec::new();
+        for (_, head) in under(out, OWL_HAS_KEY)
+            .iter()
+            .filter(|(s, _)| s == class_iri)
+        {
+            let mut members = Vec::new();
+            let mut cell = head.clone();
+            while cell != RDF_NIL {
+                let first = object_of(&cell, RDF_FIRST)
+                    .unwrap_or_else(|| panic!("list cell {cell} has no rdf:first"));
+                members.push(first.trim_matches(['<', '>']).to_owned());
+                cell = object_of(&cell, RDF_REST)
+                    .unwrap_or_else(|| panic!("list cell {cell} has no rdf:rest"))
+                    .trim_matches(['<', '>'])
+                    .to_owned();
+            }
+            lists.push(members);
+        }
+        lists.sort();
+        lists
+    }
+
+    /// The mappings a class and a slot declare reach the graph under the SKOS
+    /// predicate the *metamodel* gives that mapping slot — `exact_mappings`
+    /// under `skos:exactMatch`, `close_mappings` under `skos:closeMatch` —
+    /// with the object expanded, as `gen-owl` expands a `uriorcurie`.
+    #[test]
+    fn declared_mappings_reach_the_graph_under_the_metamodel_predicate() {
+        let sv = personinfo();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+
+        // `NamedThing` declares `close_mappings: [schema:Thing]`.
+        assert!(
+            under(&out, SKOS_CLOSE_MATCH).contains(&(
+                class_iri(&sv, "NamedThing"),
+                "http://schema.org/Thing".to_owned(),
+            )),
+            "close_mappings on a class must be skos:closeMatch, got {:?}",
+            under(&out, SKOS_CLOSE_MATCH)
+        );
+        // `Person.aliases` declares `exact_mappings: [schema:alternateName]`.
+        assert!(
+            under(&out, SKOS_EXACT_MATCH).contains(&(
+                slot_iri(&sv, "Person", "aliases"),
+                "http://schema.org/alternateName".to_owned(),
+            )),
+            "exact_mappings on a slot must be skos:exactMatch, got {:?}",
+            under(&out, SKOS_EXACT_MATCH)
+        );
+    }
+
+    /// `gen-owl` also emits `skos:exactMatch` between a class's *native* URI
+    /// and its `class_uri` — a bridge between two spellings of one class. This
+    /// module has only one spelling for a class (see *Which IRI names a class*),
+    /// so that bridge has no second subject to connect and is not emitted. The
+    /// failure mode it guards against is a self-referential `?c exactMatch ?c`.
+    #[test]
+    fn no_mapping_is_invented_for_a_class_with_a_class_uri() {
+        let out = schema_triples(&personinfo(), &SchemaRdfOptions::default());
+        for (subject, object) in under(&out, SKOS_EXACT_MATCH) {
+            assert_ne!(
+                subject, object,
+                "a class is not a mapping of itself: {subject}"
+            );
+        }
+    }
+
+    /// A `unique_keys` entry becomes `?class owl:hasKey ( ?slot … )`, the
+    /// members in declaration order and named by the same IRI the graph uses
+    /// for that slot as a predicate — a key spelled any other way would not
+    /// join to anything.
+    #[test]
+    fn unique_keys_become_owl_has_key_lists() {
+        let sv = identity();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+
+        // A composite key: `Contact.contact_identity` is `[kind, phone]`.
+        assert_eq!(
+            key_lists(&out, &class_iri(&sv, "Contact")),
+            vec![vec![
+                slot_iri(&sv, "Contact", "kind"),
+                slot_iri(&sv, "Contact", "phone"),
+            ]],
+            "a composite key must keep its declared slot order"
+        );
+        // A single-slot key still gets a one-member list, as `gen-owl` writes it.
+        assert_eq!(
+            key_lists(&out, &class_iri(&sv, "ServicePhoneNumber")),
+            vec![vec![slot_iri(
+                &sv,
+                "ServicePhoneNumber",
+                "hasNumberFunction"
+            )]],
+        );
+    }
+
+    /// `gen-owl` reads `unique_keys` and nothing else here: an `identifier` or
+    /// a `key` slot produces no `owl:hasKey`, however natural it would be to
+    /// treat it as one. `personinfo` declares `identifier` slots and no
+    /// `unique_keys`, so its graph must carry no `owl:hasKey` at all.
+    #[test]
+    fn an_identifier_slot_is_not_a_has_key() {
+        let sv = personinfo();
+        let out = schema_triples(&sv, &SchemaRdfOptions::default());
+
+        let cv = sv
+            .class_views()
+            .unwrap()
+            .into_iter()
+            .find(|cv| cv.name() == "Person")
+            .expect("personinfo has a Person class");
+        assert!(
+            cv.identifier_slot().is_some(),
+            "fixture has no identifier slot, so this test would not be testing anything"
+        );
+        assert!(
+            under(&out, OWL_HAS_KEY).is_empty(),
+            "identifier and key are not unique_keys: {:?}",
+            under(&out, OWL_HAS_KEY)
         );
     }
 
