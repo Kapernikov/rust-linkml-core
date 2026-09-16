@@ -64,8 +64,10 @@ fn turtle_enum_meaning_emits_named_node() {
 }
 
 #[test]
-fn turtle_enum_without_meaning_emits_literal() {
-    // Enum values without a meaning should still be emitted as string literals
+fn turtle_enum_without_meaning_emits_the_minted_concept_iri() {
+    // A value nobody mapped to an ontology is still a concept: the slot's range
+    // is a skos:ConceptScheme, and a bare string is not a member of one. It gets
+    // gen-owl's `<enum_uri>#<code>`, the same IRI the schema graph describes.
     let schema = from_yaml(Path::new(&data_path("enum_meaning_schema.yaml"))).unwrap();
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
@@ -85,10 +87,14 @@ fn turtle_enum_without_meaning_emits_literal() {
     .unwrap();
     let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
 
-    // "unknown" has no meaning, should remain a string literal
     assert!(
-        ttl.contains("\"unknown\""),
-        "Enum without meaning should be a plain string literal. Got:\n{}",
+        ttl.contains("<https://example.com/enum-meaning-test/StatusEnum#unknown>"),
+        "Enum without meaning should be its minted concept IRI. Got:\n{}",
+        ttl
+    );
+    assert!(
+        !ttl.contains("\"unknown\""),
+        "…and not also a plain string literal. Got:\n{}",
         ttl
     );
 }

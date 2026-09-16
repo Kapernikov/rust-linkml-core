@@ -92,13 +92,26 @@ fn enum_with_meanings_maps_values_to_sorted_iris() {
     );
 }
 
-/// Nothing to map to, so the turtle writer emits the value as a literal and the
-/// descriptor has to agree.
+/// An enum nobody mapped to an ontology is still an enum: its values get the
+/// IRIs `gen-owl` mints for them, which is what the schema graph describes and
+/// therefore what the turtle writer has to emit.
 #[test]
-fn enum_without_meanings_stays_a_literal() {
+fn enum_without_meanings_gets_minted_iris() {
     let d = describe("flag");
-    assert_eq!(d.kind, TermKind::Literal);
-    assert!(d.enum_map.is_empty());
+    assert_eq!(d.kind, TermKind::EnumIri);
+    assert_eq!(
+        d.enum_map,
+        vec![
+            (
+                "down".to_string(),
+                "https://example.com/rdftype/Flag#down".to_string()
+            ),
+            (
+                "up".to_string(),
+                "https://example.com/rdftype/Flag#up".to_string()
+            ),
+        ]
+    );
 }
 
 /// Rule 2.
