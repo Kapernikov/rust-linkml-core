@@ -87,15 +87,11 @@ fn literal_value(v: &JsonValue) -> String {
 /// the RFC 3986 unreserved set (`ALPHA / DIGIT / "-" / "." / "_" / "~"`).
 /// Everything else — `/` and space above all — is percent-encoded, so a key
 /// value can never introduce a path segment of its own.
-pub(crate) const PATH_SEGMENT: &percent_encoding::AsciiSet = &NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'.')
-    .remove(b'_')
-    .remove(b'~');
-
-pub(crate) fn encode_path_part(s: &str) -> String {
-    utf8_percent_encode(s, PATH_SEGMENT).to_string()
-}
+///
+/// Owned by [`linkml_schemaview::enumview`], which needs the same encoding to
+/// name a permissible value and sits below this crate. One set, so a skolem
+/// path segment and an enum value's IRI cannot be encoded differently.
+pub(crate) use linkml_schemaview::enumview::{encode_path_part, PATH_SEGMENT};
 
 fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> String {
     // The canonical URI (respects slot_uri and the originating schema's
@@ -135,8 +131,10 @@ pub fn term_for(descriptor: &TermDescriptor, value: &JsonValue, conv: &Converter
             Term::NamedNode(NamedNode::new_unchecked(iri))
         }
         TermKind::EnumIri => {
-            // Only a string can name a permissible value. A value with no
-            // meaning has no IRI to become, so it renders as a literal.
+            // Only a string can name a permissible value, and every permissible
+            // value has an IRI. The literal fallback is for a stored value the
+            // enum does not permit — dirty data, kept visible rather than
+            // silently renamed.
             if matches!(value, JsonValue::String(_)) {
                 if let Ok(idx) = descriptor
                     .enum_map

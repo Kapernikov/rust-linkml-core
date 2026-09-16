@@ -163,13 +163,49 @@ fn enum_value_with_a_meaning_is_that_named_node() {
     );
 }
 
-/// The mixed enum: `unknown` carries no `meaning`, so it falls back to a literal
-/// rather than inventing an IRI.
+/// The mixed enum: `unknown` carries no `meaning`, and is still a concept.
+///
+/// It used to fall back to a literal, which put a term in instance data that
+/// the slot's own declared range — a `skos:ConceptScheme` — does not admit, and
+/// made one enum answer two kinds of term depending on whether a value happened
+/// to be mapped to an ontology.
 #[test]
-fn enum_value_without_a_meaning_falls_back_to_a_literal() {
+fn enum_value_without_a_meaning_is_the_minted_concept_iri() {
     let (sv, conv) = load_alone("enum_meaning_schema.yaml");
     assert_eq!(
         term(&sv, &conv, "Item", "status", json!("unknown")),
-        Term::Literal(Literal::new_simple_literal("unknown"))
+        Term::NamedNode(NamedNode::new_unchecked(
+            "https://example.com/enum-meaning-test/StatusEnum#unknown"
+        ))
     );
+}
+
+/// The drift guard. The instance term and the schema graph's concept subject
+/// are two call sites of one spelling; if they ever disagree, a client joining
+/// instance data to the schema graph silently loses the values where they do —
+/// which is how this was found in the first place.
+#[test]
+fn every_instance_enum_term_is_a_concept_subject_in_the_schema_graph() {
+    use linkml_runtime::schema_rdf::{schema_triples, SchemaRdfOptions, SKOS_NOTATION};
+
+    let (sv, conv) = load_alone("enum_meaning_schema.yaml");
+
+    let built = schema_triples(&sv, &SchemaRdfOptions::default());
+    let concepts: Vec<String> = built
+        .triples
+        .iter()
+        .filter(|t| t.predicate.as_str() == SKOS_NOTATION)
+        .map(|t| t.subject.to_string().trim_matches(['<', '>']).to_owned())
+        .collect();
+    assert_eq!(concepts.len(), 3, "one concept per permissible value");
+
+    for code in ["active", "retired", "unknown"] {
+        let Term::NamedNode(node) = term(&sv, &conv, "Item", "status", json!(code)) else {
+            panic!("{code} did not render as an IRI");
+        };
+        assert!(
+            concepts.contains(&node.as_str().to_owned()),
+            "instance term {node} for {code} names no concept in the schema graph: {concepts:?}"
+        );
+    }
 }

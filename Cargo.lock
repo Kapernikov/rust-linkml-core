@@ -1978,6 +1978,7 @@ dependencies = [
  "curies",
  "itertools 0.14.0",
  "linkml_meta",
+ "percent-encoding",
  "reqwest",
  "serde",
  "serde-value",

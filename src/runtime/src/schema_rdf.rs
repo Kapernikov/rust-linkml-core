@@ -103,7 +103,8 @@
 //! `meaning` decides not *whether* a value is described but which IRI names it,
 //! and that decision is `gen-owl`'s, taken verbatim from its
 //! `_permissible_value_uri` — per the governing principle above, this module
-//! does not mint IRIs of its own design where `gen-owl` has a spelling:
+//! does not mint IRIs of its own design where `gen-owl` has a spelling. It is
+//! spelled once, in [`linkml_schemaview::enumview::permissible_value_iri`]:
 //!
 //! * With a `meaning`: that IRI, expanded through the schema's converter.
 //! * Without one: `<enum_uri>#<code>`, the code percent-encoded (`gen-owl`'s
@@ -112,20 +113,27 @@
 //!
 //! ## Joining the schema graph to instance data
 //!
-//! The two cases join to instance data differently, and a client has to know
-//! which it is in. The asymmetry is the *instance* writer's, not this module's:
+//! One join, for every value of every enum:
 //!
-//! * A value with a `meaning` is written by [`turtle`](crate::turtle) as that
-//!   same IRI, through the same converter. So the instance object *is* the
-//!   concept subject: `?s ?slot ?concept` joins `?concept skos:notation ?code`.
-//! * A value with no `meaning` is written by [`turtle`](crate::turtle) as a
-//!   plain literal — the code itself. Its `<enum_uri>#<code>` IRI appears
-//!   nowhere in the data, so that join finds nothing; the join that works is on
-//!   the literal, `?s ?slot ?code` against `?concept skos:notation ?code`.
+//! ```sparql
+//! ?s ?slot ?concept . GRAPH <schema> { ?concept skos:notation ?code }
+//! ```
 //!
-//! Both cases therefore meet at `skos:notation`, which is the one term a client
-//! can rely on for every value of every enum, and the reason `skos:notation` is
-//! emitted for values that carry a `meaning` too.
+//! because [`turtle`](crate::turtle) writes the *same* IRI for the value that
+//! this module makes the concept's subject — the two are call sites of the one
+//! spelling above, and a test asserts they agree.
+//!
+//! It did not always. A value without a `meaning` used to be written as a plain
+//! literal, so the join above found nothing for it and the join that worked was
+//! the other way round, on the literal. Which of the two a client needed
+//! depended on whether that particular value happened to be mapped to an
+//! ontology — a schema detail invisible from the data. Queries written the
+//! documented way silently returned only the mapped values: counts that looked
+//! healthy and were wrong. The literal also contradicted the slot's own
+//! declared range, a `skos:ConceptScheme`, of which a string is not a member.
+//!
+//! `skos:notation` remains emitted for values carrying a `meaning` too, so the
+//! code behind an opaque IRI is always askable.
 //!
 //! # Mappings and keys
 //!
@@ -334,11 +342,9 @@ pub const OWL_ALL_VALUES_FROM: &str = "http://www.w3.org/2002/07/owl#allValuesFr
 pub const OWL_MIN_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#minCardinality";
 /// `owl:maxCardinality`.
 pub const OWL_MAX_CARDINALITY: &str = "http://www.w3.org/2002/07/owl#maxCardinality";
-/// What `gen-owl` puts between an enum's IRI and a permissible value's code
-/// when the value has no `meaning` to be identified by — its
-/// `enum_iri_separator`, whose default is `#`. Matched rather than chosen: see
-/// the module docs.
-pub const ENUM_IRI_SEPARATOR: &str = "#";
+/// What `gen-owl` puts between an enum's IRI and a permissible value's code —
+/// re-exported from [`linkml_schemaview::enumview`], which owns the spelling.
+pub use linkml_schemaview::enumview::ENUM_IRI_SEPARATOR;
 /// `xsd:integer` — the datatype `gen-owl` gives its cardinality literals,
 /// because rdflib maps a Python `int` to it. OWL 2 asks for
 /// `xsd:nonNegativeInteger`; harmony with `gen-owl` wins, per the module docs.
@@ -454,42 +460,10 @@ pub fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> Result<String, S
     }
 }
 
-/// The IRI that names one permissible value.
-///
-/// `gen-owl`'s `_permissible_value_uri`, term for term. Shared — like
-/// [`slot_predicate_iri`] — with every consumer that has to name the same
-/// value: the concept subject [`schema_triples`] emits, the term the instance
-/// writer renders, and the term a SQL pushdown has to reproduce in order to
-/// agree with it. One spelling, so the three cannot drift apart.
-///
-/// * With a `meaning`: that IRI, expanded through the schema's converter. `Err`
-///   carries the unexpanded spelling, leaving the policy to the caller — as
-///   [`slot_predicate_iri`] does.
-/// * Without one: `<enum_uri>#<code>`, the code trimmed and percent-encoded
-///   ([`ENUM_IRI_SEPARATOR`] and `gen-owl`'s `quote(text.strip(), safe="")`).
-///
-/// Every permissible value has an IRI, whether or not its schema bothered to
-/// map it to an ontology. Which of the two branches produced it is not a
-/// distinction a caller should have to make — that it *was* one is the whole
-/// reason enum values used to reach instance data as two different kinds of
-/// term.
-pub fn permissible_value_iri(
-    enum_uri: &str,
-    code: &str,
-    pv: &linkml_meta::PermissibleValue,
-    conv: &Converter,
-) -> Result<String, String> {
-    let Some(meaning) = pv.meaning.as_ref() else {
-        return Ok(format!(
-            "{enum_uri}{ENUM_IRI_SEPARATOR}{}",
-            crate::turtle::encode_path_part(code.trim())
-        ));
-    };
-    match Identifier::new(meaning).to_uri(conv) {
-        Ok(uri) => Ok(uri.0),
-        Err(_) => Err(meaning.clone()),
-    }
-}
+/// The IRI that names one permissible value — re-exported from
+/// [`linkml_schemaview::enumview`], where it sits beside the enum so that this
+/// module, the instance writer and a SQL pushdown all name a value identically.
+pub use linkml_schemaview::enumview::permissible_value_iri;
 
 /// Triplify one [`SchemaView`].
 ///

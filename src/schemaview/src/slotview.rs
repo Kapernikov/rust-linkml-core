@@ -419,9 +419,10 @@ pub enum TermKind {
     Iri,
     /// A literal, possibly typed or language-tagged.
     Literal,
-    /// An enum whose permissible values carry `meaning` IRIs. A value present in
-    /// [`TermDescriptor::enum_map`] becomes that IRI; a value without a meaning
-    /// falls back to a literal, which is what the turtle writer does.
+    /// An enum. Every permissible value is in [`TermDescriptor::enum_map`] and
+    /// becomes its IRI — the one the schema graph describes, whether the value
+    /// declared a `meaning` or had its IRI minted. A stored value the enum does
+    /// not permit falls back to a literal.
     EnumIri,
 }
 
@@ -753,8 +754,17 @@ impl SlotView {
         })
     }
 
-    /// Permissible value → expanded meaning IRI, sorted. Empty when the range is
-    /// not an enum, or when no permissible value carries a `meaning`.
+    /// Permissible value → the IRI that names it, sorted. Empty only when the
+    /// range is not an enum.
+    ///
+    /// *Every* value is mapped, not just those carrying a `meaning`. The range
+    /// of an enum-valued slot is a `skos:ConceptScheme`, so its values are
+    /// concepts; rendering the ones nobody mapped to an ontology as bare
+    /// strings put terms in instance data that the schema's own declared range
+    /// does not admit, and left a client joining to the schema graph from
+    /// whichever end of `skos:notation` the particular value happened to land
+    /// on. The spelling is [`crate::enumview::permissible_value_iri`]'s, which
+    /// the schema graph uses for the very same subject.
     fn enum_meanings(&self, conv: &Converter) -> Vec<(String, String)> {
         let Some(enum_view) = self.get_range_enum() else {
             return Vec::new();
@@ -762,15 +772,19 @@ impl SlotView {
         let Some(values) = enum_view.definition().permissible_values.as_ref() else {
             return Vec::new();
         };
+        let enum_uri = enum_view
+            .canonical_uri()
+            .to_uri(conv)
+            .map(|u| u.0)
+            .unwrap_or_else(|_| enum_view.canonical_uri().to_string());
         let mut out: Vec<(String, String)> = values
             .iter()
-            .filter_map(|(text, pv)| {
-                let meaning = pv.meaning.as_ref()?;
-                let iri = Identifier::new(meaning)
-                    .to_uri(conv)
-                    .map(|u| u.0)
-                    .unwrap_or_else(|_| meaning.clone());
-                Some((text.clone(), iri))
+            .map(|(text, pv)| {
+                // An unexpandable `meaning` keeps its raw spelling, as it did
+                // when this only mapped meanings.
+                let iri = crate::enumview::permissible_value_iri(&enum_uri, text, pv, conv)
+                    .unwrap_or_else(|raw| raw);
+                (text.clone(), iri)
             })
             .collect();
         out.sort();
