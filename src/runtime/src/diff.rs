@@ -274,7 +274,7 @@ pub(crate) fn list_is_keyed_shaped(values: &[LinkMLInstance]) -> bool {
 /// declare `unique_keys`, still answers `false` and stays positional. That
 /// mirrors `slot_lacks_element_identity` and keeps the two consistent; widening
 /// to `identity_class_family` is a separate decision.
-pub(crate) fn slot_declares_element_identity(slot: &SlotView) -> bool {
+pub fn slot_declares_element_identity(slot: &SlotView) -> bool {
     crate::identity_lint::slot_addresses_elements_by_position_or_label(slot)
         && slot.get_range_class().is_some_and(|rc| {
             // Cheap first: a linear scan of the class's own effective slots.
