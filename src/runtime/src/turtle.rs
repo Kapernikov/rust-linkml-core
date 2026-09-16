@@ -10,7 +10,6 @@ use std::io::{Result as IoResult, Write};
 use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxttl::turtle::WriterTurtleSerializer;
 use oxttl::{NTriplesSerializer, TurtleParser, TurtleSerializer};
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
 use crate::regex_support::Regex;
 use crate::LinkMLInstance;
@@ -91,7 +90,7 @@ fn literal_value(v: &JsonValue) -> String {
 /// Owned by [`linkml_schemaview::enumview`], which needs the same encoding to
 /// name a permissible value and sits below this crate. One set, so a skolem
 /// path segment and an enum value's IRI cannot be encoded differently.
-pub(crate) use linkml_schemaview::enumview::{encode_path_part, PATH_SEGMENT};
+pub(crate) use linkml_schemaview::enumview::encode_path_part;
 
 fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> String {
     // The canonical URI (respects slot_uri and the originating schema's
