@@ -454,6 +454,43 @@ pub fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> Result<String, S
     }
 }
 
+/// The IRI that names one permissible value.
+///
+/// `gen-owl`'s `_permissible_value_uri`, term for term. Shared — like
+/// [`slot_predicate_iri`] — with every consumer that has to name the same
+/// value: the concept subject [`schema_triples`] emits, the term the instance
+/// writer renders, and the term a SQL pushdown has to reproduce in order to
+/// agree with it. One spelling, so the three cannot drift apart.
+///
+/// * With a `meaning`: that IRI, expanded through the schema's converter. `Err`
+///   carries the unexpanded spelling, leaving the policy to the caller — as
+///   [`slot_predicate_iri`] does.
+/// * Without one: `<enum_uri>#<code>`, the code trimmed and percent-encoded
+///   ([`ENUM_IRI_SEPARATOR`] and `gen-owl`'s `quote(text.strip(), safe="")`).
+///
+/// Every permissible value has an IRI, whether or not its schema bothered to
+/// map it to an ontology. Which of the two branches produced it is not a
+/// distinction a caller should have to make — that it *was* one is the whole
+/// reason enum values used to reach instance data as two different kinds of
+/// term.
+pub fn permissible_value_iri(
+    enum_uri: &str,
+    code: &str,
+    pv: &linkml_meta::PermissibleValue,
+    conv: &Converter,
+) -> Result<String, String> {
+    let Some(meaning) = pv.meaning.as_ref() else {
+        return Ok(format!(
+            "{enum_uri}{ENUM_IRI_SEPARATOR}{}",
+            crate::turtle::encode_path_part(code.trim())
+        ));
+    };
+    match Identifier::new(meaning).to_uri(conv) {
+        Ok(uri) => Ok(uri.0),
+        Err(_) => Err(meaning.clone()),
+    }
+}
+
 /// Triplify one [`SchemaView`].
 ///
 /// Covers every class, slot and enum reachable from the view, including
@@ -604,17 +641,11 @@ impl Builder {
 
     /// The IRI that identifies one permissible value's `skos:Concept`.
     ///
-    /// This is `gen-owl`'s `_permissible_value_uri`, term for term, and it is
-    /// deliberately not a fresh decision — see the module docs:
-    ///
-    /// * With a `meaning`, that IRI, expanded through the schema's converter.
-    ///   Which is also the IRI [`turtle`](crate::turtle) writes for the value in
-    ///   instance data, so instance object and schema subject join directly.
-    /// * Without one, `<enum_uri>#<code>` with the code percent-encoded — the
-    ///   same minting, separator and encoding `gen-owl` uses. Note that this IRI
-    ///   does *not* appear in instance data, where such a value is a plain
-    ///   literal; `skos:notation` is the join for those. The module docs say so
-    ///   in full.
+    /// The spelling is [`permissible_value_iri`]'s, not this module's, so the
+    /// concept subject described here and the term instance data carries are
+    /// the same IRI by construction. What is left here is this module's own
+    /// policy on a CURIE that will not expand: skip the term and record it,
+    /// rather than emit a bare CURIE.
     fn concept_iri(
         &mut self,
         enum_name: &str,
@@ -623,18 +654,11 @@ impl Builder {
         enum_node: &NamedNode,
         conv: &Converter,
     ) -> Option<NamedNode> {
-        match pv.meaning.as_ref() {
-            Some(meaning) => {
-                self.expanded(meaning, conv, &format!("enum value {enum_name}.{code}"))
-            }
-            None => {
-                let minted = format!(
-                    "{}{ENUM_IRI_SEPARATOR}{}",
-                    enum_node.as_str(),
-                    crate::turtle::encode_path_part(code.trim())
-                );
-                self.node(&minted, &format!("enum value {enum_name}.{code}"))
-            }
+        let what = format!("enum value {enum_name}.{code}");
+        match permissible_value_iri(enum_node.as_str(), code, pv, conv) {
+            Ok(iri) => self.node(&iri, &what),
+            // Unexpandable: `node` rejects it and records it, as `expanded` did.
+            Err(raw) => self.node(&raw, &what),
         }
     }
 
