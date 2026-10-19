@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -41,7 +41,7 @@ fn turtle_enum_meaning_emits_named_node() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -97,7 +97,7 @@ fn turtle_enum_without_meaning_emits_the_minted_concept_iri() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 

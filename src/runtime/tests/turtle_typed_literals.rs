@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schema, converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -60,7 +60,7 @@ fn turtle_integer_literal_has_xsd_type() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -103,7 +103,7 @@ fn turtle_float_literal_has_xsd_type() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -137,7 +137,7 @@ fn turtle_boolean_literal_has_xsd_type() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -180,7 +180,7 @@ fn turtle_predicates_use_expanded_prefix() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -225,7 +225,7 @@ fn turtle_slot_uri_overrides_default_prefix() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -296,7 +296,7 @@ fn turtle_inherited_slots_use_originating_schema_prefix() {
         &sv,
         &derived_schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -347,7 +347,7 @@ fn turtle_builtin_prefix_declared_when_used() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 

@@ -54,7 +54,7 @@ pub struct InlineStructure {
 /// does not depend on whether the data carries inferred types, so asserted
 /// and inferred files select the same subjects. Each root is imported once,
 /// as its resolved class, however many root classes it matches. Subjects whose
-/// types do not resolve (`AmbiguousType`, `TypeConflict`, ...) fail the import.
+/// types do not resolve (`AmbiguousType`, `ConflictingDirectTypes`, `TypeConflict`, ...) fail the import.
 fn collect_root_subjects<T: TripleSource>(
     store: &T,
     sv: &SchemaView,
@@ -160,9 +160,11 @@ fn walk<T: TripleSource>(
     // no slot information for it. We still mark it visited so we don't loop.
     let class = match resolve_class(store, sv, conv, subject) {
         Ok(c) => c,
-        Err(e @ (ImportError::AmbiguousType { .. } | ImportError::TypeConflict { .. })) => {
-            return Err(e)
-        }
+        Err(
+            e @ (ImportError::AmbiguousType { .. }
+            | ImportError::ConflictingDirectTypes { .. }
+            | ImportError::TypeConflict { .. }),
+        ) => return Err(e),
         Err(_) => {
             visit_stack.remove(&key);
             visited.insert(key);

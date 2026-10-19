@@ -290,6 +290,11 @@
 //! writer writes the matching `rdf:type` / `sesame:directType` triples, so a
 //! query for `?s a <Class>` over instance data and the schema agree.
 //!
+//! The inferred schema is the strict transitive closure of the subclass edges
+//! over named classes (plus mixins where the regime says so). It is not RDFS
+//! entailment: nothing is reflexive, no `rdfs:Resource` or `owl:Thing` edge is
+//! added, and no domain/range or property inference is performed.
+//!
 //! The closure is over *named* classes only. The restriction blank nodes stay
 //! exactly as in `ASSERTED`, on the class that declares them: they are never
 //! closed over (a class does not get its ancestors' restriction nodes, because
@@ -500,10 +505,13 @@ pub fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> Result<String, S
 pub use linkml_schemaview::enumview::permissible_value_iri;
 
 /// `sesame:directType`: an instance's most specific type (RDF4J / GraphDB
-/// vocabulary). Written only in the inferred [`TypeRegime`]s.
+/// vocabulary). The writer uses exactly this predicate for the `Direct`
+/// partition: it is the fixed RDF4J/GraphDB vocabulary, not configurable.
 pub const SESAME_DIRECT_TYPE: &str = "http://www.openrdf.org/schema/sesame#directType";
 /// `sesame:directSubClassOf`: a class's immediate superclass (RDF4J / GraphDB
-/// vocabulary). Written only in the inferred [`TypeRegime`]s.
+/// vocabulary). The schema triples use exactly this predicate when the regime
+/// contains `Direct`: it is the fixed RDF4J/GraphDB vocabulary, not
+/// configurable.
 pub const SESAME_DIRECT_SUBCLASS_OF: &str = "http://www.openrdf.org/schema/sesame#directSubClassOf";
 
 /// Which type triples are written for an instance, and which subclass edges
@@ -516,9 +524,10 @@ pub const SESAME_DIRECT_SUBCLASS_OF: &str = "http://www.openrdf.org/schema/sesam
 /// [`IS_A_AND_MIXINS`](Self::IS_A_AND_MIXINS) are the named ones.
 ///
 /// Displays as its name when it equals a named regime, otherwise as its
-/// partitions joined by `+` (`own+is_a`); the empty set displays as `none`.
-/// The single-partition set `{IsA}` displays as `+is_a`, since `is_a` names
-/// the regime. [`FromStr`] is the inverse.
+/// partitions joined by `+` (`own+isa`); the empty set displays as `none`.
+/// The partition spelling `isa` differs from the regime name `is_a`, so the
+/// set `{IsA}` displays as `isa` and every set round-trips through
+/// [`FromStr`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeRegime(u8);
 
@@ -608,11 +617,6 @@ impl fmt::Display for TypeRegime {
         if *self == TypeRegime::empty() {
             return f.write_str("none");
         }
-        // The one-partition set {IsA} would read as the named regime `is_a`;
-        // a leading '+' marks it as a partition list.
-        if *self == TypeRegime::from(TypePartition::IsA) {
-            return f.write_str("+is_a");
-        }
         for (i, p) in self.partitions().enumerate() {
             if i > 0 {
                 f.write_str("+")?;
@@ -627,22 +631,18 @@ impl FromStr for TypeRegime {
     type Err = ParseTypeRegimeError;
 
     /// Accepts `asserted`, `is_a`, `is_a_and_mixins`, `none`, or a
-    /// `+`-joined list of partition names in any order (duplicates allowed,
-    /// surrounding whitespace trimmed). A leading `+` forces list reading, so
-    /// `+is_a` is the set `{IsA}`.
+    /// `+`-joined list of partition names (`own`, `isa`, `mixin`, `direct`)
+    /// in any order (duplicates allowed, surrounding whitespace trimmed).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let list = s.strip_prefix('+').unwrap_or(s);
-        if list.len() == s.len() {
-            match s {
-                "asserted" => return Ok(TypeRegime::ASSERTED),
-                "is_a" => return Ok(TypeRegime::IS_A),
-                "is_a_and_mixins" => return Ok(TypeRegime::IS_A_AND_MIXINS),
-                "none" => return Ok(TypeRegime::empty()),
-                _ => {}
-            }
+        match s {
+            "asserted" => return Ok(TypeRegime::ASSERTED),
+            "is_a" => return Ok(TypeRegime::IS_A),
+            "is_a_and_mixins" => return Ok(TypeRegime::IS_A_AND_MIXINS),
+            "none" => return Ok(TypeRegime::empty()),
+            _ => {}
         }
-        list.split('+')
+        s.split('+')
             .map(|token| token.trim().parse::<TypePartition>())
             .collect()
     }
@@ -658,7 +658,7 @@ impl fmt::Display for ParseTypeRegimeError {
             f,
             "unknown type regime or partition {:?}; expected one of \
              asserted, is_a, is_a_and_mixins, none, or partition names \
-             (own, is_a, mixin, direct) joined by '+'",
+             (own, isa, mixin, direct) joined by '+'",
             self.0
         )
     }
@@ -699,11 +699,11 @@ impl TypePartition {
 }
 
 impl fmt::Display for TypePartition {
-    /// `own`, `is_a`, `mixin` or `direct`.
+    /// `own`, `isa`, `mixin` or `direct`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             TypePartition::Own => "own",
-            TypePartition::IsA => "is_a",
+            TypePartition::IsA => "isa",
             TypePartition::Mixin => "mixin",
             TypePartition::Direct => "direct",
         })
@@ -717,7 +717,7 @@ impl FromStr for TypePartition {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "own" => Ok(TypePartition::Own),
-            "is_a" => Ok(TypePartition::IsA),
+            "isa" => Ok(TypePartition::IsA),
             "mixin" => Ok(TypePartition::Mixin),
             "direct" => Ok(TypePartition::Direct),
             other => Err(ParseTypeRegimeError(other.to_string())),
@@ -729,16 +729,17 @@ fn class_key(cv: &ClassView) -> String {
     cv.canonical_uri().to_string()
 }
 
-/// Every type triple an instance of `cv` can carry, each tagged with its
-/// partition.
+/// The classes an instance of `cv` is typed with, each tagged with the
+/// partition that reaches it.
 ///
 /// `Own` is `cv` itself; `IsA` the transitive `is_a` ancestors, nearest first;
 /// `Mixin` every class reachable only through at least one mixin edge (mixins
-/// of `cv` or of an ancestor, and their own `is_a` parents and mixins); and
-/// `Direct` is `cv` again, as the object of `sesame:directType`. A class is
-/// listed once among `Own`/`IsA`/`Mixin`, in the first of those that reaches
-/// it. Cycle-safe: a class that lists itself (or a descendant) as `is_a` or
-/// mixin terminates the walk instead of recursing.
+/// of `cv` or of an ancestor, and their own `is_a` parents and mixins). A class
+/// is listed once, in the first of those that reaches it. `Direct` is never
+/// listed: it is a choice of predicate (`sesame:directType`) whose object is
+/// always `cv` itself, not a class of its own. Cycle-safe: a class that lists
+/// itself (or a descendant) as `is_a` or mixin terminates the walk instead of
+/// recursing.
 pub fn type_partitions(cv: &ClassView) -> Result<Vec<(TypePartition, ClassView)>, SchemaViewError> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out = vec![(TypePartition::Own, cv.clone())];
@@ -772,18 +773,16 @@ pub fn type_partitions(cv: &ClassView) -> Result<Vec<(TypePartition, ClassView)>
         out.push((TypePartition::Mixin, next));
     }
 
-    out.push((TypePartition::Direct, cv.clone()));
     Ok(out)
 }
 
 /// The `rdf:type` objects of an instance of `cv` under `regime`: the `Own`,
 /// `IsA` and `Mixin` entries of [`type_partitions`] whose partition `regime`
-/// contains, `cv` first when it contains `Own`. `Direct` is not an `rdf:type`
-/// and is never listed.
+/// contains, `cv` first when it contains `Own`.
 pub fn rdf_types(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>, SchemaViewError> {
     Ok(type_partitions(cv)?
         .into_iter()
-        .filter(|(p, _)| *p != TypePartition::Direct && regime.contains(*p))
+        .filter(|(p, _)| regime.contains(*p))
         .map(|(_, c)| c)
         .collect())
 }

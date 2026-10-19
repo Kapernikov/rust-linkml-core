@@ -6,14 +6,14 @@
 
 use linkml_meta::SchemaDefinition;
 use linkml_runtime::rdf_export::{
-    export_nquads_many, export_ntriples_many, export_trig_many, export_turtle_many, ExportOptions,
+    export_nquads_many, export_ntriples_many, export_trig_many, export_turtle_many,
 };
 use linkml_runtime::schema_rdf::{
     schema_triples, SchemaRdfOptions, SchemaRdfProfile, TypePartition, TypeRegime, RDF_TYPE,
     SESAME_DIRECT_SUBCLASS_OF, SESAME_DIRECT_TYPE,
 };
 use linkml_runtime::turtle::{
-    turtle_to_string, write_nquads, write_ntriples, write_trig, QuadOptions, TurtleOptions,
+    turtle_to_string, write_nquads, write_ntriples, write_trig, write_turtle, WriteOptions,
 };
 use linkml_runtime::{load_yaml_file, LinkMLInstance};
 use linkml_schemaview::converter::Converter;
@@ -87,9 +87,7 @@ fn flat(f: &Fixture, regime: TypeRegime, skolem: bool) -> BTreeSet<Spo> {
         &f.schema,
         &f.conv,
         &mut buf,
-        TurtleOptions::default()
-            .with_skolem(skolem)
-            .with_regime(regime),
+        &WriteOptions::flat(regime).with_skolem(skolem),
     )
     .unwrap();
     NTriplesParser::new()
@@ -142,7 +140,7 @@ fn asserted_is_the_pre_regime_output() {
         &f.schema,
         &f.conv,
         &mut buf,
-        TurtleOptions::default().with_skolem(true),
+        &WriteOptions::default().with_skolem(true),
     )
     .unwrap();
     let mut lines: Vec<String> = String::from_utf8(buf)
@@ -230,7 +228,7 @@ fn turtle_string_follows_the_regime() {
         &f.sv,
         &f.schema,
         &f.conv,
-        TurtleOptions::default().with_regime(TypeRegime::IS_A_AND_MIXINS),
+        &WriteOptions::flat(TypeRegime::IS_A_AND_MIXINS),
     )
     .unwrap();
     assert!(ttl.contains("directType"), "{ttl}");
@@ -259,7 +257,7 @@ fn group(quads: impl Iterator<Item = oxrdf::Quad>) -> Quads {
     out
 }
 
-fn nquads(f: &Fixture, options: &QuadOptions) -> Quads {
+fn nquads(f: &Fixture, options: &WriteOptions) -> Quads {
     let mut buf = Vec::new();
     write_nquads(&f.instance, &f.sv, &f.schema, &f.conv, &mut buf, options).unwrap();
     group(
@@ -269,7 +267,7 @@ fn nquads(f: &Fixture, options: &QuadOptions) -> Quads {
     )
 }
 
-fn trig(f: &Fixture, options: &QuadOptions) -> Quads {
+fn trig(f: &Fixture, options: &WriteOptions) -> Quads {
     let mut buf = Vec::new();
     write_trig(&f.instance, &f.sv, &f.schema, &f.conv, &mut buf, options).unwrap();
     group(
@@ -279,8 +277,14 @@ fn trig(f: &Fixture, options: &QuadOptions) -> Quads {
     )
 }
 
-fn mapping(parts: &[(TypePartition, &str)]) -> QuadOptions {
-    QuadOptions::new(parts.iter().map(|(p, g)| (*p, graph(g))).collect()).with_skolem(true)
+fn mapping(parts: &[(TypePartition, &str)]) -> WriteOptions {
+    WriteOptions::quads(
+        parts
+            .iter()
+            .map(|(p, g)| (*p, GraphName::NamedNode(graph(g))))
+            .collect(),
+    )
+    .with_skolem(true)
 }
 
 #[test]
@@ -384,7 +388,7 @@ fn designates_type_on_rdf_type_is_rejected() {
             &f.schema,
             &f.conv,
             &mut buf,
-            TurtleOptions::default(),
+            &WriteOptions::default(),
         )
         .unwrap_err(),
     );
@@ -394,7 +398,7 @@ fn designates_type_on_rdf_type_is_rejected() {
             &f.sv,
             &f.schema,
             &f.conv,
-            TurtleOptions::default(),
+            &WriteOptions::default(),
         )
         .unwrap_err(),
     );
@@ -557,7 +561,7 @@ fn many_exporters_label_blank_nodes_uniquely_across_instances() {
     let per_instance = blank_nodes(one.iter().flat_map(|(s, _, o)| [s, o])).len();
     assert!(per_instance > 0);
     let two = || vec![f.instance.clone(), f.instance.clone()];
-    let options = ExportOptions::default().with_skolem(false);
+    let options = WriteOptions::default().with_skolem(false);
     let quad_options = mapping(&[
         (TypePartition::Own, "own"),
         (TypePartition::Direct, "direct"),
@@ -565,7 +569,7 @@ fn many_exporters_label_blank_nodes_uniquely_across_instances() {
     .with_skolem(false);
 
     let mut ttl = Vec::new();
-    export_turtle_many(two(), &f.sv, &f.schema, &f.conv, &mut ttl, options.clone()).unwrap();
+    export_turtle_many(two(), &f.sv, &f.schema, &f.conv, &mut ttl, &options).unwrap();
     let triples: Vec<Spo> = TurtleParser::new()
         .for_reader(ttl.as_slice())
         .map(|t| t.unwrap())
@@ -578,7 +582,7 @@ fn many_exporters_label_blank_nodes_uniquely_across_instances() {
         })
         .collect();
     let mut nt = Vec::new();
-    export_ntriples_many(two(), &f.sv, &f.schema, &f.conv, &mut nt, options).unwrap();
+    export_ntriples_many(two(), &f.sv, &f.schema, &f.conv, &mut nt, &options).unwrap();
     let nt_triples: Vec<Spo> = NTriplesParser::new()
         .for_reader(nt.as_slice())
         .map(|t| t.unwrap())
@@ -664,9 +668,13 @@ fn regime_display_and_from_str_roundtrip_for_all_sets() {
             .into_iter()
             .collect::<TypeRegime>()
             .to_string(),
-        "own+is_a"
+        "own+isa"
     );
-    assert_eq!(TypeRegime::from(TypePartition::IsA).to_string(), "+is_a");
+    assert_eq!(TypeRegime::from(TypePartition::IsA).to_string(), "isa");
+    assert_eq!(
+        "own+isa".parse::<TypeRegime>().unwrap().to_string(),
+        "own+isa"
+    );
     assert_eq!(
         " direct + own+own "
             .parse::<TypeRegime>()
@@ -677,7 +685,7 @@ fn regime_display_and_from_str_roundtrip_for_all_sets() {
     for p in TypePartition::ALL {
         assert_eq!(p.to_string().parse::<TypePartition>().unwrap(), p);
     }
-    for bad in ["", "Asserted", "own+", "own+bogus", "own,is_a", "none+own"] {
+    for bad in ["", "Asserted", "own+", "own+bogus", "own,isa", "none+own"] {
         let err = bad.parse::<TypeRegime>().unwrap_err();
         assert!(err.to_string().contains("asserted"), "{bad}: {err}");
     }
@@ -699,4 +707,165 @@ fn schema_edges_follow_partition_membership() {
     assert!(edges_m.contains(&(iri("Signal"), iri("Asset"))));
     assert!(edges_m.contains(&(iri("Signal"), iri("Located"))));
     assert!(!edges_m.contains(&(iri("MainSignal"), iri("Thing"))));
+}
+
+#[test]
+fn write_options_are_validated_per_writer() {
+    let f = fixture();
+    let named = mapping(&[(TypePartition::Own, "g")]);
+    let empty = WriteOptions::quads(BTreeMap::new());
+    let mut buf = Vec::new();
+    let invalid = |r: std::io::Result<()>| {
+        assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    };
+    // Every writer refuses an empty map.
+    invalid(write_turtle(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &empty,
+    ));
+    invalid(write_ntriples(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &empty,
+    ));
+    invalid(write_nquads(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &empty,
+    ));
+    invalid(write_trig(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &empty,
+    ));
+    invalid(export_turtle_many(
+        Vec::new(),
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &empty,
+    ));
+    assert!(turtle_to_string(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &WriteOptions::flat(TypeRegime::empty())
+    )
+    .is_err());
+    // The flat writers refuse a named graph; the quad writers take it.
+    invalid(write_turtle(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &named,
+    ));
+    invalid(write_ntriples(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &named,
+    ));
+    assert!(buf.is_empty());
+    write_nquads(&f.instance, &f.sv, &f.schema, &f.conv, &mut buf, &named).unwrap();
+    write_trig(&f.instance, &f.sv, &f.schema, &f.conv, &mut buf, &named).unwrap();
+}
+
+#[test]
+fn quad_writers_can_route_a_partition_to_the_default_graph() {
+    let f = fixture();
+    let mut options = mapping(&[(TypePartition::Direct, "direct")]);
+    options
+        .partition_graphs
+        .insert(TypePartition::Own, GraphName::DefaultGraph);
+    let mut nq = Vec::new();
+    write_nquads(&f.instance, &f.sv, &f.schema, &f.conv, &mut nq, &options).unwrap();
+    let mut tg = Vec::new();
+    write_trig(&f.instance, &f.sv, &f.schema, &f.conv, &mut tg, &options).unwrap();
+    let nq: Vec<oxrdf::Quad> = NQuadsParser::new()
+        .for_reader(nq.as_slice())
+        .map(|q| q.unwrap())
+        .collect();
+    let tg: Vec<oxrdf::Quad> = TriGParser::new()
+        .for_reader(tg.as_slice())
+        .map(|q| q.unwrap())
+        .collect();
+    for quads in [nq, tg] {
+        let own = flat(&f, TypeRegime::ASSERTED, true);
+        let (default, named): (Vec<_>, Vec<_>) = quads
+            .iter()
+            .partition(|q| q.graph_name == GraphName::DefaultGraph);
+        assert_eq!(default.len(), own.len());
+        assert!(named
+            .iter()
+            .all(|q| q.predicate.as_str() == SESAME_DIRECT_TYPE
+                && q.graph_name == GraphName::NamedNode(graph("direct"))));
+        assert!(!named.is_empty());
+    }
+}
+
+#[test]
+fn trig_declares_the_same_prefixes_as_turtle() {
+    let f = fixture();
+    let header = |text: &str| -> Vec<String> {
+        text.lines()
+            .take_while(|l| l.starts_with("@prefix"))
+            .map(str::to_string)
+            .collect()
+    };
+    let ttl = turtle_to_string(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &WriteOptions::default(),
+    )
+    .unwrap();
+    let mut buf = Vec::new();
+    write_trig(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &WriteOptions::quads([(TypePartition::Own, GraphName::DefaultGraph)].into()),
+    )
+    .unwrap();
+    let trig = String::from_utf8(buf).unwrap();
+    assert!(!header(&ttl).is_empty());
+    assert_eq!(header(&trig), header(&ttl));
+}
+
+#[test]
+fn type_partitions_does_not_list_direct() {
+    let f = fixture();
+    let cv =
+        f.sv.get_class(&Identifier::new("Signal"), &f.conv)
+            .unwrap()
+            .unwrap();
+    let parts = linkml_runtime::schema_rdf::type_partitions(&cv).unwrap();
+    assert_eq!(parts[0].0, TypePartition::Own);
+    assert!(parts.iter().all(|(p, _)| *p != TypePartition::Direct));
+    // The writer still emits the directType when the options route it.
+    let direct = flat(&f, TypeRegime::from(TypePartition::Direct), true);
+    assert!(!direct.is_empty());
+    assert!(direct.iter().all(|(_, p, _)| *p == direct_type()));
 }

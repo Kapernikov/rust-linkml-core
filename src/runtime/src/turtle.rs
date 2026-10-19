@@ -6,11 +6,15 @@
 //! one `sesame:directType` naming the node's own class is `Direct`. This holds
 //! for every typed node, records and inlined objects alike.
 //!
-//! The flat writers ([`write_turtle`], [`turtle_to_string`], [`write_ntriples`])
-//! keep the partitions of [`TurtleOptions::regime`]; with the default
-//! `ASSERTED` regime the output is exactly the single-`rdf:type` output. The
-//! quad writers ([`write_nquads`], [`write_trig`]) put each partition into the
-//! graph [`QuadOptions::partition_graphs`] names and drop unmapped ones.
+//! Every writer takes a [`WriteOptions`], whose `partition_graphs` says which
+//! partitions are written and into which graph; a partition not in the map is
+//! not written. The flat writers ([`write_turtle`], [`turtle_to_string`],
+//! [`write_ntriples`]) cannot carry a graph name, so they accept only the
+//! default graph as a target ([`WriteOptions::flat`] builds that). The quad
+//! writers ([`write_nquads`], [`write_trig`]) accept any graph, the default
+//! graph included. With the default options the output is exactly the
+//! single-`rdf:type` output.
+//!
 //! A `designates_type` slot is never written; one mapped onto `rdf:type` is
 //! rejected with an `InvalidInput` error.
 
@@ -23,7 +27,7 @@ use linkml_schemaview::slotview::{SlotView, TermDescriptor, TermKind};
 use serde_json::Value as JsonValue;
 use std::io::{Result as IoResult, Write};
 
-use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, QuadRef, Term, Triple};
+use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, QuadRef, Term, Triple};
 use oxttl::turtle::WriterTurtleSerializer;
 use oxttl::{NQuadsSerializer, NTriplesSerializer, TriGSerializer, TurtleParser, TurtleSerializer};
 
@@ -32,54 +36,42 @@ use crate::schema_rdf::{TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE}
 use crate::LinkMLInstance;
 use std::collections::BTreeMap;
 
-/// Options for the flat (triple) writers: [`write_turtle`], [`turtle_to_string`]
-/// and [`write_ntriples`].
+/// Options shared by every RDF writer.
 ///
-/// Built with [`TurtleOptions::default`] and the `with_*` methods; the struct
-/// is `#[non_exhaustive]` so new options do not break callers.
-#[derive(Debug, Clone, Default)]
+/// `partition_graphs` routes each written [`TypePartition`] to a graph;
+/// partitions not in the map are not written, and several partitions may share
+/// one graph. The library holds no graph IRIs of its own: the caller supplies
+/// stable ones. The map must not be empty (nothing would be written), and the
+/// flat writers (Turtle and N-Triples) additionally require every target to be
+/// the default graph; either violation is an `InvalidInput` error from the
+/// writer.
+///
+/// The struct is `#[non_exhaustive]`: build it with [`WriteOptions::flat`] or
+/// [`WriteOptions::quads`] and the `with_*` methods.
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct TurtleOptions {
+pub struct WriteOptions {
     /// Use skolem IRIs instead of blank nodes for objects without an identifier.
     pub skolem: bool,
-    /// Which type triples to write: the union of the regime's partitions.
-    /// The default, [`TypeRegime::ASSERTED`], writes only each node's own
-    /// `rdf:type`.
-    pub regime: TypeRegime,
+    /// Where each written partition goes; partitions not in the map are not
+    /// written.
+    pub partition_graphs: BTreeMap<TypePartition, GraphName>,
 }
 
-impl TurtleOptions {
-    /// The same options with skolem IRIs on or off.
-    pub fn with_skolem(mut self, skolem: bool) -> Self {
-        self.skolem = skolem;
-        self
+impl WriteOptions {
+    /// Write every partition of `regime` into the default graph. This is what
+    /// the flat writers need.
+    pub fn flat(regime: TypeRegime) -> Self {
+        Self::quads(
+            regime
+                .partitions()
+                .map(|p| (p, GraphName::DefaultGraph))
+                .collect(),
+        )
     }
 
-    /// The same options under another type regime.
-    pub fn with_regime(mut self, regime: TypeRegime) -> Self {
-        self.regime = regime;
-        self
-    }
-}
-
-/// Options for the quad writers: [`write_nquads`] and [`write_trig`].
-///
-/// Each [`TypePartition`] in `partition_graphs` is written into its named
-/// graph; partitions not in the map are not written. Several partitions may
-/// share one graph, which writes a regime's graph directly. The library holds
-/// no graph IRIs of its own: the caller supplies stable ones.
-#[derive(Debug, Clone, Default)]
-#[non_exhaustive]
-pub struct QuadOptions {
-    /// Use skolem IRIs instead of blank nodes for objects without an identifier.
-    pub skolem: bool,
-    /// The named graph each written partition goes into.
-    pub partition_graphs: BTreeMap<TypePartition, NamedNode>,
-}
-
-impl QuadOptions {
-    /// Options writing each partition in `partition_graphs` into its graph.
-    pub fn new(partition_graphs: BTreeMap<TypePartition, NamedNode>) -> Self {
+    /// Write each partition in `partition_graphs` into its graph.
+    pub fn quads(partition_graphs: BTreeMap<TypePartition, GraphName>) -> Self {
         Self {
             skolem: false,
             partition_graphs,
@@ -90,6 +82,39 @@ impl QuadOptions {
     pub fn with_skolem(mut self, skolem: bool) -> Self {
         self.skolem = skolem;
         self
+    }
+
+    /// Reject options no writer can honour; `flat` also rejects a named graph.
+    pub(crate) fn validate(&self, format: &str, flat: bool) -> IoResult<()> {
+        if self.partition_graphs.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{format}: partition_graphs is empty, so nothing would be written"),
+            ));
+        }
+        if flat {
+            if let Some((partition, graph)) = self
+                .partition_graphs
+                .iter()
+                .find(|(_, g)| !matches!(g, GraphName::DefaultGraph))
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "{format} cannot carry a graph name, but partition '{partition}' is \
+                         routed to {graph}; use a quad writer or route it to the default graph"
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Default for WriteOptions {
+    /// [`WriteOptions::flat`] of [`TypeRegime::ASSERTED`], without skolem IRIs.
+    fn default() -> Self {
+        Self::flat(TypeRegime::ASSERTED)
     }
 }
 
@@ -354,15 +379,16 @@ trait TripleSink {
     fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()>;
 }
 
-/// Flat output: the union of a regime's partitions, as Turtle.
-struct FlatSink<W: Write> {
+/// Flat output: the partitions the options route, as Turtle triples. The
+/// options are validated to target the default graph only.
+struct FlatSink<'a, W: Write> {
     ser: WriterTurtleSerializer<W>,
-    regime: TypeRegime,
+    graphs: &'a BTreeMap<TypePartition, GraphName>,
 }
 
-impl<W: Write> TripleSink for FlatSink<W> {
+impl<W: Write> TripleSink for FlatSink<'_, W> {
     fn wants(&self, partition: TypePartition) -> bool {
-        self.regime.contains(partition)
+        self.graphs.contains_key(&partition)
     }
 
     fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
@@ -376,7 +402,7 @@ impl<W: Write> TripleSink for FlatSink<W> {
 /// Quad output: each partition goes to its graph; unmapped partitions are
 /// dropped.
 struct QuadSink<'a, F: FnMut(QuadRef<'_>) -> IoResult<()>> {
-    graphs: &'a BTreeMap<TypePartition, NamedNode>,
+    graphs: &'a BTreeMap<TypePartition, GraphName>,
     write: F,
 }
 
@@ -425,7 +451,8 @@ fn reject_type_designator_on_rdf_type(cv: &ClassView, conv: &Converter) -> IoRes
 }
 
 /// The type triples of one node: the own `rdf:type` (`Own`), one `rdf:type`
-/// per inferred class (`IsA` / `Mixin`) and the `sesame:directType` (`Direct`).
+/// per inferred class (`IsA` / `Mixin`) and the `sesame:directType` naming the
+/// own class (`Direct`).
 fn emit_type_triples<S: TripleSink>(
     subject: &Node,
     cv: &ClassView,
@@ -435,34 +462,33 @@ fn emit_type_triples<S: TripleSink>(
     // Shared with `schema_rdf` so the `rdf:type` object here and the class
     // subject the schema triples describe are the same spelling by
     // construction, not by coincidence.
-    let type_triple = |partition_predicate: NamedNode, class: &ClassView| {
+    let type_triple = |predicate: NamedNode, class: &ClassView| {
         crate::schema_rdf::instance_type_iri(class, conv).map(|iri| Triple {
             subject: subject.as_subject(),
-            predicate: partition_predicate,
+            predicate,
             object: Term::NamedNode(NamedNode::new_unchecked(iri)),
         })
     };
     if let Some(triple) = type_triple(rdf_type_node(), cv) {
         sink.emit(TypePartition::Own, &triple)?;
     }
-    let inferred = [
-        TypePartition::IsA,
-        TypePartition::Mixin,
-        TypePartition::Direct,
-    ];
-    if !inferred.iter().any(|p| sink.wants(*p)) {
+    if sink.wants(TypePartition::Direct) {
+        if let Some(triple) =
+            type_triple(NamedNode::new_unchecked(SESAME_DIRECT_TYPE.to_string()), cv)
+        {
+            sink.emit(TypePartition::Direct, &triple)?;
+        }
+    }
+    if !sink.wants(TypePartition::IsA) && !sink.wants(TypePartition::Mixin) {
         return Ok(());
     }
     let partitions = crate::schema_rdf::type_partitions(cv)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
     for (partition, class) in partitions {
-        let predicate = match partition {
-            TypePartition::Own => continue,
-            TypePartition::IsA | TypePartition::Mixin => rdf_type_node(),
-            TypePartition::Direct => NamedNode::new_unchecked(SESAME_DIRECT_TYPE.to_string()),
-        };
-        if let Some(triple) = type_triple(predicate, &class) {
-            sink.emit(partition, &triple)?;
+        if matches!(partition, TypePartition::IsA | TypePartition::Mixin) {
+            if let Some(triple) = type_triple(rdf_type_node(), &class) {
+                sink.emit(partition, &triple)?;
+            }
         }
     }
     Ok(())
@@ -849,13 +875,17 @@ fn walk<S: TripleSink>(
     Ok(())
 }
 
+/// Write `value` as Turtle, keeping the partitions `options` routes.
+///
+/// Turtle cannot carry a graph name: an empty `partition_graphs`, or a
+/// partition routed to a named graph, is an `InvalidInput` error.
 pub fn write_turtle<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: TurtleOptions,
+    options: &WriteOptions,
 ) -> IoResult<()> {
     write_turtle_counted(value, sv, schema, conv, w, options, &mut 0)
 }
@@ -868,17 +898,25 @@ pub(crate) fn write_turtle_counted<W: Write>(
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: TurtleOptions,
+    options: &WriteOptions,
     counter: &mut usize,
 ) -> IoResult<()> {
+    options.validate("Turtle", true)?;
     let mut sink = FlatSink {
         ser: TurtleSerializer::new().for_writer(Vec::new()),
-        regime: options.regime,
+        graphs: &options.partition_graphs,
     };
     walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
     let out_buf = sink.ser.finish()?;
-    let out = String::from_utf8(out_buf).unwrap_or_default();
-    let (out, used_prefixes) = replace_iris(&out, conv)?;
+    let out = String::from_utf8(out_buf)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    w.write_all(with_prefix_header(&out, conv)?.as_bytes())
+}
+
+/// Compress IRIs in serialized `out` to CURIEs and put the `@prefix` header
+/// for exactly the prefixes used in front of it. Valid for Turtle and TriG.
+fn with_prefix_header(out: &str, conv: &Converter) -> IoResult<String> {
+    let (body, used_prefixes) = replace_iris(out, conv)?;
 
     // Build the @prefix header from only the prefixes that replace_iris
     // actually used.  This ensures the header is always in sync with the
@@ -893,39 +931,37 @@ pub(crate) fn write_turtle_counted<W: Write>(
         header.push_str("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
     }
     header.push('\n');
-
-    w.write_all(header.as_bytes())?;
-    w.write_all(out.as_bytes())?;
-    Ok(())
+    header.push_str(&body);
+    Ok(header)
 }
 
+/// [`write_turtle`] into a `String`.
 pub fn turtle_to_string(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
-    options: TurtleOptions,
+    options: &WriteOptions,
 ) -> Result<String, std::io::Error> {
     let mut buf = Vec::new();
     write_turtle(value, sv, schema, conv, &mut buf, options)?;
     String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
-/// Write RDF data as N-Triples (one triple per line, full IRIs, no prefixes).
+/// Write `value` as N-Triples (one triple per line, full IRIs, no prefixes),
+/// keeping the partitions `options` routes.
 ///
 /// Generates Turtle internally, parses back, and re-serializes each triple
-/// through `NTriplesSerializer` for correct N-Triples output.
-/// Write RDF data as N-Triples (one triple per line, full IRIs, no prefixes).
-///
-/// Generates Turtle internally, parses back, and re-serializes each triple
-/// through `NTriplesSerializer` for correct N-Triples output.
+/// through `NTriplesSerializer` for correct N-Triples output. N-Triples cannot
+/// carry a graph name: an empty `partition_graphs`, or a partition routed to a
+/// named graph, is an `InvalidInput` error.
 pub fn write_ntriples<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: TurtleOptions,
+    options: &WriteOptions,
 ) -> IoResult<()> {
     write_ntriples_counted(value, sv, schema, conv, w, options, &mut 0)
 }
@@ -937,9 +973,10 @@ pub(crate) fn write_ntriples_counted<W: Write>(
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: TurtleOptions,
+    options: &WriteOptions,
     counter: &mut usize,
 ) -> IoResult<()> {
+    options.validate("N-Triples", true)?;
     let mut ttl_buf = Vec::new();
     write_turtle_counted(value, sv, schema, conv, &mut ttl_buf, options, counter)?;
     let ttl = String::from_utf8(ttl_buf)
@@ -1016,18 +1053,19 @@ fn is_valid_turtle_local_name(curie: &str) -> bool {
     !local.contains('#') && !local.contains('/')
 }
 
-/// Write RDF data as N-Quads, one named graph per type partition (see
-/// [`QuadOptions`]).
+/// Write `value` as N-Quads, each partition into the graph `options` routes
+/// it to (the default graph included).
 ///
 /// The instance is walked once, so blank node labels agree across graphs.
-/// Rejects a `designates_type` slot mapped to `rdf:type` like the flat writers.
+/// An empty `partition_graphs` is an `InvalidInput` error, and so is a
+/// `designates_type` slot mapped to `rdf:type`, as in the flat writers.
 pub fn write_nquads<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: &QuadOptions,
+    options: &WriteOptions,
 ) -> IoResult<()> {
     write_nquads_counted(value, sv, schema, conv, w, options, &mut 0)
 }
@@ -1039,9 +1077,10 @@ pub(crate) fn write_nquads_counted<W: Write>(
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: &QuadOptions,
+    options: &WriteOptions,
     counter: &mut usize,
 ) -> IoResult<()> {
+    options.validate("N-Quads", false)?;
     let mut ser = NQuadsSerializer::new().for_writer(Vec::new());
     let mut sink = QuadSink {
         graphs: &options.partition_graphs,
@@ -1052,17 +1091,18 @@ pub(crate) fn write_nquads_counted<W: Write>(
     Ok(())
 }
 
-/// Write RDF data as TriG, one named graph per type partition (see
-/// [`QuadOptions`]).
+/// Write `value` as TriG, each partition into the graph `options` routes it
+/// to (the default graph included).
 ///
-/// Same content as [`write_nquads`], with full IRIs (no prefix header).
+/// Same content as [`write_nquads`], with the same `@prefix` header as
+/// [`write_turtle`]. Errors as [`write_nquads`] does.
 pub fn write_trig<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: &QuadOptions,
+    options: &WriteOptions,
 ) -> IoResult<()> {
     write_trig_counted(value, sv, schema, conv, w, options, &mut 0)
 }
@@ -1074,17 +1114,19 @@ pub(crate) fn write_trig_counted<W: Write>(
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: &QuadOptions,
+    options: &WriteOptions,
     counter: &mut usize,
 ) -> IoResult<()> {
+    options.validate("TriG", false)?;
     let mut ser = TriGSerializer::new().for_writer(Vec::new());
     let mut sink = QuadSink {
         graphs: &options.partition_graphs,
         write: |quad: QuadRef<'_>| ser.serialize_quad(quad),
     };
     walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
-    w.write_all(&ser.finish()?)?;
-    Ok(())
+    let out = String::from_utf8(ser.finish()?)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    w.write_all(with_prefix_header(&out, conv)?.as_bytes())
 }
 
 #[cfg(test)]

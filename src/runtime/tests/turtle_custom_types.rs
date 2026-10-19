@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -58,7 +58,7 @@ fn turtle_wkt_literal_has_geosparql_datatype() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -98,7 +98,7 @@ fn turtle_string_literal_has_no_datatype() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -136,7 +136,7 @@ fn turtle_uri_range_emits_named_node() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -179,7 +179,7 @@ fn turtle_type_derived_from_uri_emits_named_node() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -218,7 +218,7 @@ fn turtle_type_derived_from_integer_carries_its_parents_datatype() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -250,7 +250,7 @@ fn turtle_uriorcurie_range_emits_named_node() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 

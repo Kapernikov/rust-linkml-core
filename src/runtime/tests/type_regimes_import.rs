@@ -116,21 +116,30 @@ fn direct_type_conflicting_with_rdf_type_is_a_type_conflict() {
 }
 
 #[test]
-fn two_direct_types_are_ambiguous() {
+fn two_direct_types_are_conflicting() {
     let err = import_err(
         "ex:s1 a ex:Signal, ex:Asset ; sesame:directType ex:Signal, ex:Asset .",
         &["Signal"],
     );
-    match err {
-        ImportError::AmbiguousType { candidates, .. } => assert_eq!(
-            candidates,
-            vec![
-                "http://example.org/Asset".to_string(),
-                "http://example.org/Signal".to_string()
-            ]
-        ),
-        other => panic!("expected AmbiguousType, got {other}"),
+    match &err {
+        ImportError::ConflictingDirectTypes {
+            subject,
+            direct_types,
+        } => {
+            assert_eq!(subject, "<http://example.org/s1>");
+            assert_eq!(
+                direct_types,
+                &vec![
+                    "http://example.org/Asset".to_string(),
+                    "http://example.org/Signal".to_string()
+                ]
+            );
+        }
+        other => panic!("expected ConflictingDirectTypes, got {other}"),
     }
+    let msg = err.to_string();
+    assert!(msg.contains("keep one sesame:directType"), "{msg}");
+    assert!(!msg.contains("add a sesame:directType"), "{msg}");
 }
 
 #[test]

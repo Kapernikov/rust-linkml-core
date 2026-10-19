@@ -4,16 +4,14 @@ use linkml_runtime::{
     load_yaml_file,
     rdf_import::{import_turtle, ImportOptions},
     schema_rdf::{rdf_types, TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE},
-    turtle::{
-        turtle_to_string, write_nquads, write_ntriples, write_trig, QuadOptions, TurtleOptions,
-    },
+    turtle::{turtle_to_string, write_nquads, write_ntriples, write_trig, WriteOptions},
     LinkMLInstance,
 };
 use linkml_schemaview::identifier::{converter_from_schema, converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
 use oxrdf::graph::CanonicalizationAlgorithm;
-use oxrdf::{Graph, NamedNode, TripleRef};
+use oxrdf::{Graph, GraphName, NamedNode, TripleRef};
 use oxttl::{NQuadsParser, NTriplesParser, TriGParser, TurtleParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -60,7 +58,7 @@ fn roundtrip(
         sv,
         schema,
         conv,
-        TurtleOptions::default().with_skolem(false),
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -251,13 +249,15 @@ fn regimes_fixture() -> Fx {
     }
 }
 
-fn partition_graphs(regime: TypeRegime) -> BTreeMap<TypePartition, NamedNode> {
+fn partition_graphs(regime: TypeRegime) -> BTreeMap<TypePartition, GraphName> {
     regime
         .partitions()
         .map(|p| {
             (
                 p,
-                NamedNode::new(format!("https://example.com/graphs/{p:?}")).unwrap(),
+                GraphName::NamedNode(
+                    NamedNode::new(format!("https://example.com/graphs/{p:?}")).unwrap(),
+                ),
             )
         })
         .collect()
@@ -273,20 +273,18 @@ fn written(
     skolem: bool,
 ) -> Graph {
     let mut graph = Graph::new();
-    let opts = TurtleOptions::default()
-        .with_skolem(skolem)
-        .with_regime(regime);
-    let quad_opts = QuadOptions::new(partition_graphs(regime)).with_skolem(skolem);
+    let opts = WriteOptions::flat(regime).with_skolem(skolem);
+    let quad_opts = WriteOptions::quads(partition_graphs(regime)).with_skolem(skolem);
     let mut buf = Vec::new();
     match format {
         Format::Turtle => {
-            let ttl = turtle_to_string(instance, &fx.sv, &fx.schema, &fx.conv, opts).unwrap();
+            let ttl = turtle_to_string(instance, &fx.sv, &fx.schema, &fx.conv, &opts).unwrap();
             for t in TurtleParser::new().for_reader(ttl.as_bytes()) {
                 graph.insert(&t.unwrap());
             }
         }
         Format::NTriples => {
-            write_ntriples(instance, &fx.sv, &fx.schema, &fx.conv, &mut buf, opts).unwrap();
+            write_ntriples(instance, &fx.sv, &fx.schema, &fx.conv, &mut buf, &opts).unwrap();
             for t in NTriplesParser::new().for_reader(buf.as_slice()) {
                 graph.insert(&t.unwrap());
             }
@@ -504,7 +502,7 @@ fn non_standard_partition_set_writes_consistently_and_imports_back() {
     let built: TypeRegime = [TypePartition::Own, TypePartition::IsA]
         .into_iter()
         .collect();
-    let parsed: TypeRegime = "own+is_a".parse().unwrap();
+    let parsed: TypeRegime = "own+isa".parse().unwrap();
     assert_eq!(built, parsed);
     assert!(!TypeRegime::NAMED.contains(&built));
     let fx = regimes_fixture();
@@ -553,17 +551,19 @@ fn non_standard_partition_set_writes_consistently_and_imports_back() {
 #[test]
 fn quads_union_equals_flat_isa_and_mixins_output() {
     let fx = regimes_fixture();
-    let all_partitions: BTreeMap<TypePartition, NamedNode> = TypePartition::ALL
+    let all_partitions: BTreeMap<TypePartition, GraphName> = TypePartition::ALL
         .iter()
         .map(|p| {
             (
                 *p,
-                NamedNode::new(format!("https://example.com/graphs/{p:?}")).unwrap(),
+                GraphName::NamedNode(
+                    NamedNode::new(format!("https://example.com/graphs/{p:?}")).unwrap(),
+                ),
             )
         })
         .collect();
     for skolem in [true, false] {
-        let opts = QuadOptions::new(all_partitions.clone()).with_skolem(skolem);
+        let opts = WriteOptions::quads(all_partitions.clone()).with_skolem(skolem);
         let flat = written(
             &fx,
             &fx.instance,

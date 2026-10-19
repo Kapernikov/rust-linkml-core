@@ -33,6 +33,7 @@ use crate::{new_node_id, LinkMLInstance, ValidationProblemType, ValidationResult
 /// `_:label`); a type field (`type_iri`, `direct_type`, `candidates`) holds a
 /// plain IRI.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ImportError {
     /// I/O or parse error from oxttl
     Parse(String),
@@ -46,10 +47,17 @@ pub enum ImportError {
     MissingType(String),
     /// A subject has no `sesame:directType` and its schema `rdf:type`s do not
     /// have a unique most specific class (one that descends from all the
-    /// others), or it has several `sesame:directType`s.
+    /// others). `candidates` holds the schema-class `rdf:type` IRIs, sorted.
     AmbiguousType {
         subject: String,
         candidates: Vec<String>,
+    },
+    /// A subject has several distinct `sesame:directType` values, but a node
+    /// has exactly one most specific class. `direct_types` holds the IRIs,
+    /// sorted.
+    ConflictingDirectTypes {
+        subject: String,
+        direct_types: Vec<String>,
     },
     /// A subject's `rdf:type` is not among the types its `sesame:directType`
     /// implies (`rdf_types(direct_type, IS_A_AND_MIXINS)`).
@@ -91,11 +99,16 @@ impl std::fmt::Display for ImportError {
                 f,
                 "Ambiguous type for subject {subject}: none of {} is more specific than all \
                  the others; add a sesame:directType triple naming the intended class",
-                candidates
-                    .iter()
-                    .map(|c| format!("<{c}>"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                iri_list(candidates)
+            ),
+            ImportError::ConflictingDirectTypes {
+                subject,
+                direct_types,
+            } => write!(
+                f,
+                "Subject {subject} has several sesame:directType values ({}); a subject has \
+                 exactly one most specific class, so keep one sesame:directType triple",
+                iri_list(direct_types)
             ),
             ImportError::TypeConflict {
                 subject,
@@ -116,6 +129,14 @@ impl std::fmt::Display for ImportError {
             }
         }
     }
+}
+
+/// `<a>, <b>` for a list of IRIs.
+fn iri_list(iris: &[String]) -> String {
+    iris.iter()
+        .map(|c| format!("<{c}>"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl std::error::Error for ImportError {}
@@ -235,7 +256,7 @@ fn resolve_enum_value(
 /// `sesame:directType` triples.
 ///
 /// 1. With `sesame:directType`: exactly one distinct value is required
-///    (several: [`ImportError::AmbiguousType`]) and it must name a schema
+///    (several: [`ImportError::ConflictingDirectTypes`]) and it must name a schema
 ///    class ([`ImportError::UnknownType`]). Every schema-class `rdf:type` of
 ///    the subject must be implied by it, i.e. be in
 ///    `rdf_types(direct, IS_A_AND_MIXINS)` ([`ImportError::TypeConflict`]).
@@ -243,7 +264,7 @@ fn resolve_enum_value(
 /// 2. Otherwise the result is the unique non-mixin candidate among the
 ///    subject's schema-class `rdf:type`s that implies every other candidate
 ///    (same `rdf_types` test). Mixin classes are never the result but still
-///    must be implied. No such class, or several: `AmbiguousType`.
+///    must be implied. No such class, or several: [`ImportError::AmbiguousType`].
 ///
 /// `rdf:type`s that are not schema classes are ignored as long as at least
 /// one is (non-class types such as `owl:Thing` are common in inferred data).
@@ -291,9 +312,9 @@ pub(crate) fn resolve_class<T: TripleSource>(
     if !directs.is_empty() {
         if directs.len() > 1 {
             directs.sort();
-            return Err(ImportError::AmbiguousType {
+            return Err(ImportError::ConflictingDirectTypes {
                 subject: subject.to_string(),
-                candidates: directs,
+                direct_types: directs,
             });
         }
         let direct_iri = &directs[0];

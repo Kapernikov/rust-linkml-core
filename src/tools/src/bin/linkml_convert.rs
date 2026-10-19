@@ -3,8 +3,9 @@ use clap::{Parser, ValueEnum};
 #[cfg(feature = "ttl")]
 use linkml_runtime::{
     load_json_file, load_yaml_file,
-    rdf_export::{export_ntriples_many, export_turtle_many, ExportOptions},
+    rdf_export::{export_ntriples_many, export_turtle_many},
     rdf_import::{import_ntriples, import_turtle, ImportOptions},
+    turtle::WriteOptions,
     validate, LinkMLInstance,
 };
 #[cfg(feature = "ttl")]
@@ -246,7 +247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &schema,
                     &conv,
                     &mut writer,
-                    ExportOptions::default().with_skolem(args.skolem),
+                    &WriteOptions::default().with_skolem(args.skolem),
                 )?;
                 count += 1;
             }
@@ -260,7 +261,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &schema,
                     &conv,
                     &mut writer,
-                    ExportOptions::default().with_skolem(args.skolem),
+                    &WriteOptions::default().with_skolem(args.skolem),
                 )?;
                 count += 1;
             }
