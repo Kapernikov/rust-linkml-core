@@ -218,3 +218,40 @@ fn self_mixin_class_does_not_loop() {
     let (c, _) = one("ex:m2 a ex:SelfMix, ex:Thing ; ex:name \"M\" .", &["Thing"]);
     assert_eq!(c, "SelfMix");
 }
+
+/// Roots are chosen by the most concrete class, so asserted and inferred
+/// files select the same subjects; a leaf selects only its own subjects.
+#[test]
+fn root_selection_is_independent_of_inferred_types() {
+    let asserted = "ex:s1 a ex:Signal ; ex:name \"S\" ; ex:aspect \"green\" .\n\
+        ex:b1 a ex:Beacon ; ex:name \"B\" .\n\
+        ex:a1 a ex:Asset ; ex:name \"A\" .\n\
+        ex:p1 a ex:Pump ; ex:name \"P\" .";
+    let inferred = "ex:s1 a ex:Signal, ex:Asset, ex:Thing ; sesame:directType ex:Signal ; \
+        ex:name \"S\" ; ex:aspect \"green\" .\n\
+        ex:b1 a ex:Beacon, ex:Tagged, ex:Asset, ex:Thing ; sesame:directType ex:Beacon ; \
+        ex:name \"B\" .\n\
+        ex:a1 a ex:Asset, ex:Thing ; sesame:directType ex:Asset ; ex:name \"A\" .\n\
+        ex:p1 a ex:Pump, ex:Thing ; sesame:directType ex:Pump ; ex:name \"P\" .";
+    let summary = |body: &str, roots: &[&str]| -> Vec<(String, String)> {
+        let mut v: Vec<(String, String)> = import(body, roots)
+            .unwrap()
+            .into_iter()
+            .map(|(c, i)| (c, i.to_json().to_string()))
+            .collect();
+        v.sort();
+        v
+    };
+    for (roots, classes) in [
+        (&["Asset"][..], vec!["Asset", "Beacon", "Signal"]),
+        (&["Signal"], vec!["Signal"]),
+        (&["Beacon"], vec!["Beacon"]),
+        (&["Signal", "Beacon"], vec!["Beacon", "Signal"]),
+        (&["Thing"], vec!["Asset", "Beacon", "Pump", "Signal"]),
+    ] {
+        let from_asserted = summary(asserted, roots);
+        assert_eq!(from_asserted, summary(inferred, roots), "{roots:?}");
+        let got: Vec<&str> = from_asserted.iter().map(|(c, _)| c.as_str()).collect();
+        assert_eq!(got, classes, "{roots:?}");
+    }
+}

@@ -5620,11 +5620,25 @@ def export_turtle(instances:typing.Any, schema_view:SchemaView, writer:typing.An
 def import_ntriples(reader:typing.Any, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str], *, disk_path:typing.Optional[builtins.str]=None, strict:builtins.bool=False) -> RdfStream:
     r"""
     Import RDF/N-Triples into a streaming iterator of LinkML instances.
+    
+    `root_classes` names the classes to import. A subject is imported iff its
+    most concrete class (resolved from all its `rdf:type` / `sesame:directType`
+    triples) is one of them or a descendant of one (is_a or mixin), so asserted
+    and inferred data select the same subjects; each is created as that most
+    concrete class. A leaf class selects only its own subjects, never its
+    ancestors or siblings.
     """
 
 def import_turtle(reader:typing.Any, schema_view:SchemaView, root_classes:typing.Sequence[builtins.str], *, disk_path:typing.Optional[builtins.str]=None, strict:builtins.bool=False) -> RdfStream:
     r"""
     Import RDF/Turtle into a streaming iterator of LinkML instances.
+    
+    `root_classes` names the classes to import. A subject is imported iff its
+    most concrete class (resolved from all its `rdf:type` / `sesame:directType`
+    triples) is one of them or a descendant of one (is_a or mixin), so asserted
+    and inferred data select the same subjects; each is created as that most
+    concrete class. A leaf class selects only its own subjects, never its
+    ancestors or siblings.
     """
 
 def lint_element_identity(schema_view:SchemaView) -> builtins.list[ValidationResult]:

@@ -24,7 +24,7 @@ use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::{SchemaView, SlotInlineMode};
 use linkml_schemaview::Converter;
 
-use crate::schema_rdf::SESAME_DIRECT_TYPE;
+use crate::schema_rdf::{type_family, TypeRegime, SESAME_DIRECT_TYPE};
 use crate::triple_source::TripleSource;
 use crate::turtle_import::{harvest_subject, resolve_class, HarvestContext, ImportError};
 use crate::{LinkMLInstance, ValidationResult};
@@ -47,13 +47,14 @@ pub struct InlineStructure {
 /// Enumerate the root subjects of an import, each once, with its resolved
 /// class.
 ///
-/// A subject is a root iff it carries an `rdf:type` naming one of
-/// `root_classes`; it is
-/// then imported once, as the class [`resolve_class`] picks from ALL its
-/// `rdf:type` / `sesame:directType` triples, however many root classes it
-/// matches (an inferred `Signal` that also carries `Asset` is one `Signal`,
-/// not a `Signal` plus an `Asset`). Subjects whose types do not resolve
-/// (`AmbiguousType`, `TypeConflict`, ...) fail the import.
+/// A subject is a root iff the class [`resolve_class`] picks from ALL its
+/// `rdf:type` / `sesame:directType` triples (the most concrete one) is a
+/// requested root class or a descendant of one (is_a or mixin), i.e. it is in
+/// [`type_family`] of a requested class under `IS_A_AND_MIXINS`. The test
+/// does not depend on whether the data carries inferred types, so asserted
+/// and inferred files select the same subjects. Each root is imported once,
+/// as its resolved class, however many root classes it matches. Subjects whose
+/// types do not resolve (`AmbiguousType`, `TypeConflict`, ...) fail the import.
 fn collect_root_subjects<T: TripleSource>(
     store: &T,
     sv: &SchemaView,
@@ -61,21 +62,37 @@ fn collect_root_subjects<T: TripleSource>(
     root_classes: &[&str],
 ) -> Result<Vec<(NamedOrBlankNode, ClassView)>, ImportError> {
     let rdf_type = rdf::TYPE.into_owned();
-    let mut seen: HashSet<String> = HashSet::new();
+    let direct_type = NamedNode::new_unchecked(SESAME_DIRECT_TYPE);
+    let mut accepted: HashSet<String> = HashSet::new();
     let mut out: Vec<(NamedOrBlankNode, ClassView)> = Vec::new();
     for &name in root_classes {
         let cv = sv
             .get_class(&Identifier::new(name), conv)
             .map_err(ImportError::SchemaError)?
             .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
-        let class_uri = NamedNode::new_unchecked(cv.get_uri(conv, false, true)?.to_string());
-        for subj in store.subjects_for_predicate_object(&rdf_type, &class_uri) {
-            let subj = subj.into_owned();
-            if !seen.insert(subj.to_string()) {
-                continue;
+        let family = type_family(&cv, TypeRegime::IS_A_AND_MIXINS)?;
+        let family_keys: HashSet<String> = family
+            .iter()
+            .map(|c| c.canonical_uri().to_string())
+            .collect();
+        let mut examined: HashSet<String> = HashSet::new();
+        for member in &family {
+            let class_uri =
+                NamedNode::new_unchecked(member.get_uri(conv, false, true)?.to_string());
+            for predicate in [&rdf_type, &direct_type] {
+                for subj in store.subjects_for_predicate_object(predicate, &class_uri) {
+                    let subj = subj.into_owned();
+                    let key = subj.to_string();
+                    if accepted.contains(&key) || !examined.insert(key.clone()) {
+                        continue;
+                    }
+                    let class = resolve_class(store, sv, conv, &subj)?;
+                    if family_keys.contains(&class.canonical_uri().to_string()) {
+                        accepted.insert(key);
+                        out.push((subj, class));
+                    }
+                }
             }
-            let class = resolve_class(store, sv, conv, &subj)?;
-            out.push((subj, class));
         }
     }
     Ok(out)

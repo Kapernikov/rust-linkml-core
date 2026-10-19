@@ -2156,6 +2156,13 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
 }
 
 /// Import RDF/Turtle into a streaming iterator of LinkML instances.
+///
+/// `root_classes` names the classes to import. A subject is imported iff its
+/// most concrete class (resolved from all its `rdf:type` / `sesame:directType`
+/// triples) is one of them or a descendant of one (is_a or mixin), so asserted
+/// and inferred data select the same subjects; each is created as that most
+/// concrete class. A leaf class selects only its own subjects, never its
+/// ancestors or siblings.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "import_turtle", signature = (reader, schema_view, root_classes, *, disk_path=None, strict=false))]
 fn py_import_turtle(
@@ -2178,6 +2185,13 @@ fn py_import_turtle(
 }
 
 /// Import RDF/N-Triples into a streaming iterator of LinkML instances.
+///
+/// `root_classes` names the classes to import. A subject is imported iff its
+/// most concrete class (resolved from all its `rdf:type` / `sesame:directType`
+/// triples) is one of them or a descendant of one (is_a or mixin), so asserted
+/// and inferred data select the same subjects; each is created as that most
+/// concrete class. A leaf class selects only its own subjects, never its
+/// ancestors or siblings.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "import_ntriples", signature = (reader, schema_view, root_classes, *, disk_path=None, strict=false))]
 fn py_import_ntriples(
