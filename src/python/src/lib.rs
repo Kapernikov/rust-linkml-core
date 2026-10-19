@@ -3,9 +3,8 @@ use linkml_runtime::diff::{
     diff as diff_internal, element_identity_label, list_path_segments, patch as patch_internal,
     Delta, DeltaOp, DiffOptions, PatchTrace,
 };
-use linkml_runtime::rdf_export::ExportOptions;
 use linkml_runtime::schema_rdf::{TypePartition, TypeRegime};
-use linkml_runtime::turtle::{turtle_to_string, write_nquads, QuadOptions, TurtleOptions};
+use linkml_runtime::turtle::{turtle_to_string, write_nquads, write_trig, WriteOptions};
 use linkml_runtime::{
     lint_element_identity, lint_instance_identity, load_json_str, load_yaml_str, validate_issues,
     LinkMLInstance, LoadResult, NodeId, ValidationResult, ValidationSeverity, ValidationValue,
@@ -14,17 +13,18 @@ use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::io;
 use linkml_schemaview::schemaview::SchemaView;
 use linkml_schemaview::{classview::ClassView, enumview::EnumView, slotview::SlotView};
+use oxrdf::GraphName;
 use pyo3::conversion::{IntoPyObject, IntoPyObjectExt};
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
-use pyo3::types::{PyAny, PyDict, PyModule, PyString, PyType};
+use pyo3::types::{PyAny, PyDict, PyMapping, PyModule, PyString, PyType};
 use pyo3::Bound;
 use pyo3::{wrap_pyfunction, wrap_pymodule};
 #[cfg(feature = "stubgen")]
 use pyo3_stub_gen::{
     define_stub_info_gatherer,
-    derive::{gen_stub_pyclass, gen_stub_pyclass_enum, gen_stub_pyfunction, gen_stub_pymethods},
+    derive::{gen_stub_pyclass, gen_stub_pyfunction, gen_stub_pymethods},
     PyStubType, TypeInfo,
 };
 use serde_json::Value as JsonValue;
@@ -794,10 +794,17 @@ fn make_schema_view(source: Option<&Bound<'_, PyAny>>) -> PyResult<PySchemaView>
     PySchemaView::new(source)
 }
 
+#[cfg(feature = "stubgen")]
+impl PyStubType for PyTypePartition {
+    fn type_output() -> TypeInfo {
+        TypeInfo::unqualified("TypePartition")
+    }
+}
+
 /// Which type triples the RDF writers emit: a set of `TypePartition`s; see
 /// `linkml_runtime::schema_rdf::TypeRegime`. Use the named regimes
 /// `TypeRegime.ASSERTED`, `TypeRegime.IS_A`, `TypeRegime.IS_A_AND_MIXINS`,
-/// build one from partitions, or `TypeRegime.parse("own+is_a")`.
+/// build one from partitions, or `TypeRegime.parse("own+isa")`.
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
 #[pyclass(name = "TypeRegime", eq, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -864,20 +871,32 @@ impl PyTypeRegime {
         Ok(PyTypeRegime(partitions.0))
     }
 
+    // These are functions rather than consts so the stub declares plain typed
+    // attributes (`ASSERTED: TypeRegime`) instead of a default expression.
+
     /// Only the instance's own class.
     #[classattr]
-    const ASSERTED: PyTypeRegime = PyTypeRegime(TypeRegime::ASSERTED);
+    #[allow(non_snake_case)]
+    fn ASSERTED() -> PyTypeRegime {
+        PyTypeRegime(TypeRegime::ASSERTED)
+    }
 
     /// Own class, transitive is_a ancestors, and sesame:directType.
     #[classattr]
-    const IS_A: PyTypeRegime = PyTypeRegime(TypeRegime::IS_A);
+    #[allow(non_snake_case)]
+    fn IS_A() -> PyTypeRegime {
+        PyTypeRegime(TypeRegime::IS_A)
+    }
 
     /// As IS_A, with mixins counted as superclasses.
     #[classattr]
-    const IS_A_AND_MIXINS: PyTypeRegime = PyTypeRegime(TypeRegime::IS_A_AND_MIXINS);
+    #[allow(non_snake_case)]
+    fn IS_A_AND_MIXINS() -> PyTypeRegime {
+        PyTypeRegime(TypeRegime::IS_A_AND_MIXINS)
+    }
 
     /// Parse `str(regime)` output: a named regime, `none`, or partition names
-    /// (`own`, `is_a`, `mixin`, `direct`) joined by `+`. Raises `ValueError`
+    /// (`own`, `isa`, `mixin`, `direct`) joined by `+`. Raises `ValueError`
     /// on anything else.
     #[staticmethod]
     fn parse(s: &str) -> PyResult<PyTypeRegime> {
@@ -920,7 +939,6 @@ impl PyTypeRegime {
 
 /// A disjoint slice of an instance's type triples; see
 /// `linkml_runtime::schema_rdf::TypePartition`.
-#[cfg_attr(feature = "stubgen", gen_stub_pyclass_enum)]
 #[pyclass(name = "TypePartition", eq, eq_int, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PyTypePartition {
@@ -934,17 +952,54 @@ pub enum PyTypePartition {
     Direct,
 }
 
-fn quad_options(
-    partition_graphs: HashMap<PyTypePartition, String>,
-    skolem: bool,
-) -> PyResult<QuadOptions> {
-    let mut graphs = std::collections::BTreeMap::new();
-    for (p, iri) in partition_graphs {
-        let node = oxrdf::NamedNode::new(iri.clone())
-            .map_err(|e| PyValueError::new_err(format!("invalid graph IRI <{iri}>: {e}")))?;
-        graphs.insert(TypePartition::from(p), node);
+/// A mapping from `TypePartition` to a graph IRI, or `None` for the default
+/// graph.
+struct PartitionGraphs(std::collections::BTreeMap<TypePartition, GraphName>);
+
+impl<'py> FromPyObject<'py> for PartitionGraphs {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let mapping = ob.downcast::<PyMapping>()?;
+        let mut graphs = std::collections::BTreeMap::new();
+        for item in mapping.items()?.try_iter()? {
+            let (partition, graph): (PyTypePartition, Option<String>) = item?.extract()?;
+            let graph = match graph {
+                None => GraphName::DefaultGraph,
+                Some(iri) => {
+                    GraphName::NamedNode(oxrdf::NamedNode::new(iri.clone()).map_err(|e| {
+                        PyValueError::new_err(format!("invalid graph IRI <{iri}>: {e}"))
+                    })?)
+                }
+            };
+            graphs.insert(TypePartition::from(partition), graph);
+        }
+        Ok(PartitionGraphs(graphs))
     }
-    Ok(QuadOptions::new(graphs).with_skolem(skolem))
+}
+
+#[cfg(feature = "stubgen")]
+impl PyStubType for PartitionGraphs {
+    fn type_output() -> TypeInfo {
+        TypeInfo::with_module(
+            "typing.Mapping[TypePartition, typing.Optional[builtins.str]]",
+            "typing".into(),
+        )
+    }
+}
+
+impl PartitionGraphs {
+    fn into_options(self, skolem: bool) -> WriteOptions {
+        WriteOptions::quads(self.0).with_skolem(skolem)
+    }
+}
+
+/// An invalid option combination is the caller's mistake (`ValueError`); any
+/// other writer error is an `Exception`.
+fn write_error_to_py(e: std::io::Error) -> PyErr {
+    if e.kind() == std::io::ErrorKind::InvalidInput {
+        PyValueError::new_err(e.to_string())
+    } else {
+        PyException::new_err(e.to_string())
+    }
 }
 
 /// Python bindings for `linkml_runtime`.
@@ -979,6 +1034,14 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add(
         "AmbiguousTypeError",
         m.py().get_type::<AmbiguousTypeError>(),
+    )?;
+    m.add(
+        "ConflictingDirectTypesError",
+        m.py().get_type::<ConflictingDirectTypesError>(),
+    )?;
+    m.add(
+        "ConflictingDirectTypesError",
+        m.py().get_type::<ConflictingDirectTypesError>(),
     )?;
     m.add("TypeConflictError", m.py().get_type::<TypeConflictError>())?;
     m.add_class::<PyLinkMLInstance>()?;
@@ -1554,11 +1617,13 @@ impl PyLinkMLInstance {
         json_value_to_py(py, &self.value.to_json())
     }
 
-    #[pyo3(signature = (skolem=None, regime=PyTypeRegime::ASSERTED))]
+    /// This instance as Turtle. `regime` picks which type triples are
+    /// written; Turtle cannot carry graph names.
+    #[pyo3(signature = (*, skolem=false, regime=PyTypeRegime(TypeRegime::ASSERTED)))]
     fn as_turtle<'py>(
         &self,
         py: Python<'py>,
-        skolem: Option<bool>,
+        skolem: bool,
         regime: PyTypeRegime,
     ) -> PyResult<String> {
         let sv_ref = self.sv.bind(py).borrow();
@@ -1572,20 +1637,19 @@ impl PyLinkMLInstance {
             rust_sv,
             &schema,
             &conv,
-            TurtleOptions::default()
-                .with_skolem(skolem.unwrap_or(false))
-                .with_regime(regime.into()),
+            &WriteOptions::flat(regime.into()).with_skolem(skolem),
         )
-        .map_err(|e| PyException::new_err(e.to_string()))
+        .map_err(write_error_to_py)
     }
 
     /// This instance as N-Quads, each type partition in `partition_graphs`
-    /// written into its named graph (partitions not in the map are omitted).
+    /// written into its graph IRI (`None` is the default graph); partitions
+    /// not in the mapping are omitted.
     #[pyo3(signature = (partition_graphs, *, skolem=false))]
     fn as_nquads<'py>(
         &self,
         py: Python<'py>,
-        partition_graphs: HashMap<PyTypePartition, String>,
+        partition_graphs: PartitionGraphs,
         skolem: bool,
     ) -> PyResult<String> {
         let sv_ref = self.sv.bind(py).borrow();
@@ -1594,10 +1658,31 @@ impl PyLinkMLInstance {
             .primary_schema()
             .ok_or_else(|| PyException::new_err("no schema loaded"))?;
         let conv = rust_sv.converter();
-        let options = quad_options(partition_graphs, skolem)?;
+        let options = partition_graphs.into_options(skolem);
         let mut buf = Vec::new();
         write_nquads(&self.value, rust_sv, &schema, &conv, &mut buf, &options)
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+            .map_err(write_error_to_py)?;
+        String::from_utf8(buf).map_err(|e| PyException::new_err(e.to_string()))
+    }
+
+    /// This instance as TriG, routed like `as_nquads`.
+    #[pyo3(signature = (partition_graphs, *, skolem=false))]
+    fn as_trig<'py>(
+        &self,
+        py: Python<'py>,
+        partition_graphs: PartitionGraphs,
+        skolem: bool,
+    ) -> PyResult<String> {
+        let sv_ref = self.sv.bind(py).borrow();
+        let rust_sv = sv_ref.as_rust();
+        let schema = rust_sv
+            .primary_schema()
+            .ok_or_else(|| PyException::new_err("no schema loaded"))?;
+        let conv = rust_sv.converter();
+        let options = partition_graphs.into_options(skolem);
+        let mut buf = Vec::new();
+        write_trig(&self.value, rust_sv, &schema, &conv, &mut buf, &options)
+            .map_err(write_error_to_py)?;
         String::from_utf8(buf).map_err(|e| PyException::new_err(e.to_string()))
     }
 
@@ -1992,6 +2077,14 @@ pyo3::create_exception!(
 );
 pyo3::create_exception!(
     _native,
+    ConflictingDirectTypesError,
+    AmbiguousTypeError,
+    "A subject has several distinct sesame:directType values. Attributes: \
+     `subject: str`, `direct_types: list[str]` (sorted) and `candidates` (the \
+     same list, so code catching `AmbiguousTypeError` keeps working)."
+);
+pyo3::create_exception!(
+    _native,
     TypeConflictError,
     RdfImportError,
     "A subject's rdf:type is not implied by its sesame:directType. Attributes: \
@@ -2003,9 +2096,12 @@ pyo3::create_exception!(
 // way to declare attributes).
 #[cfg(feature = "stubgen")]
 mod exception_stubs {
-    use super::{AmbiguousTypeError, RdfImportError, TypeConflictError};
+    use super::{
+        AmbiguousTypeError, ConflictingDirectTypesError, PyTypePartition, RdfImportError,
+        TypeConflictError,
+    };
     use pyo3_stub_gen::inventory;
-    use pyo3_stub_gen::type_info::{MemberInfo, PyClassInfo};
+    use pyo3_stub_gen::type_info::{MemberInfo, PyClassInfo, PyMethodsInfo};
     use pyo3_stub_gen::{PyStubType, TypeInfo};
     use std::any::TypeId;
 
@@ -2020,6 +2116,12 @@ mod exception_stubs {
     }
     fn rdf_import_error() -> TypeInfo {
         TypeInfo::unqualified("RdfImportError")
+    }
+    fn ambiguous_type_error() -> TypeInfo {
+        TypeInfo::unqualified("AmbiguousTypeError")
+    }
+    fn type_partition() -> TypeInfo {
+        TypeInfo::unqualified("TypePartition")
     }
     const fn member(name: &'static str, r#type: fn() -> TypeInfo) -> MemberInfo {
         MemberInfo {
@@ -2063,6 +2165,25 @@ mod exception_stubs {
     }
     inventory::submit! {
         PyClassInfo {
+            pyclass_name: "ConflictingDirectTypesError",
+            struct_id: TypeId::of::<ConflictingDirectTypesError>,
+            getters: &[
+                member("subject", str_type),
+                member("direct_types", str_list_type),
+                member("candidates", str_list_type),
+            ],
+            setters: &[],
+            module: None,
+            doc: "A subject has several distinct sesame:directType values.",
+            bases: &[ambiguous_type_error],
+            has_eq: false,
+            has_ord: false,
+            has_hash: false,
+            has_str: false,
+        }
+    }
+    inventory::submit! {
+        PyClassInfo {
             pyclass_name: "TypeConflictError",
             struct_id: TypeId::of::<TypeConflictError>,
             getters: &[
@@ -2078,6 +2199,41 @@ mod exception_stubs {
             has_ord: false,
             has_hash: false,
             has_str: false,
+        }
+    }
+    // `TypePartition` is a pyo3 enum, which is not an `enum.Enum`: members
+    // cannot be iterated and `TypePartition["IsA"]` fails. The stub therefore
+    // declares a plain class with typed class attributes, which is what
+    // exists at runtime.
+    inventory::submit! {
+        PyClassInfo {
+            pyclass_name: "TypePartition",
+            struct_id: TypeId::of::<PyTypePartition>,
+            getters: &[],
+            setters: &[],
+            module: None,
+            doc: "A disjoint slice of an instance's type triples; see \
+                  `linkml_runtime::schema_rdf::TypePartition`. Not an `enum.Enum`: \
+                  the four members are class attributes.",
+            bases: &[],
+            has_eq: true,
+            has_ord: false,
+            has_hash: true,
+            has_str: false,
+        }
+    }
+    inventory::submit! {
+        PyMethodsInfo {
+            struct_id: TypeId::of::<PyTypePartition>,
+            attrs: &[
+                MemberInfo { name: "Own", r#type: type_partition, doc: "The instance's own rdf:type and all non-type triples.", default: None, deprecated: None },
+                MemberInfo { name: "IsA", r#type: type_partition, doc: "rdf:type for each transitive is_a ancestor.", default: None, deprecated: None },
+                MemberInfo { name: "Mixin", r#type: type_partition, doc: "rdf:type for each class reachable only through a mixin edge.", default: None, deprecated: None },
+                MemberInfo { name: "Direct", r#type: type_partition, doc: "One sesame:directType naming the instance's own class.", default: None, deprecated: None },
+            ],
+            getters: &[],
+            setters: &[],
+            methods: &[],
         }
     }
 }
@@ -2110,6 +2266,33 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
         })
     };
     match e {
+        ImportError::ConflictingDirectTypes {
+            subject,
+            direct_types,
+        } => Python::with_gil(|py| {
+            set(
+                ConflictingDirectTypesError::new_err(msg),
+                vec![
+                    (
+                        "subject",
+                        bare(subject).into_pyobject(py).unwrap().into_any().unbind(),
+                    ),
+                    (
+                        "direct_types",
+                        direct_types
+                            .clone()
+                            .into_pyobject(py)
+                            .unwrap()
+                            .into_any()
+                            .unbind(),
+                    ),
+                    (
+                        "candidates",
+                        direct_types.into_pyobject(py).unwrap().into_any().unbind(),
+                    ),
+                ],
+            )
+        }),
         ImportError::AmbiguousType {
             subject,
             candidates,
@@ -2263,7 +2446,7 @@ fn build_py_rdf_stream(
 ///
 /// `instances` may be a single LinkMLInstance or an iterable of them.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "export_turtle", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime::ASSERTED))]
+#[pyfunction(name = "export_turtle", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime(TypeRegime::ASSERTED)))]
 fn py_export_turtle(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,
@@ -2272,17 +2455,13 @@ fn py_export_turtle(
     skolem: bool,
     regime: PyTypeRegime,
 ) -> PyResult<()> {
-    let options = ExportFormat::Turtle(
-        ExportOptions::default()
-            .with_skolem(skolem)
-            .with_regime(regime.into()),
-    );
+    let options = ExportFormat::Turtle(WriteOptions::flat(regime.into()).with_skolem(skolem));
     do_py_export(py, instances, schema_view, writer, options)
 }
 
 /// Write LinkML instances as N-Triples into a Python file-like object.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "export_ntriples", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime::ASSERTED))]
+#[pyfunction(name = "export_ntriples", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime(TypeRegime::ASSERTED)))]
 fn py_export_ntriples(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,
@@ -2291,16 +2470,13 @@ fn py_export_ntriples(
     skolem: bool,
     regime: PyTypeRegime,
 ) -> PyResult<()> {
-    let options = ExportFormat::NTriples(
-        ExportOptions::default()
-            .with_skolem(skolem)
-            .with_regime(regime.into()),
-    );
+    let options = ExportFormat::NTriples(WriteOptions::flat(regime.into()).with_skolem(skolem));
     do_py_export(py, instances, schema_view, writer, options)
 }
 
 /// Write LinkML instances as N-Quads into a Python file-like object, each type
-/// partition in `partition_graphs` written into its named graph.
+/// partition in `partition_graphs` written into its graph IRI (`None` is the
+/// default graph).
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "export_nquads", signature = (instances, schema_view, writer, partition_graphs, *, skolem=false))]
 fn py_export_nquads(
@@ -2308,15 +2484,16 @@ fn py_export_nquads(
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
     writer: PyObject,
-    partition_graphs: HashMap<PyTypePartition, String>,
+    partition_graphs: PartitionGraphs,
     skolem: bool,
 ) -> PyResult<()> {
-    let options = ExportFormat::NQuads(quad_options(partition_graphs, skolem)?);
+    let options = ExportFormat::NQuads(partition_graphs.into_options(skolem));
     do_py_export(py, instances, schema_view, writer, options)
 }
 
 /// Write LinkML instances as TriG into a Python file-like object, each type
-/// partition in `partition_graphs` written into its named graph.
+/// partition in `partition_graphs` written into its graph IRI (`None` is the
+/// default graph).
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
 #[pyfunction(name = "export_trig", signature = (instances, schema_view, writer, partition_graphs, *, skolem=false))]
 fn py_export_trig(
@@ -2324,18 +2501,18 @@ fn py_export_trig(
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
     writer: PyObject,
-    partition_graphs: HashMap<PyTypePartition, String>,
+    partition_graphs: PartitionGraphs,
     skolem: bool,
 ) -> PyResult<()> {
-    let options = ExportFormat::TriG(quad_options(partition_graphs, skolem)?);
+    let options = ExportFormat::TriG(partition_graphs.into_options(skolem));
     do_py_export(py, instances, schema_view, writer, options)
 }
 
 enum ExportFormat {
-    Turtle(ExportOptions),
-    NTriples(ExportOptions),
-    NQuads(QuadOptions),
-    TriG(QuadOptions),
+    Turtle(WriteOptions),
+    NTriples(WriteOptions),
+    NQuads(WriteOptions),
+    TriG(WriteOptions),
 }
 
 fn do_py_export(
@@ -2371,14 +2548,14 @@ fn do_py_export(
     let mut py_writer = PyWriter::new(writer);
     let mut buffered = std::io::BufWriter::new(&mut py_writer);
     let res = match format {
-        ExportFormat::Turtle(o) => export_turtle_many(items, sv, &schema, &conv, &mut buffered, o),
+        ExportFormat::Turtle(o) => export_turtle_many(items, sv, &schema, &conv, &mut buffered, &o),
         ExportFormat::NTriples(o) => {
-            export_ntriples_many(items, sv, &schema, &conv, &mut buffered, o)
+            export_ntriples_many(items, sv, &schema, &conv, &mut buffered, &o)
         }
         ExportFormat::NQuads(o) => export_nquads_many(items, sv, &schema, &conv, &mut buffered, &o),
         ExportFormat::TriG(o) => export_trig_many(items, sv, &schema, &conv, &mut buffered, &o),
     };
-    res.map_err(|e| PyException::new_err(e.to_string()))?;
+    res.map_err(write_error_to_py)?;
     use std::io::Write;
     buffered
         .flush()

@@ -73,8 +73,10 @@ assert lr.TypeRegime.IS_A.partitions() == [
 P = lr.TypePartition
 custom = lr.TypeRegime([P.IsA, P.Own])
 assert custom.partitions() == [P.Own, P.IsA]
-assert custom == lr.TypeRegime.parse("own+is_a") == lr.TypeRegime(iter([P.Own, P.IsA, P.Own]))
-assert str(custom) == "own+is_a" and repr(custom) == "TypeRegime.parse('own+is_a')"
+assert custom == lr.TypeRegime.parse("own+isa") == lr.TypeRegime(iter([P.Own, P.IsA, P.Own]))
+assert str(custom) == "own+isa" and repr(custom) == "TypeRegime.parse('own+isa')"
+assert str(lr.TypeRegime([P.IsA])) == "isa"
+assert lr.TypeRegime.parse("isa") == lr.TypeRegime([P.IsA]) != lr.TypeRegime.IS_A
 assert str(lr.TypeRegime.IS_A) == "is_a" and repr(lr.TypeRegime.IS_A) == "TypeRegime.IS_A"
 assert repr(lr.TypeRegime.ASSERTED) == "TypeRegime.ASSERTED"
 assert lr.TypeRegime.parse("is_a_and_mixins") == lr.TypeRegime.IS_A_AND_MIXINS
@@ -91,7 +93,7 @@ for bad in ("bogus", "own+", "Asserted"):
         assert "asserted" in str(e)
     else:
         raise AssertionError(bad)
-assert value.as_turtle(regime=custom) == value.as_turtle(regime=lr.TypeRegime.parse("own+is_a"))
+assert value.as_turtle(regime=custom) == value.as_turtle(regime=lr.TypeRegime.parse("own+isa"))
 assert "directType" not in value.as_turtle(regime=custom) and "Asset" in value.as_turtle(regime=custom)
 
 # as_turtle: default unchanged, IsA adds ancestor types and sesame:directType.
@@ -129,6 +131,37 @@ assert one_graph["https://example.com/graphs/g"] == set().union(*nq.values())
 flat_nt = io.BytesIO()
 lr.export_ntriples(value, sv, flat_nt, skolem=True, regime=lr.TypeRegime.IS_A_AND_MIXINS)
 assert {l[:-2] for l in nt_lines(flat_nt.getvalue().decode())} == one_graph["https://example.com/graphs/g"]
+
+# None routes a partition to the default graph; as_trig takes the same mapping.
+mixed = {lr.TypePartition.Own: None, lr.TypePartition.Direct: G[lr.TypePartition.Direct]}
+mixed_nq = value.as_nquads(mixed, skolem=True)
+direct_graph = G[lr.TypePartition.Direct]
+named_suffix = " <" + direct_graph + "> ."
+named_lines = {l for l in nt_lines(mixed_nq) if l.endswith(named_suffix)}
+default_lines = nt_lines(mixed_nq) - named_lines
+asserted_nt = io.BytesIO()
+lr.export_ntriples(value, sv, asserted_nt, skolem=True)
+assert default_lines == nt_lines(asserted_nt.getvalue().decode()), "Own goes to the default graph"
+assert named_lines and all(f"<{SESAME}>" in l for l in named_lines)
+trig_text = value.as_trig(mixed, skolem=True)
+assert "@prefix" in trig_text and G[lr.TypePartition.Direct] in trig_text
+for g in G.values():
+    assert g in value.as_trig(G, skolem=True)
+# Flat Turtle has no graph names; an empty mapping is a ValueError.
+try:
+    value.as_trig({})
+    raise AssertionError("expected ValueError")
+except ValueError as e:
+    assert "empty" in str(e), e
+
+# skolem (and regime) are keyword-only on as_turtle; skolem on the quad writers too.
+for call in (lambda: value.as_turtle(True), lambda: value.as_nquads(G, True), lambda: value.as_trig(G, True)):
+    try:
+        call()
+        raise AssertionError("expected TypeError")
+    except TypeError:
+        pass
+assert value.as_turtle(skolem=True, regime=lr.TypeRegime.IS_A) == value.as_turtle(regime=lr.TypeRegime.IS_A, skolem=True)
 
 # An invalid graph IRI is a ValueError.
 try:
@@ -234,6 +267,7 @@ assert issubclass(lr.RdfImportError, Exception)
 assert not issubclass(lr.RdfImportError, ImportError)
 assert issubclass(lr.AmbiguousTypeError, lr.RdfImportError)
 assert issubclass(lr.TypeConflictError, lr.RdfImportError)
+assert issubclass(lr.ConflictingDirectTypesError, lr.AmbiguousTypeError)
 
 # (a) two unrelated schema types, no directType
 e = raised("ex:s1 a ex:Signal, ex:Pump .\n")
@@ -242,6 +276,15 @@ assert isinstance(e, lr.RdfImportError)
 assert e.subject == "http://example.org/s1", e.subject
 assert e.candidates == ["http://example.org/Pump", "http://example.org/Signal"], e.candidates
 assert "Ambiguous type" in str(e) and "http://example.org/s1" in str(e), str(e)
+
+# (a2) several directType values: its own exception, still an AmbiguousTypeError
+e = raised("ex:s4 a ex:Signal, ex:Pump ; sesame:directType ex:Signal, ex:Pump .\n")
+assert type(e) is lr.ConflictingDirectTypesError, type(e)
+assert isinstance(e, lr.AmbiguousTypeError)
+assert e.subject == "http://example.org/s4", e.subject
+assert e.direct_types == ["http://example.org/Pump", "http://example.org/Signal"], e.direct_types
+assert e.candidates == e.direct_types
+assert "keep one sesame:directType" in str(e), str(e)
 
 # (b) rdf:type not implied by the directType
 e = raised("ex:s2 a ex:Signal, ex:Pump ; sesame:directType ex:Signal .\n")
