@@ -352,6 +352,35 @@ pub(crate) fn resolve_class<T: TripleSource>(
 
 /// Canonical URIs of every class a subject of class `cv` may legitimately
 /// carry as `rdf:type`: `rdf_types(cv, IsAAndMixins)` (includes `cv`).
+/// Sort key comparing digit runs numerically, so `p/2` sorts before `p/10`.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct NaturalKey(Vec<(String, u64, String)>);
+
+impl NaturalKey {
+    fn new(s: &str) -> Self {
+        let mut parts = Vec::new();
+        let mut rest = s;
+        while !rest.is_empty() {
+            let text_end = rest
+                .find(|c: char| c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            let (text, tail) = rest.split_at(text_end);
+            let digits_end = tail
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(tail.len());
+            let (digits, next) = tail.split_at(digits_end);
+            // Digit runs too long for u64 saturate; the raw digits break ties.
+            parts.push((
+                text.to_string(),
+                digits.parse::<u64>().unwrap_or(u64::MAX),
+                digits.to_string(),
+            ));
+            rest = next;
+        }
+        NaturalKey(parts)
+    }
+}
+
 fn implied_class_keys(cv: &ClassView) -> Result<HashSet<String>, ImportError> {
     Ok(rdf_types(cv, TypeRegime::IsAAndMixins)?
         .iter()
@@ -484,6 +513,13 @@ pub fn harvest_subject<T: TripleSource>(
             _ => continue,
         };
         by_predicate.entry(pred).or_default().push(obj_owned);
+    }
+    // RDF carries no order and the store iterates in an arbitrary one; sort the
+    // objects so that list members, and which value a single-valued slot
+    // keeps, are the same on every import (and positional skolem IRIs such as
+    // `x/parts/2` come back in their own order).
+    for objects in by_predicate.values_mut() {
+        objects.sort_by_cached_key(|t| NaturalKey::new(&t.to_string()));
     }
 
     // Populate identifier slot from subject IRI (if class has one and subject is a named node)
@@ -715,7 +751,7 @@ pub fn harvest_subject<T: TripleSource>(
             SlotContainerMode::SingleValue => {
                 if items.len() > 1 {
                     // Schema says single-valued; RDF has multiple objects.
-                    // First wins (HashMap order — nondeterministic across runs);
+                    // First wins (in sorted object order);
                     // emit a warning so the caller can see they have either
                     // a schema bug or unexpectedly multi-valued source data.
                     let dropped = items.len() - 1;
