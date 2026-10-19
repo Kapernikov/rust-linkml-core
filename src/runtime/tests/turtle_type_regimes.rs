@@ -7,6 +7,7 @@
 use linkml_meta::SchemaDefinition;
 use linkml_runtime::rdf_export::{
     export_nquads_many, export_ntriples_many, export_trig_many, export_turtle_many,
+    RdfOutputFormat, RdfStreamWriter,
 };
 use linkml_runtime::schema_rdf::{
     schema_triples, SchemaRdfOptions, SchemaRdfProfile, TypePartition, TypeRegime, RDF_TYPE,
@@ -862,4 +863,80 @@ fn iri_lookalikes_inside_literals_survive_turtle_and_trig() {
         .map(|q| q.unwrap())
         .collect();
     assert!(literals(parsed).iter().any(|v| v == text));
+}
+
+/// Two instances written one `write` at a time through one `RdfStreamWriter`
+/// never share a blank node label, in any format, and the options are checked
+/// when the writer is built, not at the first write.
+#[test]
+fn stream_writer_keeps_blank_nodes_distinct_in_every_format() {
+    let f = fixture();
+    let per_instance = {
+        let one = flat(&f, TypeRegime::ASSERTED, false);
+        blank_nodes(one.iter().flat_map(|(s, _, o)| [s, o])).len()
+    };
+    assert!(per_instance > 0);
+    let flat_options = WriteOptions::default().with_skolem(false);
+    let quad_options = mapping(&[(TypePartition::Own, "own")]).with_skolem(false);
+    for (format, options) in [
+        (RdfOutputFormat::Turtle, &flat_options),
+        (RdfOutputFormat::NTriples, &flat_options),
+        (RdfOutputFormat::NQuads, &quad_options),
+        (RdfOutputFormat::TriG, &quad_options),
+    ] {
+        let mut stream =
+            RdfStreamWriter::new(Vec::new(), format, &f.sv, &f.schema, &f.conv, options).unwrap();
+        stream.write(&f.instance).unwrap();
+        stream.write(&f.instance).unwrap();
+        let out = stream.finish().unwrap();
+        let terms: Vec<String> = match format {
+            RdfOutputFormat::Turtle => TurtleParser::new()
+                .for_reader(out.as_slice())
+                .map(|t| t.unwrap())
+                .flat_map(|t| [t.subject.to_string(), t.object.to_string()])
+                .collect(),
+            RdfOutputFormat::NTriples => NTriplesParser::new()
+                .for_reader(out.as_slice())
+                .map(|t| t.unwrap())
+                .flat_map(|t| [t.subject.to_string(), t.object.to_string()])
+                .collect(),
+            RdfOutputFormat::NQuads => NQuadsParser::new()
+                .for_reader(out.as_slice())
+                .map(|q| q.unwrap())
+                .flat_map(|q| [q.subject.to_string(), q.object.to_string()])
+                .collect(),
+            _ => TriGParser::new()
+                .for_reader(out.as_slice())
+                .map(|q| q.unwrap())
+                .flat_map(|q| [q.subject.to_string(), q.object.to_string()])
+                .collect(),
+        };
+        assert_eq!(
+            blank_nodes(terms.iter()).len(),
+            2 * per_instance,
+            "{format:?}: blank nodes merged"
+        );
+    }
+
+    // Options are validated in `new`, with the writers' errors.
+    for (format, options) in [
+        (
+            RdfOutputFormat::Turtle,
+            mapping(&[(TypePartition::Own, "g")]),
+        ),
+        (
+            RdfOutputFormat::NTriples,
+            mapping(&[(TypePartition::Own, "g")]),
+        ),
+        (
+            RdfOutputFormat::NQuads,
+            WriteOptions::quads(BTreeMap::new()),
+        ),
+        (RdfOutputFormat::TriG, WriteOptions::quads(BTreeMap::new())),
+    ] {
+        let err = RdfStreamWriter::new(Vec::new(), format, &f.sv, &f.schema, &f.conv, &options)
+            .err()
+            .unwrap_or_else(|| panic!("{format:?}: expected InvalidInput"));
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
 }
