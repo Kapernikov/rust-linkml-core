@@ -17,6 +17,15 @@ class AltDescription:
     def alt_description_text(self, value: builtins.str) -> None: ...
     def __new__(cls, alt_description_source:builtins.str, alt_description_text:builtins.str) -> AltDescription: ...
 
+class AmbiguousTypeError(RdfImportError):
+    r"""
+    A subject has no unique most specific class.
+    """
+    @property
+    def subject(self) -> builtins.str: ...
+    @property
+    def candidates(self) -> builtins.list[builtins.str]: ...
+
 class Annotatable:
     @property
     def annotations(self) -> typing.Optional[builtins.dict[builtins.str, Annotation]]: ...
@@ -3397,6 +3406,12 @@ class Prefix:
     def prefix_reference(self, value: builtins.str) -> None: ...
     def __new__(cls, prefix_prefix:builtins.str, prefix_reference:builtins.str) -> Prefix: ...
 
+class RdfImportError(builtins.Exception):
+    r"""
+    Base class of every error raised while importing RDF.
+    """
+    ...
+
 class RdfStream:
     r"""
     Streaming iterator over harvested LinkML instances.
@@ -4802,6 +4817,17 @@ class SubsetDefinition:
     @keywords.setter
     def keywords(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
     def __new__(cls, name:builtins.str, id_prefixes:typing.Optional[typing.Sequence[builtins.str]]=None, id_prefixes_are_closed:typing.Optional[builtins.bool]=None, definition_uri:typing.Optional[builtins.str]=None, local_names:typing.Optional[builtins.dict[builtins.str, LocalName]]=None, conforms_to:typing.Optional[builtins.str]=None, implements:typing.Optional[typing.Sequence[builtins.str]]=None, instantiates:typing.Optional[typing.Sequence[builtins.str]]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation | Extension]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> SubsetDefinition: ...
+
+class TypeConflictError(RdfImportError):
+    r"""
+    A subject's rdf:type is not implied by its sesame:directType.
+    """
+    @property
+    def subject(self) -> builtins.str: ...
+    @property
+    def direct_type(self) -> builtins.str: ...
+    @property
+    def type_iri(self) -> builtins.str: ...
 
 class TypeDefinition:
     @property

@@ -909,6 +909,12 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTypeRegime>()?;
     m.add_class::<PyTypePartition>()?;
     m.add_class::<PyRdfStream>()?;
+    m.add("RdfImportError", m.py().get_type::<RdfImportError>())?;
+    m.add(
+        "AmbiguousTypeError",
+        m.py().get_type::<AmbiguousTypeError>(),
+    )?;
+    m.add("TypeConflictError", m.py().get_type::<TypeConflictError>())?;
     m.add_class::<PyLinkMLInstance>()?;
     m.add_class::<PyDelta>()?;
     m.add_class::<PyValidationResult>()?;
@@ -1870,7 +1876,7 @@ impl PyRdfStream {
                 // pop_warnings() and unconsumed_subjects() after iteration.
                 Ok(None)
             }
-            Some(Err(e)) => Err(PyException::new_err(e.to_string())),
+            Some(Err(e)) => Err(import_error_to_py(e)),
             Some(Ok((class_name, inst))) => {
                 let sv_clone = slf.sv_py.clone_ref(py);
                 let py_inst = Py::new(py, PyLinkMLInstance::new(inst, sv_clone))?;
@@ -1902,6 +1908,184 @@ impl PyRdfStream {
     /// `None` on the disk backend, or before iteration completes.
     fn unconsumed_subjects(&self) -> Option<Vec<(String, usize)>> {
         self.inner.as_ref().and_then(|s| s.unconsumed_subjects())
+    }
+}
+
+pyo3::create_exception!(
+    _native,
+    RdfImportError,
+    PyException,
+    "Base class of every error raised while importing RDF."
+);
+pyo3::create_exception!(
+    _native,
+    AmbiguousTypeError,
+    RdfImportError,
+    "A subject has no unique most specific class. Attributes: `subject: str`, \
+     `candidates: list[str]` (sorted as reported by the importer)."
+);
+pyo3::create_exception!(
+    _native,
+    TypeConflictError,
+    RdfImportError,
+    "A subject's rdf:type is not implied by its sesame:directType. Attributes: \
+     `subject`, `direct_type`, `type_iri` (all `str`)."
+);
+
+// pyo3-stub-gen cannot see attributes set on an exception instance, so the
+// stub entries are registered by hand (the `create_exception!` it ships has no
+// way to declare attributes).
+#[cfg(feature = "stubgen")]
+mod exception_stubs {
+    use super::{AmbiguousTypeError, RdfImportError, TypeConflictError};
+    use pyo3_stub_gen::inventory;
+    use pyo3_stub_gen::type_info::{MemberInfo, PyClassInfo};
+    use pyo3_stub_gen::{PyStubType, TypeInfo};
+    use std::any::TypeId;
+
+    fn str_type() -> TypeInfo {
+        String::type_output()
+    }
+    fn str_list_type() -> TypeInfo {
+        Vec::<String>::type_output()
+    }
+    fn exception_base() -> TypeInfo {
+        TypeInfo::builtin("Exception")
+    }
+    fn rdf_import_error() -> TypeInfo {
+        TypeInfo::unqualified("RdfImportError")
+    }
+    const fn member(name: &'static str, r#type: fn() -> TypeInfo) -> MemberInfo {
+        MemberInfo {
+            name,
+            r#type,
+            doc: "",
+            default: None,
+            deprecated: None,
+        }
+    }
+
+    inventory::submit! {
+        PyClassInfo {
+            pyclass_name: "RdfImportError",
+            struct_id: TypeId::of::<RdfImportError>,
+            getters: &[],
+            setters: &[],
+            module: None,
+            doc: "Base class of every error raised while importing RDF.",
+            bases: &[exception_base],
+            has_eq: false,
+            has_ord: false,
+            has_hash: false,
+            has_str: false,
+        }
+    }
+    inventory::submit! {
+        PyClassInfo {
+            pyclass_name: "AmbiguousTypeError",
+            struct_id: TypeId::of::<AmbiguousTypeError>,
+            getters: &[member("subject", str_type), member("candidates", str_list_type)],
+            setters: &[],
+            module: None,
+            doc: "A subject has no unique most specific class.",
+            bases: &[rdf_import_error],
+            has_eq: false,
+            has_ord: false,
+            has_hash: false,
+            has_str: false,
+        }
+    }
+    inventory::submit! {
+        PyClassInfo {
+            pyclass_name: "TypeConflictError",
+            struct_id: TypeId::of::<TypeConflictError>,
+            getters: &[
+                member("subject", str_type),
+                member("direct_type", str_type),
+                member("type_iri", str_type),
+            ],
+            setters: &[],
+            module: None,
+            doc: "A subject's rdf:type is not implied by its sesame:directType.",
+            bases: &[rdf_import_error],
+            has_eq: false,
+            has_ord: false,
+            has_hash: false,
+            has_str: false,
+        }
+    }
+}
+
+/// Convert an importer error into a Python exception: the variants a caller can
+/// act on become typed exceptions carrying their fields, every other variant is
+/// a plain `RdfImportError` with the message.
+///
+/// The importer's `subject` is the RDF term's N-Triples form (`<iri>` or
+/// `_:label`); the `subject` attribute drops the angle brackets of an IRI so it
+/// compares equal to the IRI itself.
+fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
+    use linkml_runtime::turtle_import::ImportError;
+    let msg = e.to_string();
+    let bare = |subject: String| -> String {
+        match subject.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
+            Some(iri) => iri.to_string(),
+            None => subject,
+        }
+    };
+    let set = |err: PyErr, attrs: Vec<(&str, PyObject)>| -> PyErr {
+        Python::with_gil(|py| {
+            let value = err.value(py);
+            for (name, v) in attrs {
+                if let Err(set_err) = value.setattr(name, v) {
+                    return set_err;
+                }
+            }
+            err
+        })
+    };
+    match e {
+        ImportError::AmbiguousType {
+            subject,
+            candidates,
+        } => Python::with_gil(|py| {
+            set(
+                AmbiguousTypeError::new_err(msg),
+                vec![
+                    (
+                        "subject",
+                        bare(subject).into_pyobject(py).unwrap().into_any().unbind(),
+                    ),
+                    (
+                        "candidates",
+                        candidates.into_pyobject(py).unwrap().into_any().unbind(),
+                    ),
+                ],
+            )
+        }),
+        ImportError::TypeConflict {
+            subject,
+            direct_type,
+            type_iri,
+        } => Python::with_gil(|py| {
+            set(
+                TypeConflictError::new_err(msg),
+                vec![
+                    (
+                        "subject",
+                        bare(subject).into_pyobject(py).unwrap().into_any().unbind(),
+                    ),
+                    (
+                        "direct_type",
+                        direct_type.into_pyobject(py).unwrap().into_any().unbind(),
+                    ),
+                    (
+                        "type_iri",
+                        type_iri.into_pyobject(py).unwrap().into_any().unbind(),
+                    ),
+                ],
+            )
+        }),
+        _ => RdfImportError::new_err(msg),
     }
 }
 
@@ -1977,7 +2161,7 @@ fn build_py_rdf_stream(
     } else {
         import_turtle(py_reader, sv, conv, &class_refs, options)
     }
-    .map_err(|e| PyException::new_err(e.to_string()))?;
+    .map_err(import_error_to_py)?;
 
     let sv_py: Py<PySchemaView> = Py::new(
         py,

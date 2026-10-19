@@ -154,3 +154,90 @@ for regime in (lr.TypeRegime.Asserted, lr.TypeRegime.IsA, lr.TypeRegime.IsAAndMi
         }
     });
 }
+
+/// Importer failures reach Python as typed exceptions carrying their fields.
+#[test]
+fn import_errors_are_typed_python_exceptions() {
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let module = PyModule::new(py, "linkml_runtime").unwrap();
+        runtime_module(&module).unwrap();
+        let sys = py.import("sys").unwrap();
+        let sys_modules = sys.getattr("modules").unwrap();
+        let sys_modules = sys_modules.downcast::<PyDict>().unwrap();
+        sys_modules.set_item("linkml_runtime", module).unwrap();
+
+        let locals = PyDict::new(py);
+        locals
+            .set_item(
+                "schema_path",
+                data_path("type_regimes_import_schema.yaml")
+                    .to_str()
+                    .unwrap(),
+            )
+            .unwrap();
+        locals
+            .set_item("types_path", data_path("types.yaml").to_str().unwrap())
+            .unwrap();
+
+        let script = CString::new(
+            r#"
+import io
+import linkml_runtime as lr
+
+sv = lr.make_schema_view()
+sv.add_schema_from_path(schema_path)
+with open(types_path) as f:
+    sv.add_schema_str_with_import_ref(f.read(), "https://example.org/regimes-import", "linkml:types")
+
+PREFIXES = "@prefix ex: <http://example.org/> .\n@prefix sesame: <http://www.openrdf.org/schema/sesame#> .\n"
+
+def run(body, roots=("Signal",)):
+    ttl = PREFIXES + body
+    return list(lr.import_turtle(io.BytesIO(ttl.encode()), sv, list(roots)))
+
+def raised(body, roots=("Signal",)):
+    try:
+        run(body, roots)
+    except Exception as e:
+        return e
+    raise AssertionError("expected an import error")
+
+assert issubclass(lr.RdfImportError, Exception)
+assert not issubclass(lr.RdfImportError, ImportError)
+assert issubclass(lr.AmbiguousTypeError, lr.RdfImportError)
+assert issubclass(lr.TypeConflictError, lr.RdfImportError)
+
+# (a) two unrelated schema types, no directType
+e = raised("ex:s1 a ex:Signal, ex:Pump .\n")
+assert isinstance(e, lr.AmbiguousTypeError), type(e)
+assert isinstance(e, lr.RdfImportError)
+assert e.subject == "http://example.org/s1", e.subject
+assert e.candidates == ["http://example.org/Pump", "http://example.org/Signal"], e.candidates
+assert "Ambiguous type" in str(e) and "http://example.org/s1" in str(e), str(e)
+
+# (b) rdf:type not implied by the directType
+e = raised("ex:s2 a ex:Signal, ex:Pump ; sesame:directType ex:Signal .\n")
+assert isinstance(e, lr.TypeConflictError), type(e)
+assert isinstance(e, lr.RdfImportError)
+assert e.subject == "http://example.org/s2", e.subject
+assert e.direct_type == "http://example.org/Signal", e.direct_type
+assert e.type_iri == "http://example.org/Pump", e.type_iri
+assert "does not imply" in str(e), str(e)
+
+# (c) any other import error is the base class, not a subclass
+e = raised("ex:s3 a ex:Signal .\n", roots=("NoSuchClass",))
+assert type(e) is lr.RdfImportError, type(e)
+assert "NoSuchClass" in str(e), str(e)
+"#,
+        )
+        .unwrap();
+        if let Err(err) = py.run(script.as_c_str(), Some(&locals), None) {
+            panic!(
+                "python script failed: {err}\n{}",
+                err.traceback(py)
+                    .map_or(String::new(), |t| t.format().unwrap_or_default())
+            );
+        }
+    });
+}
