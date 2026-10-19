@@ -483,3 +483,67 @@ fn schema_triples_publish_the_regime_edges() {
     assert!(!direct_mixins.contains(&(iri("Signal"), iri("Placed"))));
     assert!(!direct_mixins.contains(&(iri("MainSignal"), iri("Located"))));
 }
+
+/// OWL restriction blank nodes hang off their class with `rdfs:subClassOf`.
+/// The regimes only change the edges between *named* classes: every
+/// restriction triple is the same in every regime (none lost, none
+/// duplicated), restrictions are never closed over as if they were classes
+/// (a class does not inherit its ancestors' restriction nodes — it already
+/// carries its own for every induced slot, with `slot_usage` applied), and a
+/// restriction is never a `sesame:directSubClassOf` object.
+#[test]
+fn schema_regimes_leave_owl_restrictions_alone() {
+    let f = fixture();
+    let sub = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+    let non_class_edges = |regime: TypeRegime| -> BTreeSet<String> {
+        schema_triples(
+            &f.sv,
+            &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_regime(regime),
+        )
+        .triples
+        .iter()
+        .filter(|t| {
+            let class_edge = (t.predicate.as_str() == sub
+                || t.predicate.as_str() == SESAME_DIRECT_SUBCLASS_OF)
+                && t.object.is_named_node();
+            !class_edge
+        })
+        .map(|t| t.to_string())
+        .collect()
+    };
+    let asserted = non_class_edges(TypeRegime::Asserted);
+    let restriction_edges: Vec<&String> = asserted
+        .iter()
+        .filter(|t| t.contains(&format!("<{sub}> _:")))
+        .collect();
+    assert!(
+        !restriction_edges.is_empty(),
+        "fixture must carry OWL restrictions for this test to mean anything"
+    );
+    for regime in [TypeRegime::IsA, TypeRegime::IsAAndMixins] {
+        assert_eq!(
+            non_class_edges(regime),
+            asserted,
+            "{regime:?}: restriction / non-class triples differ from Asserted"
+        );
+        let all = schema_triples(
+            &f.sv,
+            &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_regime(regime),
+        );
+        for t in &all.triples {
+            let p = t.predicate.as_str();
+            if p == sub || p == SESAME_DIRECT_SUBCLASS_OF {
+                assert!(
+                    t.subject.is_named_node(),
+                    "{regime:?}: a restriction node was treated as a class: {t}"
+                );
+            }
+            if p == SESAME_DIRECT_SUBCLASS_OF {
+                assert!(
+                    t.object.is_named_node(),
+                    "{regime:?}: a restriction is a direct superclass: {t}"
+                );
+            }
+        }
+    }
+}

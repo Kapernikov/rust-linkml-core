@@ -288,8 +288,16 @@
 //! closure; mixins count only in `IsAAndMixins`) plus one
 //! `sesame:directSubClassOf` per [`direct_subclass_edges`] pair. The instance
 //! writer writes the matching `rdf:type` / `sesame:directType` triples, so a
-//! query for `?s a <Class>` over instance data and the schema agree. The
-//! `rdfs:subClassOf` blank nodes of the restrictions are unaffected.
+//! query for `?s a <Class>` over instance data and the schema agree.
+//!
+//! The closure is over *named* classes only. The restriction blank nodes stay
+//! exactly as in `Asserted`, on the class that declares them: they are never
+//! closed over (a class does not get its ancestors' restriction nodes, because
+//! it already carries its own for every induced slot, with `slot_usage`
+//! applied, and an inherited, wider restriction would contradict a narrowed
+//! one), and they are never a `sesame:directSubClassOf` object. So a one-hop
+//! `?c rdfs:subClassOf ?super` returns the named ancestors plus `?c`'s own
+//! restriction nodes; filter with `isIRI(?super)` for classes only.
 
 use std::collections::{BTreeSet, HashSet};
 
