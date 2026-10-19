@@ -311,3 +311,39 @@ assert "NoSuchClass" in str(e), str(e)
         }
     });
 }
+
+/// A downstream binding converts Rust regimes and partitions to their Python
+/// classes directly, without a string round trip.
+#[test]
+fn rust_regimes_and_partitions_convert_to_python() {
+    use linkml_runtime::schema_rdf::{TypePartition, TypeRegime};
+    use linkml_runtime_python::{PyTypePartition, PyTypeRegime};
+
+    pyo3::prepare_freethreaded_python();
+    Python::with_gil(|py| {
+        let module = PyModule::new(py, "linkml_runtime").unwrap();
+        runtime_module(&module).unwrap();
+        let regime = Py::new(py, PyTypeRegime::from(TypeRegime::IS_A)).unwrap();
+        let named = module
+            .getattr("TypeRegime")
+            .unwrap()
+            .getattr("IS_A")
+            .unwrap();
+        assert!(regime.bind(py).as_any().eq(&named).unwrap());
+        assert_eq!(regime.bind(py).str().unwrap().to_string(), "is_a");
+
+        let custom: TypeRegime = [TypePartition::Own, TypePartition::IsA]
+            .into_iter()
+            .collect();
+        let back: TypeRegime = PyTypeRegime::from(custom).into();
+        assert_eq!(back, custom);
+
+        let partition = Py::new(py, PyTypePartition::from(TypePartition::Mixin)).unwrap();
+        let named = module
+            .getattr("TypePartition")
+            .unwrap()
+            .getattr("Mixin")
+            .unwrap();
+        assert!(partition.bind(py).as_any().eq(&named).unwrap());
+    });
+}

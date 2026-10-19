@@ -816,6 +816,14 @@ impl From<PyTypeRegime> for TypeRegime {
     }
 }
 
+/// Wrap a Rust regime for Python, so a binding built on this crate can return
+/// one directly.
+impl From<TypeRegime> for PyTypeRegime {
+    fn from(r: TypeRegime) -> Self {
+        PyTypeRegime(r)
+    }
+}
+
 impl From<TypePartition> for PyTypePartition {
     fn from(p: TypePartition) -> Self {
         match p {
