@@ -1,0 +1,108 @@
+# Neutral fixture for the RDF type regimes (Asserted / IsA / IsAAndMixins):
+# a deep is_a chain, a mixin deeper than the is_a parent, a self-mixin, an
+# inlined polymorphic slot, an inlined list and a list keyed only by
+# unique_keys. Shared by the writer tests and the import roundtrip matrix.
+id: https://example.com/type-regimes
+name: type_regimes
+prefixes:
+  tr: https://example.com/type-regimes/
+  linkml: https://w3id.org/linkml/
+default_prefix: tr
+default_range: string
+imports:
+- linkml:types
+classes:
+  # is_a chain: Thing <- Asset <- Signal <- MainSignal
+  Thing:
+    abstract: true
+    attributes:
+      id:
+        identifier: true
+  Asset:
+    is_a: Thing
+    attributes:
+      name:
+  Signal:
+    is_a: Asset
+    # The mixin chain (Located -> Placed) is deeper than Signal's is_a parent.
+    mixins:
+    - Located
+    attributes:
+      parts:
+        range: Part
+        multivalued: true
+        inlined_as_list: true
+      tags:
+        range: Tag
+        multivalued: true
+        inlined_as_list: true
+  MainSignal:
+    is_a: Signal
+    attributes:
+      priority:
+        range: integer
+  Placed:
+    mixin: true
+    attributes:
+      zone:
+  Located:
+    mixin: true
+    is_a: Placed
+    attributes:
+      location:
+        range: Location
+        inlined: true
+  # A class listing itself as a mixin must neither loop nor yield a self edge.
+  SelfMixin:
+    is_a: Thing
+    mixins:
+    - SelfMixin
+  # Polymorphic inlined range, designated by typeURI.
+  Location:
+    abstract: true
+    attributes:
+      typeURI:
+        designates_type: true
+        range: uri
+  SpotLocation:
+    is_a: Location
+    attributes:
+      km:
+        range: float
+  LinearLocation:
+    is_a: Location
+    attributes:
+      from_km:
+        range: float
+      to_km:
+        range: float
+  # Keyless inlined list members.
+  Part:
+    attributes:
+      label:
+  # List members identified only by a unique key.
+  Tag:
+    unique_keys:
+      tag_key:
+        unique_key_slots:
+        - key
+    attributes:
+      key:
+        required: true
+      value:
+  Registry:
+    tree_root: true
+    is_a: Thing
+    attributes:
+      signals:
+        range: Signal
+        multivalued: true
+        inlined_as_list: true
+      main_signals:
+        range: MainSignal
+        multivalued: true
+        inlined_as_list: true
+      selfs:
+        range: SelfMixin
+        multivalued: true
+        inlined_as_list: true

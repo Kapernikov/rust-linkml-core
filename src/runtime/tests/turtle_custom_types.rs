@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -53,7 +53,14 @@ fn turtle_wkt_literal_has_geosparql_datatype() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // wktLiteral should carry ^^geosparql:wktLiteral or the full IRI
     assert!(
@@ -86,7 +93,14 @@ fn turtle_string_literal_has_no_datatype() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // Plain string should NOT have ^^xsd:string annotation
     assert!(
@@ -117,7 +131,14 @@ fn turtle_uri_range_emits_named_node() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // homepage (range: uri) should be a named node, not a string literal
     assert!(
@@ -153,7 +174,14 @@ fn turtle_type_derived_from_uri_emits_named_node() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     assert!(
         ttl.contains("<https://mirror.brussels.be>"),
@@ -185,7 +213,14 @@ fn turtle_type_derived_from_integer_carries_its_parents_datatype() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     assert!(
         !ttl.contains("\"1200\" ") && !ttl.contains("\"1200\";") && !ttl.contains("\"1200\"."),
@@ -210,7 +245,14 @@ fn turtle_uriorcurie_range_emits_named_node() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // related_doc (range: uriorcurie) should be a named node, not a string literal
     assert!(

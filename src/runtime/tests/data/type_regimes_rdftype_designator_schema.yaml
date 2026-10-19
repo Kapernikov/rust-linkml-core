@@ -1,0 +1,21 @@
+# A designates_type slot mapped onto rdf:type: the writers must refuse it.
+id: https://example.com/type-regimes-bad
+name: type_regimes_bad
+prefixes:
+  bad: https://example.com/type-regimes-bad/
+  rdf: http://www.w3.org/1999/02/22-rdf-syntax-ns#
+  linkml: https://w3id.org/linkml/
+default_prefix: bad
+default_range: string
+imports:
+- linkml:types
+classes:
+  Base:
+    tree_root: true
+    attributes:
+      id:
+        identifier: true
+      kind:
+        designates_type: true
+        slot_uri: rdf:type
+        range: uri

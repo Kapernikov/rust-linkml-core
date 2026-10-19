@@ -1,0 +1,45 @@
+id: https://example.org/regimes-import
+name: regimes_import
+prefixes:
+  ex: http://example.org/
+  linkml: https://w3id.org/linkml/
+default_prefix: ex
+default_range: string
+imports:
+- linkml:types
+classes:
+  Thing:
+    attributes:
+      id:
+        identifier: true
+      name:
+      typeURI:
+        designates_type: true
+        range: uriorcurie
+  Asset:
+    is_a: Thing
+  Signal:
+    is_a: Asset
+    attributes:
+      aspect:
+  Tagged:
+    mixin: true
+    attributes:
+      tag:
+  Beacon:
+    is_a: Asset
+    mixins:
+    - Tagged
+  Pump:
+    is_a: Thing
+  SelfMix:
+    is_a: Thing
+    mixins:
+    - SelfMix
+  Holder:
+    attributes:
+      id:
+        identifier: true
+      part:
+        range: Asset
+        inlined: true

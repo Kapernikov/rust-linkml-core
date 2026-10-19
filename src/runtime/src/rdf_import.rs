@@ -170,6 +170,13 @@ fn build_stream<R: Read>(
 }
 
 /// Import RDF/Turtle into a streaming iterator of LinkML instances.
+///
+/// `root_classes` names the classes to import. A subject is imported iff its
+/// most concrete class (resolved from all its `rdf:type` / `sesame:directType`
+/// triples) is one of them or a descendant of one (is_a or mixin), so asserted
+/// and inferred data select the same subjects; each is created as that most
+/// concrete class. A leaf class selects only its own subjects, never its
+/// ancestors or siblings.
 pub fn import_turtle<R: Read>(
     reader: R,
     sv: SchemaView,
@@ -181,6 +188,13 @@ pub fn import_turtle<R: Read>(
 }
 
 /// Import RDF/N-Triples into a streaming iterator of LinkML instances.
+///
+/// `root_classes` names the classes to import. A subject is imported iff its
+/// most concrete class (resolved from all its `rdf:type` / `sesame:directType`
+/// triples) is one of them or a descendant of one (is_a or mixin), so asserted
+/// and inferred data select the same subjects; each is created as that most
+/// concrete class. A leaf class selects only its own subjects, never its
+/// ancestors or siblings.
 pub fn import_ntriples<R: Read>(
     reader: R,
     sv: SchemaView,

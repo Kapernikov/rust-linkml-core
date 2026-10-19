@@ -3,8 +3,9 @@ use clap::{Parser, ValueEnum};
 #[cfg(feature = "ttl")]
 use linkml_runtime::{
     load_json_file, load_yaml_file,
-    rdf_export::{export_ntriples_many, export_turtle_many, ExportOptions},
+    rdf_export::{RdfOutputFormat, RdfStreamWriter},
     rdf_import::{import_ntriples, import_turtle, ImportOptions},
+    turtle::WriteOptions,
     validate, LinkMLInstance,
 };
 #[cfg(feature = "ttl")]
@@ -236,38 +237,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 count += 1;
             }
         }
-        Format::Turtle => {
-            // Adapt the iterator: write one instance at a time via export_turtle_many.
+        Format::Turtle | Format::Ntriples => {
+            // One stream for the whole run, so blank node labels never repeat.
+            let rdf_fmt = if matches!(out_fmt, Format::Turtle) {
+                RdfOutputFormat::Turtle
+            } else {
+                RdfOutputFormat::NTriples
+            };
+            let mut stream = RdfStreamWriter::new(
+                &mut writer,
+                rdf_fmt,
+                &sv,
+                &schema,
+                &conv,
+                &WriteOptions::default().with_skolem(args.skolem),
+            )?;
             for item in instances {
-                let value = item?;
-                export_turtle_many(
-                    std::iter::once(value),
-                    &sv,
-                    &schema,
-                    &conv,
-                    &mut writer,
-                    ExportOptions {
-                        skolem: args.skolem,
-                    },
-                )?;
+                stream.write(&item?)?;
                 count += 1;
             }
-        }
-        Format::Ntriples => {
-            for item in instances {
-                let value = item?;
-                export_ntriples_many(
-                    std::iter::once(value),
-                    &sv,
-                    &schema,
-                    &conv,
-                    &mut writer,
-                    ExportOptions {
-                        skolem: args.skolem,
-                    },
-                )?;
-                count += 1;
-            }
+            stream.finish()?;
         }
     }
 

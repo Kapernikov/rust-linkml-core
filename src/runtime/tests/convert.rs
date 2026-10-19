@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -36,7 +36,14 @@ fn convert_person_to_ttl() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
     assert!(ttl.contains("@prefix test: <https://example.com/test/> ."));
     assert!(ttl.contains("test:name \"Alice\""));
 }
@@ -60,6 +67,13 @@ fn suppress_objecttype_triple() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
     assert!(!ttl.contains("<personinfo:objecttype>"));
 }

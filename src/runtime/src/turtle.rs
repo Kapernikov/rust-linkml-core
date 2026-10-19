@@ -1,3 +1,24 @@
+//! RDF writers for [`LinkMLInstance`]: Turtle, N-Triples, N-Quads and TriG.
+//!
+//! The instance is walked once and every triple is tagged with a
+//! [`TypePartition`]: non-type triples and a node's own `rdf:type` are `Own`;
+//! an `rdf:type` per `is_a` ancestor is `IsA`, per mixin-only class `Mixin`;
+//! one `sesame:directType` naming the node's own class is `Direct`. This holds
+//! for every typed node, records and inlined objects alike.
+//!
+//! Every writer takes a [`WriteOptions`], whose `partition_graphs` says which
+//! partitions are written and into which graph; a partition not in the map is
+//! not written. The flat writers ([`write_turtle`], [`turtle_to_string`],
+//! [`write_ntriples`]) cannot carry a graph name, so they accept only the
+//! default graph as a target ([`WriteOptions::flat`] builds that). The quad
+//! formats (N-Quads, TriG), written through
+//! [`RdfStreamWriter`](crate::rdf_export::RdfStreamWriter), accept any graph,
+//! the default graph included. With the default options the output is exactly the
+//! single-`rdf:type` output.
+//!
+//! A `designates_type` slot is never written; one mapped onto `rdf:type` is
+//! rejected with an `InvalidInput` error.
+
 use linkml_meta::SchemaDefinition;
 use linkml_schemaview::Converter;
 
@@ -7,15 +28,96 @@ use linkml_schemaview::slotview::{SlotView, TermDescriptor, TermKind};
 use serde_json::Value as JsonValue;
 use std::io::{Result as IoResult, Write};
 
-use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Term, Triple};
-use oxttl::turtle::WriterTurtleSerializer;
-use oxttl::{NTriplesSerializer, TurtleParser, TurtleSerializer};
+use oxrdf::{
+    BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, QuadRef, Term, Triple,
+};
+use oxttl::{NQuadsSerializer, NTriplesSerializer, TriGSerializer, TurtleSerializer};
 
-use crate::regex_support::Regex;
+use crate::rdf_export::{RdfOutputFormat, RdfStreamWriter};
+use crate::schema_rdf::{TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE};
 use crate::LinkMLInstance;
+use std::collections::{BTreeMap, BTreeSet};
 
-pub struct TurtleOptions {
+/// Options shared by every RDF writer.
+///
+/// `partition_graphs` routes each written [`TypePartition`] to a graph;
+/// partitions not in the map are not written, and several partitions may share
+/// one graph. The library holds no graph IRIs of its own: the caller supplies
+/// stable ones. The map must not be empty (nothing would be written), and the
+/// flat writers (Turtle and N-Triples) additionally require every target to be
+/// the default graph; either violation is an `InvalidInput` error from the
+/// writer.
+///
+/// The struct is `#[non_exhaustive]`: build it with [`WriteOptions::flat`] or
+/// [`WriteOptions::quads`] and the `with_*` methods.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct WriteOptions {
+    /// Use skolem IRIs instead of blank nodes for objects without an identifier.
     pub skolem: bool,
+    /// Where each written partition goes; partitions not in the map are not
+    /// written.
+    pub partition_graphs: BTreeMap<TypePartition, GraphName>,
+}
+
+impl WriteOptions {
+    /// Write every partition of `regime` into the default graph. This is what
+    /// the flat writers need.
+    pub fn flat(regime: TypeRegime) -> Self {
+        Self::quads(
+            regime
+                .partitions()
+                .map(|p| (p, GraphName::DefaultGraph))
+                .collect(),
+        )
+    }
+
+    /// Write each partition in `partition_graphs` into its graph.
+    pub fn quads(partition_graphs: BTreeMap<TypePartition, GraphName>) -> Self {
+        Self {
+            skolem: false,
+            partition_graphs,
+        }
+    }
+
+    /// The same options with skolem IRIs on or off.
+    pub fn with_skolem(mut self, skolem: bool) -> Self {
+        self.skolem = skolem;
+        self
+    }
+
+    /// Reject options no writer can honour; `flat` also rejects a named graph.
+    pub(crate) fn validate(&self, format: &str, flat: bool) -> IoResult<()> {
+        if self.partition_graphs.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{format}: partition_graphs is empty, so nothing would be written"),
+            ));
+        }
+        if flat {
+            if let Some((partition, graph)) = self
+                .partition_graphs
+                .iter()
+                .find(|(_, g)| !matches!(g, GraphName::DefaultGraph))
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "{format} cannot carry a graph name, but partition '{partition}' is \
+                         routed to {graph}; use a quad writer or route it to the default graph"
+                    ),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Default for WriteOptions {
+    /// [`WriteOptions::flat`] of [`TypeRegime::ASSERTED`], without skolem IRIs.
+    fn default() -> Self {
+        Self::flat(TypeRegime::ASSERTED)
+    }
 }
 
 enum Node {
@@ -268,31 +370,166 @@ fn identifier_node(
     (state.next_subject(), None)
 }
 
+/// Receives every triple the walk produces, tagged with the [`TypePartition`]
+/// it belongs to. The flat writers keep the partitions their regime names; the
+/// quad writers route each one to its graph.
+trait TripleSink {
+    /// Whether triples of `partition` are kept at all. Lets the walk skip
+    /// computing inferred types nobody will write.
+    fn wants(&self, partition: TypePartition) -> bool;
+    /// Write one triple of `partition` (a no-op when it is not wanted).
+    fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()>;
+}
+
+/// Flat output: the partitions the options route, collected as triples. The
+/// options are validated to target the default graph only.
+struct FlatSink<'a> {
+    graphs: &'a BTreeMap<TypePartition, GraphName>,
+    triples: Vec<Triple>,
+}
+
+impl TripleSink for FlatSink<'_> {
+    fn wants(&self, partition: TypePartition) -> bool {
+        self.graphs.contains_key(&partition)
+    }
+
+    fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
+        if self.wants(partition) {
+            self.triples.push(triple.clone());
+        }
+        Ok(())
+    }
+}
+
+/// N-Triples output: the partitions the options route, serialized as they
+/// arrive. The options are validated to target the default graph only.
+struct NTriplesSink<'a, W: Write> {
+    ser: oxttl::ntriples::WriterNTriplesSerializer<W>,
+    graphs: &'a BTreeMap<TypePartition, GraphName>,
+}
+
+impl<W: Write> TripleSink for NTriplesSink<'_, W> {
+    fn wants(&self, partition: TypePartition) -> bool {
+        self.graphs.contains_key(&partition)
+    }
+
+    fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
+        if self.wants(partition) {
+            self.ser.serialize_triple(triple.as_ref())?;
+        }
+        Ok(())
+    }
+}
+
+/// Quad output: each partition goes to its graph; unmapped partitions are
+/// dropped.
+struct QuadSink<'a, F: FnMut(QuadRef<'_>) -> IoResult<()>> {
+    graphs: &'a BTreeMap<TypePartition, GraphName>,
+    write: F,
+}
+
+impl<F: FnMut(QuadRef<'_>) -> IoResult<()>> TripleSink for QuadSink<'_, F> {
+    fn wants(&self, partition: TypePartition) -> bool {
+        self.graphs.contains_key(&partition)
+    }
+
+    fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
+        if let Some(graph) = self.graphs.get(&partition) {
+            (self.write)(QuadRef::new(
+                &triple.subject,
+                &triple.predicate,
+                &triple.object,
+                graph,
+            ))?;
+        }
+        Ok(())
+    }
+}
+
+fn rdf_type_node() -> NamedNode {
+    NamedNode::new_unchecked(RDF_TYPE.to_string())
+}
+
+/// A `designates_type` slot mapped onto `rdf:type` would write the designator
+/// value as a second, unrelated type of the node and collide with the type
+/// regimes. Refuse it rather than guess.
+fn reject_type_designator_on_rdf_type(cv: &ClassView, conv: &Converter) -> IoResult<()> {
+    for slot in cv.slots() {
+        if slot.definition().designates_type.unwrap_or(false)
+            && slot_predicate_iri(slot, conv) == RDF_TYPE
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "slot '{}' of class '{}' designates the type but is mapped to rdf:type; \
+                     use a different slot_uri",
+                    slot.name,
+                    cv.name()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The type triples of one node: the own `rdf:type` (`Own`), one `rdf:type`
+/// per inferred class (`IsA` / `Mixin`) and the `sesame:directType` naming the
+/// own class (`Direct`).
+fn emit_type_triples<S: TripleSink>(
+    subject: &Node,
+    cv: &ClassView,
+    conv: &Converter,
+    sink: &mut S,
+) -> IoResult<()> {
+    // Shared with `schema_rdf` so the `rdf:type` object here and the class
+    // subject the schema triples describe are the same spelling by
+    // construction, not by coincidence.
+    let type_triple = |predicate: NamedNode, class: &ClassView| {
+        crate::schema_rdf::instance_type_iri(class, conv).map(|iri| Triple {
+            subject: subject.as_subject(),
+            predicate,
+            object: Term::NamedNode(NamedNode::new_unchecked(iri)),
+        })
+    };
+    if let Some(triple) = type_triple(rdf_type_node(), cv) {
+        sink.emit(TypePartition::Own, &triple)?;
+    }
+    if sink.wants(TypePartition::Direct) {
+        if let Some(triple) =
+            type_triple(NamedNode::new_unchecked(SESAME_DIRECT_TYPE.to_string()), cv)
+        {
+            sink.emit(TypePartition::Direct, &triple)?;
+        }
+    }
+    if !sink.wants(TypePartition::IsA) && !sink.wants(TypePartition::Mixin) {
+        return Ok(());
+    }
+    let partitions = crate::schema_rdf::type_partitions(cv)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+    for (partition, class) in partitions {
+        if matches!(partition, TypePartition::IsA | TypePartition::Mixin) {
+            if let Some(triple) = type_triple(rdf_type_node(), &class) {
+                sink.emit(partition, &triple)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
-fn serialize_map<W: Write>(
+fn serialize_map<S: TripleSink>(
     subject: &Node,
     map: &std::collections::HashMap<String, LinkMLInstance>,
     class: Option<&ClassView>,
-    formatter: &mut WriterTurtleSerializer<W>,
+    formatter: &mut S,
     _sv: &SchemaView,
     conv: &Converter,
     state: &mut State,
     id_slot: Option<&str>,
 ) -> IoResult<()> {
     if let Some(cv) = class {
-        // Shared with `schema_rdf` so the `rdf:type` object here and the class
-        // subject the schema triples describe are the same spelling by
-        // construction, not by coincidence.
-        if let Some(id_string) = crate::schema_rdf::instance_type_iri(cv, conv) {
-            let triple = Triple {
-                subject: subject.as_subject(),
-                predicate: NamedNode::new_unchecked(
-                    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string(),
-                ),
-                object: Term::NamedNode(NamedNode::new_unchecked(id_string)),
-            };
-            formatter.serialize_triple(triple.as_ref())?;
-        }
+        reject_type_designator_on_rdf_type(cv, conv)?;
+        emit_type_triples(subject, cv, conv, formatter)?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -344,7 +581,7 @@ fn serialize_map<W: Write>(
                     predicate: predicate.clone(),
                     object: scalar_object_term(value, slot, conv),
                 };
-                formatter.serialize_triple(triple.as_ref())?;
+                formatter.emit(TypePartition::Own, &triple)?;
             }
             LinkMLInstance::Null { .. } => {
                 // Null is treated as absent; emit nothing
@@ -358,7 +595,7 @@ fn serialize_map<W: Write>(
                         predicate: predicate.clone(),
                         object: lang_term,
                     };
-                    formatter.serialize_triple(triple.as_ref())?;
+                    formatter.emit(TypePartition::Own, &triple)?;
                 } else {
                     let (obj, child_id) =
                         identifier_node(values, class_ref, conv, state, Some(subject), k, None);
@@ -367,7 +604,7 @@ fn serialize_map<W: Write>(
                         predicate: predicate.clone(),
                         object: obj.as_term(),
                     };
-                    formatter.serialize_triple(triple.as_ref())?;
+                    formatter.emit(TypePartition::Own, &triple)?;
                     serialize_map(
                         &obj,
                         values,
@@ -389,7 +626,7 @@ fn serialize_map<W: Write>(
                                 predicate: predicate.clone(),
                                 object: scalar_object_term(value, slot, conv),
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                         LinkMLInstance::Null { .. } => {
                             // Skip null items
@@ -404,7 +641,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: lang_term,
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                             } else {
                                 // Position in the list is the discriminator for
                                 // members that carry no key of their own.
@@ -423,7 +660,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: obj.as_term(),
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                                 serialize_map(
                                     &obj,
                                     mv,
@@ -450,7 +687,7 @@ fn serialize_map<W: Write>(
                                 predicate: predicate.clone(),
                                 object: scalar_object_term(v, slot, conv),
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                         LinkMLInstance::Null { .. } => {
                             // nothing
@@ -465,7 +702,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: lang_term,
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                             } else {
                                 let (obj, child_id) = identifier_node(
                                     mv,
@@ -481,7 +718,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: obj.as_term(),
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                                 serialize_map(
                                     &obj,
                                     mv,
@@ -504,25 +741,29 @@ fn serialize_map<W: Write>(
     Ok(())
 }
 
-pub fn write_turtle<W: Write>(
+/// Walk `value` once, handing every triple to `sink`. Blank node labels come
+/// from one counter, so they are consistent across everything the sink routes.
+/// The counter continues from `*counter` and is written back, so several walks
+/// into one stream can share it and never reuse a label.
+fn walk<S: TripleSink>(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
-    w: &mut W,
-    options: TurtleOptions,
+    formatter: &mut S,
+    skolem: bool,
+    counter: &mut usize,
 ) -> IoResult<()> {
     let base = schema.id.trim_end_matches('#').to_string();
     let mut state = State {
-        counter: 0,
+        counter: *counter,
         base: if base.ends_with('/') {
             base
         } else {
             format!("{}/", base)
         },
-        skolem: options.skolem,
+        skolem,
     };
-    let mut formatter = TurtleSerializer::new().for_writer(Vec::new());
     match value {
         LinkMLInstance::Object { values, class, .. } => {
             let cv = &class;
@@ -546,7 +787,7 @@ pub fn write_turtle<W: Write>(
                 &subj,
                 values,
                 Some(cv),
-                &mut formatter,
+                formatter,
                 sv,
                 conv,
                 &mut state,
@@ -555,7 +796,7 @@ pub fn write_turtle<W: Write>(
         }
         LinkMLInstance::Mapping { values, .. } => {
             for (idx, item) in values.values().enumerate() {
-                let subj = if options.skolem {
+                let subj = if skolem {
                     Node::Named(format!("{}root/{}", state.base, idx))
                 } else {
                     state.next_subject()
@@ -565,16 +806,7 @@ pub fn write_turtle<W: Write>(
                         values: mv, class, ..
                     } => {
                         let class = Some(class);
-                        serialize_map(
-                            &subj,
-                            mv,
-                            class,
-                            &mut formatter,
-                            sv,
-                            conv,
-                            &mut state,
-                            None,
-                        )?;
+                        serialize_map(&subj, mv, class, formatter, sv, conv, &mut state, None)?;
                     }
                     LinkMLInstance::Scalar { value: v, slot, .. } => {
                         let (lit, dt_opt) = literal_and_type(v, slot);
@@ -590,7 +822,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         } else {
                             let object = Term::Literal(Literal::new_simple_literal(lit.clone()));
                             let triple = Triple {
@@ -600,7 +832,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                     }
                     LinkMLInstance::Null { .. } => {}
@@ -611,7 +843,7 @@ pub fn write_turtle<W: Write>(
         }
         LinkMLInstance::List { values, .. } => {
             for (idx, item) in values.iter().enumerate() {
-                let subj = if options.skolem {
+                let subj = if skolem {
                     Node::Named(format!("{}root/{}", state.base, idx))
                 } else {
                     state.next_subject()
@@ -621,16 +853,7 @@ pub fn write_turtle<W: Write>(
                         values: mv, class, ..
                     } => {
                         let class = Some(class);
-                        serialize_map(
-                            &subj,
-                            mv,
-                            class,
-                            &mut formatter,
-                            sv,
-                            conv,
-                            &mut state,
-                            None,
-                        )?;
+                        serialize_map(&subj, mv, class, formatter, sv, conv, &mut state, None)?;
                     }
                     LinkMLInstance::Scalar { value, slot, .. } => {
                         let (lit, dt_opt) = literal_and_type(value, slot);
@@ -646,7 +869,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         } else {
                             let object = Term::Literal(Literal::new_simple_literal(lit.clone()));
                             let triple = Triple {
@@ -656,7 +879,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                     }
                     LinkMLInstance::Null { .. } => {
@@ -670,228 +893,300 @@ pub fn write_turtle<W: Write>(
         LinkMLInstance::Scalar { .. } => {}
         LinkMLInstance::Null { .. } => {}
     }
-    let out_buf = formatter.finish()?;
-    let out = String::from_utf8(out_buf).unwrap_or_default();
-    let (out, used_prefixes) = replace_iris(&out, conv)?;
-
-    // Build the @prefix header from only the prefixes that replace_iris
-    // actually used.  This ensures the header is always in sync with the
-    // body and avoids emitting unused or colliding prefixes.
-    let mut header = String::new();
-    let mut sorted_prefixes: Vec<_> = used_prefixes.iter().collect();
-    sorted_prefixes.sort_by_key(|(k, _)| k.as_str());
-    for (pfx, uri) in &sorted_prefixes {
-        header.push_str(&format!("@prefix {}: <{}> .\n", pfx, uri));
-    }
-    if !used_prefixes.contains_key("xsd") {
-        header.push_str("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
-    }
-    header.push('\n');
-
-    w.write_all(header.as_bytes())?;
-    w.write_all(out.as_bytes())?;
+    *counter = state.counter;
     Ok(())
 }
 
+/// Write `value` as Turtle, keeping the partitions `options` routes.
+///
+/// Turtle cannot carry a graph name: an empty `partition_graphs`, or a
+/// partition routed to a named graph, is an `InvalidInput` error.
+pub fn write_turtle<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &WriteOptions,
+) -> IoResult<()> {
+    let mut stream = RdfStreamWriter::new(w, RdfOutputFormat::Turtle, sv, schema, conv, options)?;
+    stream.write(value)?;
+    stream.finish()?;
+    Ok(())
+}
+
+/// One Turtle instance with the blank node counter and the set of prefixes
+/// already declared supplied by the caller, so several instances written into
+/// one stream neither reuse labels nor repeat `@prefix` lines.
+///
+/// The instance's triples are collected first so the serializer can be told
+/// which prefixes its IRIs use; it does the compaction.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_turtle_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &WriteOptions,
+    counter: &mut usize,
+    declared: &mut BTreeSet<String>,
+) -> IoResult<()> {
+    options.validate("Turtle", true)?;
+    let mut sink = FlatSink {
+        graphs: &options.partition_graphs,
+        triples: Vec::new(),
+    };
+    walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
+    let mut prefixes = Prefixes::default();
+    for triple in &sink.triples {
+        prefixes.note_triple(triple, conv);
+    }
+    let prefixes = prefixes.finish();
+    let mut ser = TurtleSerializer::new();
+    for (name, iri) in &prefixes {
+        ser = ser
+            .with_prefix(name, iri)
+            .map_err(prefix_error(name, iri))?;
+    }
+    let mut ser = ser.for_writer(Vec::new());
+    for triple in &sink.triples {
+        ser.serialize_triple(triple.as_ref())?;
+    }
+    write_with_new_prefixes(w, &prefixes, declared, ser.finish()?)
+}
+
+/// Write `body`, a document the serializer began with the `@prefix` lines for
+/// all of `prefixes`, with only the prefixes `declared` does not hold yet
+/// declared in front of it (and added to `declared`). A fresh `declared` gives
+/// a single document its full header.
+fn write_with_new_prefixes<W: Write>(
+    w: &mut W,
+    prefixes: &BTreeMap<String, String>,
+    declared: &mut BTreeSet<String>,
+    body: Vec<u8>,
+) -> IoResult<()> {
+    let mut header = String::new();
+    for (name, iri) in prefixes {
+        if declared.insert(name.clone()) {
+            header.push_str(&format!("@prefix {name}: <{iri}> .\n"));
+        }
+    }
+    if !header.is_empty() {
+        header.push('\n');
+    }
+    w.write_all(header.as_bytes())?;
+    // The serializer writes its own prelude (one `@prefix` line per prefix it
+    // knows) before the first statement. Drop exactly those leading lines; the
+    // stream's header above already declares what is needed.
+    let mut rest = body.as_slice();
+    while rest.starts_with(b"@prefix ") || rest.starts_with(b"PREFIX ") {
+        let eol = rest
+            .iter()
+            .position(|&b| b == b'\n')
+            .map_or(rest.len(), |i| i + 1);
+        rest = &rest[eol..];
+    }
+    w.write_all(rest)
+}
+
+fn prefix_error<'a>(
+    name: &'a str,
+    iri: &'a str,
+) -> impl Fn(oxrdf::IriParseError) -> std::io::Error + 'a {
+    move |e| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("prefix {name}: <{iri}> is not a valid IRI: {e}"),
+        )
+    }
+}
+
+/// The `@prefix` declarations one document needs: the converter's prefix for
+/// every IRI the document writes (so none is declared unused), and `xsd`
+/// always.
+#[derive(Default)]
+struct Prefixes(BTreeMap<String, String>);
+
+impl Prefixes {
+    /// Record the prefix `conv` compacts `iri` with. `rdf:type` is skipped: it
+    /// is written as `a`.
+    fn note_iri(&mut self, iri: &str, conv: &Converter) {
+        if iri == RDF_TYPE {
+            return;
+        }
+        let Ok(curie) = conv.compress(iri) else {
+            return;
+        };
+        let Some((prefix, local)) = curie.split_once(':') else {
+            return;
+        };
+        let Some(uri_prefix) = iri.strip_suffix(local) else {
+            return;
+        };
+        self.0
+            .entry(prefix.to_string())
+            .or_insert_with(|| uri_prefix.to_string());
+    }
+
+    fn note_term(&mut self, term: &Term, conv: &Converter) {
+        match term {
+            Term::NamedNode(n) => self.note_iri(n.as_str(), conv),
+            // `xsd:string` and language-tagged strings are written bare.
+            Term::Literal(l) if l.language().is_none() && l.datatype().as_str() != XSD_STRING => {
+                self.note_iri(l.datatype().as_str(), conv)
+            }
+            _ => {}
+        }
+    }
+
+    fn note_triple(&mut self, triple: &Triple, conv: &Converter) {
+        if let NamedOrBlankNode::NamedNode(n) = &triple.subject {
+            self.note_iri(n.as_str(), conv);
+        }
+        self.note_iri(triple.predicate.as_str(), conv);
+        self.note_term(&triple.object, conv);
+    }
+
+    fn note_quad(&mut self, quad: &Quad, conv: &Converter) {
+        if let NamedOrBlankNode::NamedNode(n) = &quad.subject {
+            self.note_iri(n.as_str(), conv);
+        }
+        self.note_iri(quad.predicate.as_str(), conv);
+        self.note_term(&quad.object, conv);
+        if let GraphName::NamedNode(n) = &quad.graph_name {
+            self.note_iri(n.as_str(), conv);
+        }
+    }
+
+    /// The collected prefixes plus `xsd`.
+    fn finish(mut self) -> BTreeMap<String, String> {
+        self.0
+            .entry("xsd".to_string())
+            .or_insert_with(|| XSD_NS.to_string());
+        self.0
+    }
+}
+
+const XSD_NS: &str = "http://www.w3.org/2001/XMLSchema#";
+const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
+
+/// [`write_turtle`] into a `String`.
 pub fn turtle_to_string(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
-    options: TurtleOptions,
+    options: &WriteOptions,
 ) -> Result<String, std::io::Error> {
     let mut buf = Vec::new();
     write_turtle(value, sv, schema, conv, &mut buf, options)?;
     String::from_utf8(buf).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
-/// Write RDF data as N-Triples (one triple per line, full IRIs, no prefixes).
+/// Write `value` as N-Triples (one triple per line, full IRIs, no prefixes),
+/// keeping the partitions `options` routes.
 ///
-/// Generates Turtle internally, parses back, and re-serializes each triple
-/// through `NTriplesSerializer` for correct N-Triples output.
-/// Write RDF data as N-Triples (one triple per line, full IRIs, no prefixes).
-///
-/// Generates Turtle internally, parses back, and re-serializes each triple
-/// through `NTriplesSerializer` for correct N-Triples output.
+/// N-Triples cannot carry a graph name: an empty `partition_graphs`, or a
+/// partition routed to a named graph, is an `InvalidInput` error.
 pub fn write_ntriples<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
     w: &mut W,
-    options: TurtleOptions,
+    options: &WriteOptions,
 ) -> IoResult<()> {
-    let ttl = turtle_to_string(value, sv, schema, conv, options)?;
-    let mut buf = Vec::new();
-    let mut nt_ser = NTriplesSerializer::new().for_writer(&mut buf);
-    let parser = TurtleParser::new().for_reader(ttl.as_bytes());
-    for triple in parser {
-        let triple = triple.map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        nt_ser
-            .serialize_triple(triple.as_ref())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    }
-    drop(nt_ser);
-    w.write_all(&buf)?;
+    let mut stream = RdfStreamWriter::new(w, RdfOutputFormat::NTriples, sv, schema, conv, options)?;
+    stream.write(value)?;
+    stream.finish()?;
     Ok(())
 }
 
-/// Replace full IRIs with CURIEs where possible, returning the transformed
-/// string together with a map of prefix→URI-prefix for every prefix that was
-/// actually used.  This lets the caller emit exactly the `@prefix` declarations
-/// needed and nothing more.
-fn replace_iris(
-    out: &str,
+/// One N-Triples instance with a caller-supplied blank node counter.
+pub(crate) fn write_ntriples_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
     conv: &Converter,
-) -> IoResult<(String, std::collections::HashMap<String, String>)> {
-    let iri_re = Regex::new(r"<([^>]+)>")
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidInput, err))?;
-    let mut result = String::with_capacity(out.len());
-    let mut used_prefixes: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let mut last = 0;
-    for caps in iri_re.captures_iter(out) {
-        let Some(full_match) = caps.get(0) else {
-            continue;
-        };
-        let Some(iri_match) = caps.get(1) else {
-            continue;
-        };
-        result.push_str(&out[last..full_match.start()]);
-        let iri = iri_match.as_str();
-        let replacement = if iri == "http://www.w3.org/1999/02/22-rdf-syntax-ns#type" {
-            "a".to_string()
-        } else if let Ok(curie) = conv.compress(iri) {
-            if is_valid_turtle_local_name(&curie) {
-                // Record the prefix and derive its URI-prefix from the
-                // original IRI (IRI minus the local-name portion).
-                if let Some((prefix, local)) = curie.split_once(':') {
-                    let uri_prefix = &iri[..iri.len() - local.len()];
-                    used_prefixes
-                        .entry(prefix.to_string())
-                        .or_insert_with(|| uri_prefix.to_string());
-                }
-                curie
-            } else {
-                full_match.as_str().to_string()
-            }
-        } else {
-            full_match.as_str().to_string()
-        };
-        result.push_str(&replacement);
-        last = full_match.end();
-    }
-    result.push_str(&out[last..]);
-    Ok((result, used_prefixes))
-}
-
-/// Check if the local name part of a CURIE is valid for Turtle syntax.
-/// Characters like `#` and `/` are not allowed in Turtle local names.
-fn is_valid_turtle_local_name(curie: &str) -> bool {
-    let Some((_prefix, local)) = curie.split_once(':') else {
-        return false;
+    w: &mut W,
+    options: &WriteOptions,
+    counter: &mut usize,
+) -> IoResult<()> {
+    options.validate("N-Triples", true)?;
+    let mut sink = NTriplesSink {
+        ser: NTriplesSerializer::new().for_writer(&mut *w),
+        graphs: &options.partition_graphs,
     };
-    !local.contains('#') && !local.contains('/')
+    walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
+    sink.ser.finish();
+    Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use linkml_schemaview::converter::Record;
+/// One N-Quads instance, each partition into the graph `options` routes it to
+/// (the default graph included), with a caller-supplied blank node counter.
+///
+/// The instance is walked once, so blank node labels agree across graphs.
+/// An empty `partition_graphs` is an `InvalidInput` error, and so is a
+/// `designates_type` slot mapped to `rdf:type`, as in the flat writers.
+pub(crate) fn write_nquads_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &WriteOptions,
+    counter: &mut usize,
+) -> IoResult<()> {
+    options.validate("N-Quads", false)?;
+    let mut ser = NQuadsSerializer::new().for_writer(Vec::new());
+    let mut sink = QuadSink {
+        graphs: &options.partition_graphs,
+        write: |quad: QuadRef<'_>| ser.serialize_quad(quad),
+    };
+    walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
+    w.write_all(&ser.finish())?;
+    Ok(())
+}
 
-    fn make_converter(prefixes: &[(&str, &str)]) -> Converter {
-        let mut conv = Converter::default();
-        for (prefix, uri_prefix) in prefixes {
-            conv.add_record(Record::new(prefix, uri_prefix)).unwrap();
-        }
-        conv
+/// One TriG instance with the same content as [`write_nquads_counted`] and the
+/// `@prefix` header of [`write_turtle`] (only for prefixes `declared` does not
+/// hold yet). Errors as [`write_nquads_counted`] does.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_trig_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &WriteOptions,
+    counter: &mut usize,
+    declared: &mut BTreeSet<String>,
+) -> IoResult<()> {
+    options.validate("TriG", false)?;
+    let mut quads: Vec<Quad> = Vec::new();
+    let mut sink = QuadSink {
+        graphs: &options.partition_graphs,
+        write: |quad: QuadRef<'_>| {
+            quads.push(quad.into_owned());
+            Ok(())
+        },
+    };
+    walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
+    let mut prefixes = Prefixes::default();
+    for quad in &quads {
+        prefixes.note_quad(quad, conv);
     }
-
-    #[test]
-    fn replace_iris_keeps_iri_when_local_name_starts_with_hash() {
-        // RSM prefix maps to URI without trailing # or /
-        // So http://rsm.uic.org/RSM12#EAID_xxx compresses to RSM:#EAID_xxx (invalid)
-        let conv = make_converter(&[("RSM", "http://rsm.uic.org/RSM12")]);
-        let input = r#"<http://rsm.uic.org/RSM12#EAID_55DDBCD9> a RSM:Thing ."#;
-        let (result, used) = replace_iris(input, &conv).unwrap();
-        // Should keep the full IRI in angle brackets, not RSM:#EAID_55DDBCD9
-        assert!(
-            !result.contains("RSM:#"),
-            "Local name starting with # is invalid Turtle. Got: {}",
-            result
-        );
-        assert!(
-            result.contains("<http://rsm.uic.org/RSM12#EAID_55DDBCD9>"),
-            "Should keep angle-bracketed IRI. Got: {}",
-            result
-        );
-        // RSM prefix should NOT be in used_prefixes since it was rejected
-        assert!(!used.contains_key("RSM"));
+    let prefixes = prefixes.finish();
+    let mut ser = TriGSerializer::new();
+    for (name, iri) in &prefixes {
+        ser = ser
+            .with_prefix(name, iri)
+            .map_err(prefix_error(name, iri))?;
     }
-
-    #[test]
-    fn replace_iris_keeps_iri_when_local_name_contains_slash() {
-        // asset360 prefix maps to URI with trailing /
-        // So https://data.example.com/asset360/unit/Meter compresses to asset360:unit/Meter (invalid)
-        let conv = make_converter(&[("asset360", "https://data.example.com/asset360/")]);
-        let input = r#"<https://data.example.com/asset360/unit/Meter> a asset360:Thing ."#;
-        let (result, used) = replace_iris(input, &conv).unwrap();
-        // Should keep the full IRI in angle brackets, not asset360:unit/Meter
-        assert!(
-            !result.contains("asset360:unit/Meter"),
-            "Local name with / is invalid Turtle. Got: {}",
-            result
-        );
-        assert!(
-            result.contains("<https://data.example.com/asset360/unit/Meter>"),
-            "Should keep angle-bracketed IRI. Got: {}",
-            result
-        );
-        // asset360 prefix should NOT be in used_prefixes since it was rejected
-        assert!(!used.contains_key("asset360"));
+    let mut ser = ser.for_writer(Vec::new());
+    for quad in &quads {
+        ser.serialize_quad(quad.as_ref())?;
     }
-
-    #[test]
-    fn replace_iris_compresses_valid_curies() {
-        // Normal case: prefix with trailing / or #, clean local name
-        let conv = make_converter(&[("ex", "http://example.com/")]);
-        let input = r#"<http://example.com/Thing> a <http://example.com/Class> ."#;
-        let (result, used) = replace_iris(input, &conv).unwrap();
-        assert!(
-            result.contains("ex:Thing"),
-            "Valid CURIE should be compressed. Got: {}",
-            result
-        );
-        assert!(
-            result.contains("ex:Class"),
-            "Valid CURIE should be compressed. Got: {}",
-            result
-        );
-        // ex prefix should be in used_prefixes
-        assert_eq!(used.get("ex").unwrap(), "http://example.com/");
-    }
-
-    #[test]
-    fn replace_iris_replaces_rdf_type_with_a() {
-        let conv = make_converter(&[]);
-        let input = r#"<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"#;
-        let (result, _used) = replace_iris(input, &conv).unwrap();
-        assert_eq!(result, "a");
-    }
-
-    #[test]
-    fn is_valid_turtle_local_name_rejects_hash() {
-        assert!(!is_valid_turtle_local_name("RSM:#EAID_xxx"));
-    }
-
-    #[test]
-    fn is_valid_turtle_local_name_rejects_slash() {
-        assert!(!is_valid_turtle_local_name("asset360:unit/Meter"));
-    }
-
-    #[test]
-    fn is_valid_turtle_local_name_accepts_valid() {
-        assert!(is_valid_turtle_local_name("ex:Thing"));
-        assert!(is_valid_turtle_local_name("schema:Person"));
-    }
+    write_with_new_prefixes(w, &prefixes, declared, ser.finish()?)
 }

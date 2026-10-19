@@ -5,7 +5,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{write_ntriples, TurtleOptions},
+    turtle::{write_ntriples, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -60,7 +60,7 @@ fn serialize_skolem() -> Vec<String> {
         &schema,
         &conv,
         &mut buf,
-        TurtleOptions { skolem: true },
+        &WriteOptions::default().with_skolem(true),
     )
     .unwrap();
     let nt = String::from_utf8(buf).unwrap();

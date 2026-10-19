@@ -1,0 +1,32 @@
+# Same shape as type_regimes_data.yaml for the import roundtrip matrix, with
+# full-IRI identifiers (the importer yields full IRIs, not CURIEs). RDF has no
+# list order; the importer rebuilds list members in the order of their (skolem
+# or blank-node) identifiers, so members are listed that way here: positional
+# skolem IRIs such as s1/tags/0 then survive a roundtrip. `tags` is keyed only
+# by unique_keys.
+id: https://example.com/type-regimes/registry1
+signals:
+- id: https://example.com/type-regimes/s1
+  name: signal one
+  zone: z1
+  location:
+    typeURI: https://example.com/type-regimes/SpotLocation
+    km: 12.5
+  parts:
+  - label: lamp
+  - label: mast
+  tags:
+  - key: color
+    value: red
+  - key: owner
+    value: ops
+main_signals:
+- id: https://example.com/type-regimes/m1
+  name: main one
+  priority: 3
+  location:
+    typeURI: https://example.com/type-regimes/LinearLocation
+    from_km: 1.0
+    to_km: 2.0
+selfs:
+- id: https://example.com/type-regimes/self1

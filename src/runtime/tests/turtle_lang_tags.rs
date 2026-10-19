@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -52,7 +52,14 @@ fn get_station_ttl() -> String {
     .unwrap()
     .into_instance()
     .unwrap();
-    turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap()
+    turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap()
 }
 
 // ─── Feature 1: in_language on slot ───

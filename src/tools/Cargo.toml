@@ -38,6 +38,8 @@ serde_path_to_error = "0.1.17"
 assert_cmd = "2"
 predicates = "2"
 tempfile = "3"
+oxrdf = "0.3"
+oxttl = "0.2"
 
 [features]
 default = ["resolve", "ttl", "curies", "full_regex"]

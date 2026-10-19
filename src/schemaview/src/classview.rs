@@ -607,6 +607,29 @@ impl ClassView {
         }
     }
 
+    /// Returns the classes this class lists as `mixins`, in declaration order.
+    ///
+    /// A mixin name that does not resolve to a class in the view is skipped,
+    /// the same way [`parent_class`](Self::parent_class) yields `None` for an
+    /// unresolvable `is_a`.
+    pub fn mixin_classes(&self) -> Result<Vec<ClassView>, SchemaViewError> {
+        let Some(mixins) = &self.data.class.mixins else {
+            return Ok(Vec::new());
+        };
+        let conv = self
+            .data
+            .sv
+            .converter_for_schema(&self.data.schema_uri)
+            .ok_or(SchemaViewError::NotFound)?;
+        let mut out = Vec::with_capacity(mixins.len());
+        for mixin in mixins {
+            if let Some(cv) = self.data.sv.get_class(&Identifier::new(mixin), &conv)? {
+                out.push(cv);
+            }
+        }
+        Ok(out)
+    }
+
     /// Returns the slot marked as `key=True` or `identifier=True`, if any.
     ///
     /// This is the slot whose value uniquely identifies instances of this class.

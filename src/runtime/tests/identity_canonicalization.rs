@@ -587,7 +587,7 @@ fn sorted_systems(v: &JsonValue) -> Vec<String> {
 #[test]
 fn json_and_rdf_loaders_agree_on_the_designator_spelling() {
     use linkml_runtime::rdf_import::{import_turtle, ImportOptions};
-    use linkml_runtime::turtle::{turtle_to_string, TurtleOptions};
+    use linkml_runtime::turtle::{turtle_to_string, WriteOptions};
 
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     p.push("tests/data/identity_canonical.yaml");
@@ -617,7 +617,7 @@ fn json_and_rdf_loaders_agree_on_the_designator_spelling() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions { skolem: false },
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
     let stream = import_turtle(

@@ -1,0 +1,6 @@
+# A second instance whose identifier lives in a namespace other than the
+# schema's own, so a stream of both introduces a prefix with the second one.
+id: http://example.org/registry2
+signals:
+- id: http://example.org/s2
+  name: signal two

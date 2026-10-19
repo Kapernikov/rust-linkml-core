@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schema, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -60,7 +60,7 @@ fn turtle_prefix_conflict_produces_valid_output() {
         &sv,
         &derived_schema,
         &conv,
-        TurtleOptions { skolem: false },
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -149,7 +149,7 @@ fn turtle_all_imported_prefixes_are_declared() {
         &sv,
         &derived_schema,
         &conv,
-        TurtleOptions { skolem: false },
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 

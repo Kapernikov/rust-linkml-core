@@ -2,7 +2,7 @@
 
 use linkml_runtime::{
     load_yaml_file,
-    turtle::{turtle_to_string, TurtleOptions},
+    turtle::{turtle_to_string, WriteOptions},
 };
 use linkml_schemaview::identifier::{converter_from_schema, converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
@@ -55,7 +55,14 @@ fn turtle_integer_literal_has_xsd_type() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // Integer should be typed - either native Turtle syntax (42) or explicit (\"42\"^^xsd:integer)
     // Native Turtle integers are valid and equivalent to xsd:integer
@@ -91,7 +98,14 @@ fn turtle_float_literal_has_xsd_type() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // Float should have xsd:float type annotation
     assert!(
@@ -118,7 +132,14 @@ fn turtle_boolean_literal_has_xsd_type() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // Boolean should be typed - either native Turtle syntax (true) or explicit (\"true\"^^xsd:boolean)
     // Native Turtle booleans are valid and equivalent to xsd:boolean
@@ -154,7 +175,14 @@ fn turtle_predicates_use_expanded_prefix() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // Predicates should use the typed: prefix WITHOUT angle brackets
     // Should NOT have angle brackets around CURIEs like <typed:name>
@@ -192,7 +220,14 @@ fn turtle_slot_uri_overrides_default_prefix() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // 'name' has no slot_uri, should use default prefix: sloturi:name
     assert!(
@@ -261,7 +296,7 @@ fn turtle_inherited_slots_use_originating_schema_prefix() {
         &sv,
         &derived_schema,
         &conv,
-        TurtleOptions { skolem: false },
+        &WriteOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -307,7 +342,14 @@ fn turtle_builtin_prefix_declared_when_used() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        &WriteOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // The predicate must be compressed to rdfs:label (not the full IRI)
     assert!(

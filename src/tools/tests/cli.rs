@@ -24,11 +24,17 @@ fn skolem_flag_creates_named_nodes() {
 
     let ttl = std::fs::read_to_string(&out_path).unwrap();
     // The keyless child of the `obj` slot is named after the slot it hangs off.
-    // Skolem IRIs with slashes in the local name are kept as full IRIs because
-    // "poly:root/obj" is invalid Turtle (slash in local name).
+    // The serializer may spell it as an escaped prefixed name, so compare the
+    // parsed IRIs, not the text.
+    let subjects: Vec<oxrdf::NamedOrBlankNode> = oxttl::TurtleParser::new()
+        .for_reader(ttl.as_bytes())
+        .map(|t| t.unwrap().subject)
+        .collect();
     assert!(
-        ttl.contains("<https://example.com/poly/root/obj>"),
-        "Expected full IRI for skolem node with slash in local name. Got:\n{}",
+        subjects.contains(&oxrdf::NamedOrBlankNode::NamedNode(
+            oxrdf::NamedNode::new("https://example.com/poly/root/obj").unwrap()
+        )),
+        "Expected the skolem node IRI. Got:\n{}",
         ttl
     );
 }

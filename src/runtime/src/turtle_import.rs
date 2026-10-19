@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use oxrdf::{
     vocab::{rdf, xsd},
-    Literal, NamedOrBlankNode, Term, TermRef,
+    Literal, NamedNode, NamedOrBlankNode, Term, TermRef,
 };
 use serde_json::Value as JsonValue;
 
@@ -21,13 +21,19 @@ use linkml_schemaview::schemaview::{
 };
 use linkml_schemaview::Converter;
 
+use crate::schema_rdf::{rdf_types, TypeRegime, SESAME_DIRECT_TYPE};
 use crate::triple_source::TripleSource;
 use crate::{new_node_id, LinkMLInstance, ValidationProblemType, ValidationResult};
 
 // ── Error types ──────────────────────────────────────────────────────────────
 
 /// Errors that can occur during RDF/Turtle import.
+///
+/// A `subject` field holds the subject in N-Triples form (`<iri>` or
+/// `_:label`); a type field (`type_iri`, `direct_type`, `candidates`) holds a
+/// plain IRI.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ImportError {
     /// I/O or parse error from oxttl
     Parse(String),
@@ -39,6 +45,27 @@ pub enum ImportError {
     UnknownClass(String),
     /// A required rdf:type triple is missing for a subject
     MissingType(String),
+    /// A subject has no `sesame:directType` and its schema `rdf:type`s do not
+    /// have a unique most specific class (one that descends from all the
+    /// others). `candidates` holds the schema-class `rdf:type` IRIs, sorted.
+    AmbiguousType {
+        subject: String,
+        candidates: Vec<String>,
+    },
+    /// A subject has several distinct `sesame:directType` values, but a node
+    /// has exactly one most specific class. `direct_types` holds the IRIs,
+    /// sorted.
+    ConflictingDirectTypes {
+        subject: String,
+        direct_types: Vec<String>,
+    },
+    /// A subject's `rdf:type` is not among the types its `sesame:directType`
+    /// implies (`rdf_types(direct_type, IS_A_AND_MIXINS)`).
+    TypeConflict {
+        subject: String,
+        direct_type: String,
+        type_iri: String,
+    },
     /// Schema lookup failed
     SchemaError(SchemaViewError),
     /// Literal value could not be converted
@@ -56,15 +83,42 @@ impl std::fmt::Display for ImportError {
         match self {
             ImportError::Parse(msg) => write!(f, "Turtle parse error: {msg}"),
             ImportError::UnknownType { subject, type_iri } => {
-                write!(f, "Unknown rdf:type <{type_iri}> for subject <{subject}>")
+                write!(f, "Unknown rdf:type <{type_iri}> for subject {subject}")
             }
             ImportError::InlinedCycle { subject } => {
-                write!(f, "Cycle detected when inlining subject <{subject}>")
+                write!(f, "Cycle detected when inlining subject {subject}")
             }
             ImportError::UnknownClass(name) => write!(f, "Root class not found: {name}"),
             ImportError::MissingType(subject) => {
-                write!(f, "No rdf:type triple for subject <{subject}>")
+                write!(f, "No rdf:type triple for subject {subject}")
             }
+            ImportError::AmbiguousType {
+                subject,
+                candidates,
+            } => write!(
+                f,
+                "Ambiguous type for subject {subject}: none of {} is more specific than all \
+                 the others; add a sesame:directType triple naming the intended class",
+                iri_list(candidates)
+            ),
+            ImportError::ConflictingDirectTypes {
+                subject,
+                direct_types,
+            } => write!(
+                f,
+                "Subject {subject} has several sesame:directType values ({}); a subject has \
+                 exactly one most specific class, so keep one sesame:directType triple",
+                iri_list(direct_types)
+            ),
+            ImportError::TypeConflict {
+                subject,
+                direct_type,
+                type_iri,
+            } => write!(
+                f,
+                "Subject {subject} has rdf:type <{type_iri}>, which its sesame:directType \
+                 <{direct_type}> does not imply"
+            ),
             ImportError::SchemaError(e) => write!(f, "Schema error: {e}"),
             ImportError::LiteralConversion {
                 value,
@@ -75,6 +129,14 @@ impl std::fmt::Display for ImportError {
             }
         }
     }
+}
+
+/// `<a>, <b>` for a list of IRIs.
+fn iri_list(iris: &[String]) -> String {
+    iris.iter()
+        .map(|c| format!("<{c}>"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 impl std::error::Error for ImportError {}
@@ -190,8 +252,22 @@ fn resolve_enum_value(
 
 // ── Schema helpers ──────────────────────────────────────────────────────────
 
-/// Resolve the ClassView for a subject by looking at its rdf:type triple(s).
-/// Picks the most specific type defined in the schema.
+/// Resolve the ClassView for a subject from its `rdf:type` and
+/// `sesame:directType` triples.
+///
+/// 1. With `sesame:directType`: exactly one distinct value is required
+///    (several: [`ImportError::ConflictingDirectTypes`]) and it must name a schema
+///    class ([`ImportError::UnknownType`]). Every schema-class `rdf:type` of
+///    the subject must be implied by it, i.e. be in
+///    `rdf_types(direct, IS_A_AND_MIXINS)` ([`ImportError::TypeConflict`]).
+///    The direct class is the result.
+/// 2. Otherwise the result is the unique non-mixin candidate among the
+///    subject's schema-class `rdf:type`s that implies every other candidate
+///    (same `rdf_types` test). Mixin classes are never the result but still
+///    must be implied. No such class, or several: [`ImportError::AmbiguousType`].
+///
+/// `rdf:type`s that are not schema classes are ignored as long as at least
+/// one is (non-class types such as `owl:Thing` are common in inferred data).
 pub(crate) fn resolve_class<T: TripleSource>(
     store: &T,
     sv: &SchemaView,
@@ -199,68 +275,145 @@ pub(crate) fn resolve_class<T: TripleSource>(
     subject: &NamedOrBlankNode,
 ) -> Result<ClassView, ImportError> {
     let type_node = rdf::TYPE.into_owned();
-    let types: Vec<_> = store
-        .objects_for_subject_predicate(subject, &type_node)
-        .collect();
+    let direct_node = NamedNode::new_unchecked(SESAME_DIRECT_TYPE);
 
-    if types.is_empty() {
-        return Err(ImportError::MissingType(subject.to_string()));
-    }
-
-    let mut candidates: Vec<ClassView> = Vec::new();
-    for term in types {
+    // (type IRI as written, class) for every rdf:type naming a schema class.
+    let mut types_seen = false;
+    let mut first_type = String::new();
+    let mut candidates: Vec<(String, ClassView)> = Vec::new();
+    for term in store.objects_for_subject_predicate(subject, &type_node) {
+        if !types_seen {
+            types_seen = true;
+            first_type = match term {
+                TermRef::NamedNode(nn) => nn.as_str().to_string(),
+                other => other.to_string(),
+            };
+        }
         if let TermRef::NamedNode(nn) = term {
             let iri = nn.as_str();
-            // Try both expanded IRI and as-is (could be CURIE)
-            if let Ok(Some(cv)) = sv.get_class_by_uri(iri) {
-                candidates.push(cv);
+            if candidates.iter().any(|(i, _)| i == iri) {
+                continue;
+            }
+            if let Some(cv) = sv.get_class_by_uri(iri)? {
+                candidates.push((iri.to_string(), cv));
             }
         }
     }
 
+    let mut directs: Vec<String> = Vec::new();
+    for term in store.objects_for_subject_predicate(subject, &direct_node) {
+        if let TermRef::NamedNode(nn) = term {
+            if !directs.iter().any(|d| d == nn.as_str()) {
+                directs.push(nn.as_str().to_string());
+            }
+        }
+    }
+
+    if !directs.is_empty() {
+        if directs.len() > 1 {
+            directs.sort();
+            return Err(ImportError::ConflictingDirectTypes {
+                subject: subject.to_string(),
+                direct_types: directs,
+            });
+        }
+        let direct_iri = &directs[0];
+        let direct = sv
+            .get_class_by_uri(direct_iri)?
+            .ok_or_else(|| ImportError::UnknownType {
+                subject: subject.to_string(),
+                type_iri: direct_iri.clone(),
+            })?;
+        let implied = implied_class_keys(&direct)?;
+        for (iri, cv) in &candidates {
+            if !implied.contains(&cv.canonical_uri().to_string()) {
+                return Err(ImportError::TypeConflict {
+                    subject: subject.to_string(),
+                    direct_type: direct_iri.clone(),
+                    type_iri: iri.clone(),
+                });
+            }
+        }
+        return Ok(direct);
+    }
+
+    if !types_seen {
+        return Err(ImportError::MissingType(subject.to_string()));
+    }
     if candidates.is_empty() {
-        // Report the first type IRI for the error
-        let first_type = store
-            .objects_for_subject_predicate(subject, &type_node)
-            .next()
-            .map(|t| t.to_string())
-            .unwrap_or_default();
         return Err(ImportError::UnknownType {
             subject: subject.to_string(),
             type_iri: first_type,
         });
     }
 
-    if candidates.len() == 1 {
-        return Ok(candidates
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| unreachable!()));
-    }
-
-    // Multiple types: pick the most specific (deepest in is_a hierarchy)
-    // The one with the most ancestors is the most specific
-    let mut best = candidates[0].clone();
-    let mut best_depth = ancestor_depth(&best);
-    for cv in &candidates[1..] {
-        let depth = ancestor_depth(cv);
-        if depth > best_depth {
-            best = cv.clone();
-            best_depth = depth;
+    let mut winners: Vec<&ClassView> = Vec::new();
+    for (_, cand) in &candidates {
+        if cand.def().mixin.unwrap_or(false) {
+            continue;
+        }
+        let implied = implied_class_keys(cand)?;
+        let covers_all = candidates
+            .iter()
+            .all(|(_, other)| implied.contains(&other.canonical_uri().to_string()));
+        // Two type IRIs may name the same class; count it once.
+        if covers_all
+            && !winners
+                .iter()
+                .any(|w| w.canonical_uri().to_string() == cand.canonical_uri().to_string())
+        {
+            winners.push(cand);
         }
     }
-    Ok(best)
+    match winners.as_slice() {
+        [one] => Ok((*one).clone()),
+        _ => {
+            let mut iris: Vec<String> = candidates.into_iter().map(|(i, _)| i).collect();
+            iris.sort();
+            Err(ImportError::AmbiguousType {
+                subject: subject.to_string(),
+                candidates: iris,
+            })
+        }
+    }
 }
 
-/// Count the depth of the is_a chain for a class (more ancestors = more specific).
-fn ancestor_depth(cv: &ClassView) -> usize {
-    let mut depth = 0;
-    let mut current = cv.clone();
-    while let Ok(Some(parent)) = current.parent_class() {
-        depth += 1;
-        current = parent;
+/// Canonical URIs of every class a subject of class `cv` may legitimately
+/// carry as `rdf:type`: `rdf_types(cv, IS_A_AND_MIXINS)` (includes `cv`).
+/// Sort key comparing digit runs numerically, so `p/2` sorts before `p/10`.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct NaturalKey(Vec<(String, u64, String)>);
+
+impl NaturalKey {
+    fn new(s: &str) -> Self {
+        let mut parts = Vec::new();
+        let mut rest = s;
+        while !rest.is_empty() {
+            let text_end = rest
+                .find(|c: char| c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            let (text, tail) = rest.split_at(text_end);
+            let digits_end = tail
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(tail.len());
+            let (digits, next) = tail.split_at(digits_end);
+            // Digit runs too long for u64 saturate; the raw digits break ties.
+            parts.push((
+                text.to_string(),
+                digits.parse::<u64>().unwrap_or(u64::MAX),
+                digits.to_string(),
+            ));
+            rest = next;
+        }
+        NaturalKey(parts)
     }
-    depth
+}
+
+fn implied_class_keys(cv: &ClassView) -> Result<HashSet<String>, ImportError> {
+    Ok(rdf_types(cv, TypeRegime::IS_A_AND_MIXINS)?
+        .iter()
+        .map(|c| c.canonical_uri().to_string())
+        .collect())
 }
 
 // ── Harvest context & main algorithm ────────────────────────────────────────
@@ -370,6 +523,9 @@ pub fn harvest_subject<T: TripleSource>(
 
     // Always mark rdf:type as consumed
     consumed_predicates.insert(rdf::TYPE.as_str().to_string());
+    // sesame:directType is type machinery like rdf:type: never a slot value,
+    // never an unknown field.
+    consumed_predicates.insert(SESAME_DIRECT_TYPE.to_string());
 
     // One scan over the subject's triples; bucket objects by predicate IRI.
     // Owned `Term`s outlive the slot loop and the unknown-fields pass so we
@@ -385,6 +541,13 @@ pub fn harvest_subject<T: TripleSource>(
             _ => continue,
         };
         by_predicate.entry(pred).or_default().push(obj_owned);
+    }
+    // RDF carries no order and the store iterates in an arbitrary one; sort the
+    // objects so that list members, and which value a single-valued slot
+    // keeps, are the same on every import (and positional skolem IRIs such as
+    // `x/parts/2` come back in their own order).
+    for objects in by_predicate.values_mut() {
+        objects.sort_by_cached_key(|t| NaturalKey::new(&t.to_string()));
     }
 
     // Populate identifier slot from subject IRI (if class has one and subject is a named node)
@@ -616,7 +779,7 @@ pub fn harvest_subject<T: TripleSource>(
             SlotContainerMode::SingleValue => {
                 if items.len() > 1 {
                     // Schema says single-valued; RDF has multiple objects.
-                    // First wins (HashMap order — nondeterministic across runs);
+                    // First wins (in sorted object order);
                     // emit a warning so the caller can see they have either
                     // a schema bug or unexpectedly multi-valued source data.
                     let dropped = items.len() - 1;

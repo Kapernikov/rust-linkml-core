@@ -1031,6 +1031,7 @@ version = "0.1.0"
 dependencies = [
  "linkml_meta",
  "linkml_runtime",
+ "oxrdf",
  "pyo3",
  "pyo3-stub-gen",
  "schemaview",
@@ -1047,6 +1048,8 @@ dependencies = [
  "clap",
  "linkml_meta",
  "linkml_runtime",
+ "oxrdf",
+ "oxttl",
  "predicates 2.1.5",
  "schemaview",
  "serde",
