@@ -24,6 +24,7 @@ use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::{SchemaView, SlotInlineMode};
 use linkml_schemaview::Converter;
 
+use crate::schema_rdf::SESAME_DIRECT_TYPE;
 use crate::triple_source::TripleSource;
 use crate::turtle_import::{harvest_subject, resolve_class, HarvestContext, ImportError};
 use crate::{LinkMLInstance, ValidationResult};
@@ -43,6 +44,43 @@ pub struct InlineStructure {
     pub materializations: HashMap<String, usize>,
 }
 
+/// Enumerate the root subjects of an import, each once, with its resolved
+/// class.
+///
+/// A subject is a root iff it carries an `rdf:type` naming one of
+/// `root_classes` (exactly as the pre-regime importer enumerated them); it is
+/// then imported once, as the class [`resolve_class`] picks from ALL its
+/// `rdf:type` / `sesame:directType` triples, however many root classes it
+/// matches (an inferred `Signal` that also carries `Asset` is one `Signal`,
+/// not a `Signal` plus an `Asset`). Subjects whose types do not resolve
+/// (`AmbiguousType`, `TypeConflict`, ...) fail the import.
+fn collect_root_subjects<T: TripleSource>(
+    store: &T,
+    sv: &SchemaView,
+    conv: &Converter,
+    root_classes: &[&str],
+) -> Result<Vec<(NamedOrBlankNode, ClassView)>, ImportError> {
+    let rdf_type = rdf::TYPE.into_owned();
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out: Vec<(NamedOrBlankNode, ClassView)> = Vec::new();
+    for &name in root_classes {
+        let cv = sv
+            .get_class(&Identifier::new(name), conv)
+            .map_err(ImportError::SchemaError)?
+            .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
+        let class_uri = NamedNode::new_unchecked(cv.get_uri(conv, false, true)?.to_string());
+        for subj in store.subjects_for_predicate_object(&rdf_type, &class_uri) {
+            let subj = subj.into_owned();
+            if !seen.insert(subj.to_string()) {
+                continue;
+            }
+            let class = resolve_class(store, sv, conv, &subj)?;
+            out.push((subj, class));
+        }
+    }
+    Ok(out)
+}
+
 /// Pass 1: walk the inline subgraph from every root candidate.
 ///
 /// Reads `rdf:type` and the triples of every reachable subject. Does NOT
@@ -53,30 +91,14 @@ pub fn compute_inline_structure<T: TripleSource>(
     conv: &Converter,
     root_classes: &[&str],
 ) -> Result<InlineStructure, ImportError> {
-    // Resolve root classes to their class URIs.
-    let mut root_class_uris: Vec<NamedNode> = Vec::new();
-    for &name in root_classes {
-        let cv = sv
-            .get_class(&Identifier::new(name), conv)
-            .map_err(ImportError::SchemaError)?
-            .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
-        let class_uri = cv.get_uri(conv, false, true)?;
-        root_class_uris.push(NamedNode::new_unchecked(class_uri.to_string()));
-    }
-
-    let rdf_type = rdf::TYPE.into_owned();
-
     let mut structure = InlineStructure::default();
     let mut visited: HashSet<String> = HashSet::new();
     let mut visit_stack: HashSet<String> = HashSet::new();
 
-    // Gather root candidates.
-    let mut roots: Vec<NamedOrBlankNode> = Vec::new();
-    for class_uri in &root_class_uris {
-        for subj in store.subjects_for_predicate_object(&rdf_type, class_uri) {
-            roots.push(subj.into_owned());
-        }
-    }
+    let roots: Vec<NamedOrBlankNode> = collect_root_subjects(store, sv, conv, root_classes)?
+        .into_iter()
+        .map(|(subj, _)| subj)
+        .collect();
 
     for root in &roots {
         walk(
@@ -121,6 +143,9 @@ fn walk<T: TripleSource>(
     // no slot information for it. We still mark it visited so we don't loop.
     let class = match resolve_class(store, sv, conv, subject) {
         Ok(c) => c,
+        Err(e @ (ImportError::AmbiguousType { .. } | ImportError::TypeConflict { .. })) => {
+            return Err(e)
+        }
         Err(_) => {
             visit_stack.remove(&key);
             visited.insert(key);
@@ -145,7 +170,7 @@ fn walk<T: TripleSource>(
     let mut edges: Vec<String> = Vec::new();
     for triple in store.triples_for_subject(subject) {
         let pred_iri = triple.predicate.as_str();
-        if pred_iri == rdf_type_str {
+        if pred_iri == rdf_type_str || pred_iri == SESAME_DIRECT_TYPE {
             continue;
         }
         let child_subject: Option<NamedOrBlankNode> = match triple.object {
@@ -477,23 +502,7 @@ pub fn import_from_store_streaming<'a, T: TripleSource>(
 ) -> Result<ImportStream<'a, T>, ImportError> {
     let structure = compute_inline_structure(store, sv, conv, root_classes)?;
 
-    // Enumerate candidates again, this time with ClassView attached.
-    let mut root_class_info: Vec<(ClassView, NamedNode)> = Vec::new();
-    for &name in root_classes {
-        let cv = sv
-            .get_class(&Identifier::new(name), conv)
-            .map_err(ImportError::SchemaError)?
-            .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
-        let class_uri = cv.get_uri(conv, false, true)?;
-        root_class_info.push((cv, NamedNode::new_unchecked(class_uri.to_string())));
-    }
-    let rdf_type = rdf::TYPE.into_owned();
-    let mut candidates: Vec<(NamedOrBlankNode, ClassView)> = Vec::new();
-    for (cv, class_uri) in &root_class_info {
-        for subj in store.subjects_for_predicate_object(&rdf_type, class_uri) {
-            candidates.push((subj.into_owned(), cv.clone()));
-        }
-    }
+    let candidates = collect_root_subjects(store, sv, conv, root_classes)?;
 
     let claimed = structure.claimed.clone();
     let materializer = Materializer::new(&structure);
