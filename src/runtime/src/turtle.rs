@@ -1,3 +1,19 @@
+//! RDF writers for [`LinkMLInstance`]: Turtle, N-Triples, N-Quads and TriG.
+//!
+//! The instance is walked once and every triple is tagged with a
+//! [`TypePartition`]: non-type triples and a node's own `rdf:type` are `Own`;
+//! an `rdf:type` per `is_a` ancestor is `IsA`, per mixin-only class `Mixin`;
+//! one `sesame:directType` naming the node's own class is `Direct`. This holds
+//! for every typed node, records and inlined objects alike.
+//!
+//! The flat writers ([`write_turtle`], [`turtle_to_string`], [`write_ntriples`])
+//! keep the partitions of [`TurtleOptions::regime`]; with the default
+//! `Asserted` regime the output is exactly the single-`rdf:type` output. The
+//! quad writers ([`write_nquads`], [`write_trig`]) put each partition into the
+//! graph [`QuadOptions::partition_graphs`] names and drop unmapped ones.
+//! A `designates_type` slot is never written; one mapped onto `rdf:type` is
+//! rejected with an `InvalidInput` error.
+
 use linkml_meta::SchemaDefinition;
 use linkml_schemaview::Converter;
 
@@ -7,12 +23,12 @@ use linkml_schemaview::slotview::{SlotView, TermDescriptor, TermKind};
 use serde_json::Value as JsonValue;
 use std::io::{Result as IoResult, Write};
 
-use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, Term, Triple};
+use oxrdf::{BlankNode, Literal, NamedNode, NamedOrBlankNode, QuadRef, Term, Triple};
 use oxttl::turtle::WriterTurtleSerializer;
-use oxttl::{NTriplesSerializer, TurtleParser, TurtleSerializer};
+use oxttl::{NQuadsSerializer, NTriplesSerializer, TriGSerializer, TurtleParser, TurtleSerializer};
 
 use crate::regex_support::Regex;
-use crate::schema_rdf::{TypePartition, TypeRegime};
+use crate::schema_rdf::{TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE};
 use crate::LinkMLInstance;
 use std::collections::BTreeMap;
 
@@ -326,31 +342,145 @@ fn identifier_node(
     (state.next_subject(), None)
 }
 
+/// Receives every triple the walk produces, tagged with the [`TypePartition`]
+/// it belongs to. The flat writers keep the partitions their regime names; the
+/// quad writers route each one to its graph.
+trait TripleSink {
+    /// Whether triples of `partition` are kept at all. Lets the walk skip
+    /// computing inferred types nobody will write.
+    fn wants(&self, partition: TypePartition) -> bool;
+    /// Write one triple of `partition` (a no-op when it is not wanted).
+    fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()>;
+}
+
+/// Flat output: the union of a regime's partitions, as Turtle.
+struct FlatSink<W: Write> {
+    ser: WriterTurtleSerializer<W>,
+    partitions: &'static [TypePartition],
+}
+
+impl<W: Write> TripleSink for FlatSink<W> {
+    fn wants(&self, partition: TypePartition) -> bool {
+        self.partitions.contains(&partition)
+    }
+
+    fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
+        if self.wants(partition) {
+            self.ser.serialize_triple(triple.as_ref())?;
+        }
+        Ok(())
+    }
+}
+
+/// Quad output: each partition goes to its graph; unmapped partitions are
+/// dropped.
+struct QuadSink<'a, F: FnMut(QuadRef<'_>) -> IoResult<()>> {
+    graphs: &'a BTreeMap<TypePartition, NamedNode>,
+    write: F,
+}
+
+impl<F: FnMut(QuadRef<'_>) -> IoResult<()>> TripleSink for QuadSink<'_, F> {
+    fn wants(&self, partition: TypePartition) -> bool {
+        self.graphs.contains_key(&partition)
+    }
+
+    fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
+        if let Some(graph) = self.graphs.get(&partition) {
+            (self.write)(QuadRef::new(
+                &triple.subject,
+                &triple.predicate,
+                &triple.object,
+                graph,
+            ))?;
+        }
+        Ok(())
+    }
+}
+
+fn rdf_type_node() -> NamedNode {
+    NamedNode::new_unchecked(RDF_TYPE.to_string())
+}
+
+/// A `designates_type` slot mapped onto `rdf:type` would write the designator
+/// value as a second, unrelated type of the node and collide with the type
+/// regimes. Refuse it rather than guess.
+fn reject_type_designator_on_rdf_type(cv: &ClassView, conv: &Converter) -> IoResult<()> {
+    for slot in cv.slots() {
+        if slot.definition().designates_type.unwrap_or(false)
+            && slot_predicate_iri(slot, conv) == RDF_TYPE
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "slot '{}' of class '{}' designates the type but is mapped to rdf:type; \
+                     use a different slot_uri",
+                    slot.name,
+                    cv.name()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The type triples of one node: the own `rdf:type` (`Own`), one `rdf:type`
+/// per inferred class (`IsA` / `Mixin`) and the `sesame:directType` (`Direct`).
+fn emit_type_triples<S: TripleSink>(
+    subject: &Node,
+    cv: &ClassView,
+    conv: &Converter,
+    sink: &mut S,
+) -> IoResult<()> {
+    // Shared with `schema_rdf` so the `rdf:type` object here and the class
+    // subject the schema triples describe are the same spelling by
+    // construction, not by coincidence.
+    let type_triple = |partition_predicate: NamedNode, class: &ClassView| {
+        crate::schema_rdf::instance_type_iri(class, conv).map(|iri| Triple {
+            subject: subject.as_subject(),
+            predicate: partition_predicate,
+            object: Term::NamedNode(NamedNode::new_unchecked(iri)),
+        })
+    };
+    if let Some(triple) = type_triple(rdf_type_node(), cv) {
+        sink.emit(TypePartition::Own, &triple)?;
+    }
+    let inferred = [
+        TypePartition::IsA,
+        TypePartition::Mixin,
+        TypePartition::Direct,
+    ];
+    if !inferred.iter().any(|p| sink.wants(*p)) {
+        return Ok(());
+    }
+    let partitions = crate::schema_rdf::type_partitions(cv)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+    for (partition, class) in partitions {
+        let predicate = match partition {
+            TypePartition::Own => continue,
+            TypePartition::IsA | TypePartition::Mixin => rdf_type_node(),
+            TypePartition::Direct => NamedNode::new_unchecked(SESAME_DIRECT_TYPE.to_string()),
+        };
+        if let Some(triple) = type_triple(predicate, &class) {
+            sink.emit(partition, &triple)?;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
-fn serialize_map<W: Write>(
+fn serialize_map<S: TripleSink>(
     subject: &Node,
     map: &std::collections::HashMap<String, LinkMLInstance>,
     class: Option<&ClassView>,
-    formatter: &mut WriterTurtleSerializer<W>,
+    formatter: &mut S,
     _sv: &SchemaView,
     conv: &Converter,
     state: &mut State,
     id_slot: Option<&str>,
 ) -> IoResult<()> {
     if let Some(cv) = class {
-        // Shared with `schema_rdf` so the `rdf:type` object here and the class
-        // subject the schema triples describe are the same spelling by
-        // construction, not by coincidence.
-        if let Some(id_string) = crate::schema_rdf::instance_type_iri(cv, conv) {
-            let triple = Triple {
-                subject: subject.as_subject(),
-                predicate: NamedNode::new_unchecked(
-                    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string(),
-                ),
-                object: Term::NamedNode(NamedNode::new_unchecked(id_string)),
-            };
-            formatter.serialize_triple(triple.as_ref())?;
-        }
+        reject_type_designator_on_rdf_type(cv, conv)?;
+        emit_type_triples(subject, cv, conv, formatter)?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -402,7 +532,7 @@ fn serialize_map<W: Write>(
                     predicate: predicate.clone(),
                     object: scalar_object_term(value, slot, conv),
                 };
-                formatter.serialize_triple(triple.as_ref())?;
+                formatter.emit(TypePartition::Own, &triple)?;
             }
             LinkMLInstance::Null { .. } => {
                 // Null is treated as absent; emit nothing
@@ -416,7 +546,7 @@ fn serialize_map<W: Write>(
                         predicate: predicate.clone(),
                         object: lang_term,
                     };
-                    formatter.serialize_triple(triple.as_ref())?;
+                    formatter.emit(TypePartition::Own, &triple)?;
                 } else {
                     let (obj, child_id) =
                         identifier_node(values, class_ref, conv, state, Some(subject), k, None);
@@ -425,7 +555,7 @@ fn serialize_map<W: Write>(
                         predicate: predicate.clone(),
                         object: obj.as_term(),
                     };
-                    formatter.serialize_triple(triple.as_ref())?;
+                    formatter.emit(TypePartition::Own, &triple)?;
                     serialize_map(
                         &obj,
                         values,
@@ -447,7 +577,7 @@ fn serialize_map<W: Write>(
                                 predicate: predicate.clone(),
                                 object: scalar_object_term(value, slot, conv),
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                         LinkMLInstance::Null { .. } => {
                             // Skip null items
@@ -462,7 +592,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: lang_term,
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                             } else {
                                 // Position in the list is the discriminator for
                                 // members that carry no key of their own.
@@ -481,7 +611,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: obj.as_term(),
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                                 serialize_map(
                                     &obj,
                                     mv,
@@ -508,7 +638,7 @@ fn serialize_map<W: Write>(
                                 predicate: predicate.clone(),
                                 object: scalar_object_term(v, slot, conv),
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                         LinkMLInstance::Null { .. } => {
                             // nothing
@@ -523,7 +653,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: lang_term,
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                             } else {
                                 let (obj, child_id) = identifier_node(
                                     mv,
@@ -539,7 +669,7 @@ fn serialize_map<W: Write>(
                                     predicate: predicate.clone(),
                                     object: obj.as_term(),
                                 };
-                                formatter.serialize_triple(triple.as_ref())?;
+                                formatter.emit(TypePartition::Own, &triple)?;
                                 serialize_map(
                                     &obj,
                                     mv,
@@ -562,13 +692,15 @@ fn serialize_map<W: Write>(
     Ok(())
 }
 
-pub fn write_turtle<W: Write>(
+/// Walk `value` once, handing every triple to `sink`. Blank node labels come
+/// from one counter, so they are consistent across everything the sink routes.
+fn walk<S: TripleSink>(
     value: &LinkMLInstance,
     sv: &SchemaView,
     schema: &SchemaDefinition,
     conv: &Converter,
-    w: &mut W,
-    options: TurtleOptions,
+    formatter: &mut S,
+    skolem: bool,
 ) -> IoResult<()> {
     let base = schema.id.trim_end_matches('#').to_string();
     let mut state = State {
@@ -578,9 +710,8 @@ pub fn write_turtle<W: Write>(
         } else {
             format!("{}/", base)
         },
-        skolem: options.skolem,
+        skolem,
     };
-    let mut formatter = TurtleSerializer::new().for_writer(Vec::new());
     match value {
         LinkMLInstance::Object { values, class, .. } => {
             let cv = &class;
@@ -604,7 +735,7 @@ pub fn write_turtle<W: Write>(
                 &subj,
                 values,
                 Some(cv),
-                &mut formatter,
+                formatter,
                 sv,
                 conv,
                 &mut state,
@@ -613,7 +744,7 @@ pub fn write_turtle<W: Write>(
         }
         LinkMLInstance::Mapping { values, .. } => {
             for (idx, item) in values.values().enumerate() {
-                let subj = if options.skolem {
+                let subj = if skolem {
                     Node::Named(format!("{}root/{}", state.base, idx))
                 } else {
                     state.next_subject()
@@ -623,16 +754,7 @@ pub fn write_turtle<W: Write>(
                         values: mv, class, ..
                     } => {
                         let class = Some(class);
-                        serialize_map(
-                            &subj,
-                            mv,
-                            class,
-                            &mut formatter,
-                            sv,
-                            conv,
-                            &mut state,
-                            None,
-                        )?;
+                        serialize_map(&subj, mv, class, formatter, sv, conv, &mut state, None)?;
                     }
                     LinkMLInstance::Scalar { value: v, slot, .. } => {
                         let (lit, dt_opt) = literal_and_type(v, slot);
@@ -648,7 +770,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         } else {
                             let object = Term::Literal(Literal::new_simple_literal(lit.clone()));
                             let triple = Triple {
@@ -658,7 +780,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                     }
                     LinkMLInstance::Null { .. } => {}
@@ -669,7 +791,7 @@ pub fn write_turtle<W: Write>(
         }
         LinkMLInstance::List { values, .. } => {
             for (idx, item) in values.iter().enumerate() {
-                let subj = if options.skolem {
+                let subj = if skolem {
                     Node::Named(format!("{}root/{}", state.base, idx))
                 } else {
                     state.next_subject()
@@ -679,16 +801,7 @@ pub fn write_turtle<W: Write>(
                         values: mv, class, ..
                     } => {
                         let class = Some(class);
-                        serialize_map(
-                            &subj,
-                            mv,
-                            class,
-                            &mut formatter,
-                            sv,
-                            conv,
-                            &mut state,
-                            None,
-                        )?;
+                        serialize_map(&subj, mv, class, formatter, sv, conv, &mut state, None)?;
                     }
                     LinkMLInstance::Scalar { value, slot, .. } => {
                         let (lit, dt_opt) = literal_and_type(value, slot);
@@ -704,7 +817,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         } else {
                             let object = Term::Literal(Literal::new_simple_literal(lit.clone()));
                             let triple = Triple {
@@ -714,7 +827,7 @@ pub fn write_turtle<W: Write>(
                                 ),
                                 object,
                             };
-                            formatter.serialize_triple(triple.as_ref())?;
+                            formatter.emit(TypePartition::Own, &triple)?;
                         }
                     }
                     LinkMLInstance::Null { .. } => {
@@ -728,7 +841,23 @@ pub fn write_turtle<W: Write>(
         LinkMLInstance::Scalar { .. } => {}
         LinkMLInstance::Null { .. } => {}
     }
-    let out_buf = formatter.finish()?;
+    Ok(())
+}
+
+pub fn write_turtle<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: TurtleOptions,
+) -> IoResult<()> {
+    let mut sink = FlatSink {
+        ser: TurtleSerializer::new().for_writer(Vec::new()),
+        partitions: options.regime.partitions(),
+    };
+    walk(value, sv, schema, conv, &mut sink, options.skolem)?;
+    let out_buf = sink.ser.finish()?;
     let out = String::from_utf8(out_buf).unwrap_or_default();
     let (out, used_prefixes) = replace_iris(&out, conv)?;
 
@@ -854,6 +983,9 @@ fn is_valid_turtle_local_name(curie: &str) -> bool {
 
 /// Write RDF data as N-Quads, one named graph per type partition (see
 /// [`QuadOptions`]).
+///
+/// The instance is walked once, so blank node labels agree across graphs.
+/// Rejects a `designates_type` slot mapped to `rdf:type` like the flat writers.
 pub fn write_nquads<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -862,15 +994,20 @@ pub fn write_nquads<W: Write>(
     w: &mut W,
     options: &QuadOptions,
 ) -> IoResult<()> {
-    let _ = (value, sv, schema, conv, w, options);
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "write_nquads: not implemented yet (API skeleton)",
-    ))
+    let mut ser = NQuadsSerializer::new().for_writer(Vec::new());
+    let mut sink = QuadSink {
+        graphs: &options.partition_graphs,
+        write: |quad: QuadRef<'_>| ser.serialize_quad(quad),
+    };
+    walk(value, sv, schema, conv, &mut sink, options.skolem)?;
+    w.write_all(&ser.finish())?;
+    Ok(())
 }
 
 /// Write RDF data as TriG, one named graph per type partition (see
 /// [`QuadOptions`]).
+///
+/// Same content as [`write_nquads`], with full IRIs (no prefix header).
 pub fn write_trig<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -879,11 +1016,14 @@ pub fn write_trig<W: Write>(
     w: &mut W,
     options: &QuadOptions,
 ) -> IoResult<()> {
-    let _ = (value, sv, schema, conv, w, options);
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "write_trig: not implemented yet (API skeleton)",
-    ))
+    let mut ser = TriGSerializer::new().for_writer(Vec::new());
+    let mut sink = QuadSink {
+        graphs: &options.partition_graphs,
+        write: |quad: QuadRef<'_>| ser.serialize_quad(quad),
+    };
+    walk(value, sv, schema, conv, &mut sink, options.skolem)?;
+    w.write_all(&ser.finish()?)?;
+    Ok(())
 }
 
 #[cfg(test)]

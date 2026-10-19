@@ -1,0 +1,26 @@
+id: tr:registry1
+signals:
+- id: tr:s1
+  name: signal one
+  zone: z1
+  location:
+    typeURI: https://example.com/type-regimes/SpotLocation
+    km: 12.5
+  parts:
+  - label: lamp
+  - label: mast
+  tags:
+  - key: owner
+    value: ops
+  - key: color
+    value: red
+main_signals:
+- id: tr:m1
+  name: main one
+  priority: 3
+  location:
+    typeURI: https://example.com/type-regimes/LinearLocation
+    from_km: 1.0
+    to_km: 2.0
+selfs:
+- id: tr:self1

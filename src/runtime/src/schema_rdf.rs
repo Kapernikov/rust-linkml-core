@@ -278,6 +278,18 @@
 //! `rdf:type` object, this module calls it to pick the class subject, and
 //! [`slot_predicate_iri`] does the same for slot predicates. Having the
 //! decision made independently in two places is how it silently drifts.
+//!
+//! # Type regimes and subclass edges
+//!
+//! [`SchemaRdfOptions::regime`] decides which class hierarchy is published. In
+//! [`TypeRegime::Asserted`] each class has one `rdfs:subClassOf` to its direct
+//! `is_a` parent (the output before regimes existed). In `IsA` and
+//! `IsAAndMixins` that edge is replaced by [`subclass_edges`] (the transitive
+//! closure; mixins count only in `IsAAndMixins`) plus one
+//! `sesame:directSubClassOf` per [`direct_subclass_edges`] pair. The instance
+//! writer writes the matching `rdf:type` / `sesame:directType` triples, so a
+//! query for `?s a <Class>` over instance data and the schema agree. The
+//! `rdfs:subClassOf` blank nodes of the restrictions are unaffected.
 
 use std::collections::{BTreeSet, HashSet};
 
@@ -742,7 +754,7 @@ pub fn schema_triples(sv: &SchemaView, options: &SchemaRdfOptions) -> SchemaTrip
         skipped: Vec::new(),
     };
 
-    builder.classes_and_slots(sv, &conv);
+    builder.classes_and_slots(sv, &conv, options.regime);
     builder.enums(sv, &conv);
 
     // Deterministic and duplicate-free: a slot reached through several classes
@@ -1078,11 +1090,50 @@ impl Builder {
         }
     }
 
-    fn classes_and_slots(&mut self, sv: &SchemaView, conv: &Converter) {
+    /// `rdfs:subClassOf` (closure) and `sesame:directSubClassOf` for an
+    /// inferred regime. A class whose IRI will not expand is skipped and
+    /// recorded, like the asserted parent edge.
+    fn regime_edges(&mut self, sv: &SchemaView, conv: &Converter, regime: TypeRegime) {
+        let closure = subclass_edges(sv, regime);
+        let direct = direct_subclass_edges(sv, regime);
+        for (predicate, edges) in [
+            (RDFS_SUBCLASS_OF, closure),
+            (SESAME_DIRECT_SUBCLASS_OF, direct),
+        ] {
+            let edges = match edges {
+                Ok(edges) => edges,
+                Err(e) => {
+                    self.skipped.push(format!("subclass edges: {e}"));
+                    continue;
+                }
+            };
+            for (sub, sup) in edges {
+                let (Some(sub_id), Some(sup_id)) =
+                    (instance_type_iri(&sub, conv), instance_type_iri(&sup, conv))
+                else {
+                    self.skipped
+                        .push(format!("class: {} / {}", sub.name(), sup.name()));
+                    continue;
+                };
+                let (Some(sub_node), Some(sup_node)) = (
+                    self.expanded(&sub_id, conv, "class"),
+                    self.expanded(&sup_id, conv, "parent class"),
+                ) else {
+                    continue;
+                };
+                self.triple(&sub_node, predicate, sup_node.into());
+            }
+        }
+    }
+
+    fn classes_and_slots(&mut self, sv: &SchemaView, conv: &Converter, regime: TypeRegime) {
         let class_views = match sv.class_views() {
             Ok(views) => views,
             Err(_) => return,
         };
+        if regime != TypeRegime::Asserted {
+            self.regime_edges(sv, conv, regime);
+        }
 
         for cv in &class_views {
             let Some(class_id) = instance_type_iri(cv, conv) else {
@@ -1099,7 +1150,13 @@ impl Builder {
             self.mappings(&class_node, conv, cv.name(), &mapping_groups!(cv.def()));
             self.has_keys(&class_node, cv, conv);
 
-            if let Ok(Some(parent)) = cv.parent_class() {
+            // Inferred regimes publish the whole edge set once, below.
+            let asserted_parent = if regime == TypeRegime::Asserted {
+                cv.parent_class().ok().flatten()
+            } else {
+                None
+            };
+            if let Some(parent) = asserted_parent {
                 if let Some(parent_id) = instance_type_iri(&parent, conv) {
                     if let Some(parent_node) = self.expanded(&parent_id, conv, "parent class") {
                         self.triple(&class_node, RDFS_SUBCLASS_OF, parent_node.into());
