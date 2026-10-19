@@ -5,6 +5,9 @@
 //! schema triples publish the matching subclass edges.
 
 use linkml_meta::SchemaDefinition;
+use linkml_runtime::rdf_export::{
+    export_nquads_many, export_ntriples_many, export_trig_many, export_turtle_many, ExportOptions,
+};
 use linkml_runtime::schema_rdf::{
     schema_triples, SchemaRdfOptions, SchemaRdfProfile, TypePartition, TypeRegime, RDF_TYPE,
     SESAME_DIRECT_SUBCLASS_OF, SESAME_DIRECT_TYPE,
@@ -18,7 +21,7 @@ use linkml_schemaview::identifier::{converter_from_schemas, Identifier};
 use linkml_schemaview::io::from_yaml;
 use linkml_schemaview::schemaview::SchemaView;
 use oxrdf::{GraphName, NamedNode};
-use oxttl::{NQuadsParser, NTriplesParser, TriGParser};
+use oxttl::{NQuadsParser, NTriplesParser, TriGParser, TurtleParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -545,5 +548,83 @@ fn schema_regimes_leave_owl_restrictions_alone() {
                 );
             }
         }
+    }
+}
+
+/// Distinct blank nodes (as subject or object) in a set of terms.
+fn blank_nodes<'a>(terms: impl Iterator<Item = &'a String>) -> BTreeSet<String> {
+    terms.filter(|t| t.starts_with("_:")).cloned().collect()
+}
+
+#[test]
+fn many_exporters_label_blank_nodes_uniquely_across_instances() {
+    let f = fixture();
+    let one = flat(&f, TypeRegime::Asserted, false);
+    let per_instance = blank_nodes(one.iter().flat_map(|(s, _, o)| [s, o])).len();
+    assert!(per_instance > 0);
+    let two = || vec![f.instance.clone(), f.instance.clone()];
+    let options = ExportOptions::default().with_skolem(false);
+    let quad_options = mapping(&[
+        (TypePartition::Own, "own"),
+        (TypePartition::Direct, "direct"),
+    ])
+    .with_skolem(false);
+
+    let mut ttl = Vec::new();
+    export_turtle_many(two(), &f.sv, &f.schema, &f.conv, &mut ttl, options.clone()).unwrap();
+    let triples: Vec<Spo> = TurtleParser::new()
+        .for_reader(ttl.as_slice())
+        .map(|t| t.unwrap())
+        .map(|t| {
+            (
+                t.subject.to_string(),
+                t.predicate.to_string(),
+                t.object.to_string(),
+            )
+        })
+        .collect();
+    let mut nt = Vec::new();
+    export_ntriples_many(two(), &f.sv, &f.schema, &f.conv, &mut nt, options).unwrap();
+    let nt_triples: Vec<Spo> = NTriplesParser::new()
+        .for_reader(nt.as_slice())
+        .map(|t| t.unwrap())
+        .map(|t| {
+            (
+                t.subject.to_string(),
+                t.predicate.to_string(),
+                t.object.to_string(),
+            )
+        })
+        .collect();
+    for (name, t) in [("turtle", triples), ("ntriples", nt_triples)] {
+        let n = blank_nodes(t.iter().flat_map(|(s, _, o)| [s, o])).len();
+        assert_eq!(n, 2 * per_instance, "{name}: blank nodes merged");
+    }
+
+    let mut nq = Vec::new();
+    export_nquads_many(two(), &f.sv, &f.schema, &f.conv, &mut nq, &quad_options).unwrap();
+    let mut tg = Vec::new();
+    export_trig_many(two(), &f.sv, &f.schema, &f.conv, &mut tg, &quad_options).unwrap();
+    for (name, quads) in [
+        (
+            "nquads",
+            group(
+                NQuadsParser::new()
+                    .for_reader(nq.as_slice())
+                    .map(|q| q.unwrap()),
+            ),
+        ),
+        (
+            "trig",
+            group(
+                TriGParser::new()
+                    .for_reader(tg.as_slice())
+                    .map(|q| q.unwrap()),
+            ),
+        ),
+    ] {
+        let own = &quads[&graph("own").into_string()];
+        let n = blank_nodes(own.iter().flat_map(|(s, _, o)| [s, o])).len();
+        assert_eq!(n, 2 * per_instance, "{name}: blank nodes merged");
     }
 }

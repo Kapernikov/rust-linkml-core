@@ -694,6 +694,8 @@ fn serialize_map<S: TripleSink>(
 
 /// Walk `value` once, handing every triple to `sink`. Blank node labels come
 /// from one counter, so they are consistent across everything the sink routes.
+/// The counter continues from `*counter` and is written back, so several walks
+/// into one stream can share it and never reuse a label.
 fn walk<S: TripleSink>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -701,10 +703,11 @@ fn walk<S: TripleSink>(
     conv: &Converter,
     formatter: &mut S,
     skolem: bool,
+    counter: &mut usize,
 ) -> IoResult<()> {
     let base = schema.id.trim_end_matches('#').to_string();
     let mut state = State {
-        counter: 0,
+        counter: *counter,
         base: if base.ends_with('/') {
             base
         } else {
@@ -841,6 +844,7 @@ fn walk<S: TripleSink>(
         LinkMLInstance::Scalar { .. } => {}
         LinkMLInstance::Null { .. } => {}
     }
+    *counter = state.counter;
     Ok(())
 }
 
@@ -852,11 +856,25 @@ pub fn write_turtle<W: Write>(
     w: &mut W,
     options: TurtleOptions,
 ) -> IoResult<()> {
+    write_turtle_counted(value, sv, schema, conv, w, options, &mut 0)
+}
+
+/// [`write_turtle`] with the blank node counter supplied by the caller, so
+/// several instances written into one stream do not reuse labels.
+pub(crate) fn write_turtle_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: TurtleOptions,
+    counter: &mut usize,
+) -> IoResult<()> {
     let mut sink = FlatSink {
         ser: TurtleSerializer::new().for_writer(Vec::new()),
         partitions: options.regime.partitions(),
     };
-    walk(value, sv, schema, conv, &mut sink, options.skolem)?;
+    walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
     let out_buf = sink.ser.finish()?;
     let out = String::from_utf8(out_buf).unwrap_or_default();
     let (out, used_prefixes) = replace_iris(&out, conv)?;
@@ -908,7 +926,23 @@ pub fn write_ntriples<W: Write>(
     w: &mut W,
     options: TurtleOptions,
 ) -> IoResult<()> {
-    let ttl = turtle_to_string(value, sv, schema, conv, options)?;
+    write_ntriples_counted(value, sv, schema, conv, w, options, &mut 0)
+}
+
+/// [`write_ntriples`] with a caller-supplied blank node counter.
+pub(crate) fn write_ntriples_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: TurtleOptions,
+    counter: &mut usize,
+) -> IoResult<()> {
+    let mut ttl_buf = Vec::new();
+    write_turtle_counted(value, sv, schema, conv, &mut ttl_buf, options, counter)?;
+    let ttl = String::from_utf8(ttl_buf)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     let mut buf = Vec::new();
     let mut nt_ser = NTriplesSerializer::new().for_writer(&mut buf);
     let parser = TurtleParser::new().for_reader(ttl.as_bytes());
@@ -994,12 +1028,25 @@ pub fn write_nquads<W: Write>(
     w: &mut W,
     options: &QuadOptions,
 ) -> IoResult<()> {
+    write_nquads_counted(value, sv, schema, conv, w, options, &mut 0)
+}
+
+/// [`write_nquads`] with a caller-supplied blank node counter.
+pub(crate) fn write_nquads_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &QuadOptions,
+    counter: &mut usize,
+) -> IoResult<()> {
     let mut ser = NQuadsSerializer::new().for_writer(Vec::new());
     let mut sink = QuadSink {
         graphs: &options.partition_graphs,
         write: |quad: QuadRef<'_>| ser.serialize_quad(quad),
     };
-    walk(value, sv, schema, conv, &mut sink, options.skolem)?;
+    walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
     w.write_all(&ser.finish())?;
     Ok(())
 }
@@ -1016,12 +1063,25 @@ pub fn write_trig<W: Write>(
     w: &mut W,
     options: &QuadOptions,
 ) -> IoResult<()> {
+    write_trig_counted(value, sv, schema, conv, w, options, &mut 0)
+}
+
+/// [`write_trig`] with a caller-supplied blank node counter.
+pub(crate) fn write_trig_counted<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &QuadOptions,
+    counter: &mut usize,
+) -> IoResult<()> {
     let mut ser = TriGSerializer::new().for_writer(Vec::new());
     let mut sink = QuadSink {
         graphs: &options.partition_graphs,
         write: |quad: QuadRef<'_>| ser.serialize_quad(quad),
     };
-    walk(value, sv, schema, conv, &mut sink, options.skolem)?;
+    walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
     w.write_all(&ser.finish()?)?;
     Ok(())
 }

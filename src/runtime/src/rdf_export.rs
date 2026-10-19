@@ -13,7 +13,8 @@ use linkml_schemaview::Converter;
 
 use crate::schema_rdf::TypeRegime;
 use crate::turtle::{
-    write_nquads, write_ntriples, write_trig, write_turtle, QuadOptions, TurtleOptions,
+    write_nquads, write_nquads_counted, write_ntriples, write_ntriples_counted, write_trig,
+    write_trig_counted, write_turtle, write_turtle_counted, QuadOptions, TurtleOptions,
 };
 use crate::LinkMLInstance;
 
@@ -80,8 +81,18 @@ where
     W: Write,
     I: IntoIterator<Item = LinkMLInstance>,
 {
+    // One blank node counter for the whole stream: labels never repeat.
+    let mut counter = 0;
     for instance in instances {
-        write_turtle(&instance, sv, schema, conv, writer, (&options).into())?;
+        write_turtle_counted(
+            &instance,
+            sv,
+            schema,
+            conv,
+            writer,
+            (&options).into(),
+            &mut counter,
+        )?;
     }
     Ok(())
 }
@@ -111,8 +122,18 @@ where
     W: Write,
     I: IntoIterator<Item = LinkMLInstance>,
 {
+    // One blank node counter for the whole stream: labels never repeat.
+    let mut counter = 0;
     for instance in instances {
-        write_ntriples(&instance, sv, schema, conv, writer, (&options).into())?;
+        write_ntriples_counted(
+            &instance,
+            sv,
+            schema,
+            conv,
+            writer,
+            (&options).into(),
+            &mut counter,
+        )?;
     }
     Ok(())
 }
@@ -142,8 +163,10 @@ where
     W: Write,
     I: IntoIterator<Item = LinkMLInstance>,
 {
+    // One blank node counter for the whole stream: labels never repeat.
+    let mut counter = 0;
     for instance in instances {
-        write_nquads(&instance, sv, schema, conv, writer, options)?;
+        write_nquads_counted(&instance, sv, schema, conv, writer, options, &mut counter)?;
     }
     Ok(())
 }
@@ -173,8 +196,10 @@ where
     W: Write,
     I: IntoIterator<Item = LinkMLInstance>,
 {
+    // One blank node counter for the whole stream: labels never repeat.
+    let mut counter = 0;
     for instance in instances {
-        write_trig(&instance, sv, schema, conv, writer, options)?;
+        write_trig_counted(&instance, sv, schema, conv, writer, options, &mut counter)?;
     }
     Ok(())
 }
