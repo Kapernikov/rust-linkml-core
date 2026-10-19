@@ -1048,6 +1048,8 @@ dependencies = [
  "clap",
  "linkml_meta",
  "linkml_runtime",
+ "oxrdf",
+ "oxttl",
  "predicates 2.1.5",
  "schemaview",
  "serde",
