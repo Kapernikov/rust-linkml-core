@@ -62,17 +62,17 @@ def graphs_of(nquads):
     return out
 
 # Regime as a set of partitions.
-assert [p for p in lr.TypeRegime.IS_A_AND_MIXINS.partitions()] == [
+assert list(lr.TypeRegime.IS_A_AND_MIXINS) == [
     lr.TypePartition.OWN, lr.TypePartition.IS_A, lr.TypePartition.MIXIN, lr.TypePartition.DIRECT,
 ]
-assert lr.TypeRegime.ASSERTED.partitions() == [lr.TypePartition.OWN]
-assert lr.TypeRegime.IS_A.partitions() == [
+assert list(lr.TypeRegime.ASSERTED) == [lr.TypePartition.OWN]
+assert list(lr.TypeRegime.IS_A) == [
     lr.TypePartition.OWN, lr.TypePartition.IS_A, lr.TypePartition.DIRECT,
 ]
 
 P = lr.TypePartition
 custom = lr.TypeRegime([P.IS_A, P.OWN])
-assert custom.partitions() == [P.OWN, P.IS_A]
+assert list(custom) == [P.OWN, P.IS_A]
 assert custom == lr.TypeRegime.parse("{own,is_a}") == lr.TypeRegime(iter([P.OWN, P.IS_A, P.OWN]))
 assert str(custom) == "{own,is_a}" and repr(custom) == "TypeRegime.parse('{own,is_a}')"
 assert str(lr.TypeRegime([P.IS_A])) == "{is_a}"
@@ -221,6 +221,17 @@ lr.export_trig(value, sv, buf, G, skolem=True)
 trig = buf.getvalue().decode()
 for g in G.values():
     assert "<" + g + ">" in trig
+
+# An iterable is consumed as it is written, so an error it raises mid-way
+# reaches the caller unchanged.
+def failing():
+    yield value
+    raise RuntimeError("source failed")
+try:
+    lr.export_ntriples(failing(), sv, io.BytesIO())
+    raise AssertionError("expected RuntimeError")
+except RuntimeError as e:
+    assert "source failed" in str(e), e
 try:
     lr.export_trig(value, sv, io.BytesIO(), {lr.TypePartition.OWN: "nope"})
     raise AssertionError("expected ValueError")

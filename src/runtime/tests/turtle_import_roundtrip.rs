@@ -2,9 +2,10 @@
 
 use linkml_runtime::{
     load_yaml_file,
+    rdf_export::{RdfOutputFormat, RdfStreamWriter},
     rdf_import::{import_turtle, ImportOptions},
     schema_rdf::{rdf_types, TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE},
-    turtle::{turtle_to_string, write_nquads, write_ntriples, write_trig, WriteOptions},
+    turtle::{turtle_to_string, write_ntriples, WriteOptions},
     LinkMLInstance,
 };
 use linkml_schemaview::identifier::{converter_from_schema, converter_from_schemas, Identifier};
@@ -15,6 +16,44 @@ use oxrdf::{Graph, GraphName, NamedNode, TripleRef};
 use oxttl::{NQuadsParser, NTriplesParser, TriGParser, TurtleParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+
+/// Write one instance as `format` through a `RdfStreamWriter`.
+fn write_via_stream<W: std::io::Write>(
+    format: RdfOutputFormat,
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &linkml_meta::SchemaDefinition,
+    conv: &linkml_schemaview::Converter,
+    w: &mut W,
+    options: &WriteOptions,
+) -> std::io::Result<()> {
+    let mut stream = RdfStreamWriter::new(w, format, sv, schema, conv, options)?;
+    stream.write(value)?;
+    stream.finish()?;
+    Ok(())
+}
+
+fn write_nquads<W: std::io::Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &linkml_meta::SchemaDefinition,
+    conv: &linkml_schemaview::Converter,
+    w: &mut W,
+    options: &WriteOptions,
+) -> std::io::Result<()> {
+    write_via_stream(RdfOutputFormat::NQuads, value, sv, schema, conv, w, options)
+}
+
+fn write_trig<W: std::io::Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &linkml_meta::SchemaDefinition,
+    conv: &linkml_schemaview::Converter,
+    w: &mut W,
+    options: &WriteOptions,
+) -> std::io::Result<()> {
+    write_via_stream(RdfOutputFormat::TriG, value, sv, schema, conv, w, options)
+}
 
 fn data_path(name: &str) -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

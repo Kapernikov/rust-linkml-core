@@ -6,16 +6,13 @@
 
 use linkml_meta::SchemaDefinition;
 use linkml_runtime::rdf_export::{
-    export_nquads_many, export_ntriples_many, export_trig_many, export_turtle_many,
-    RdfOutputFormat, RdfStreamWriter,
+    export_ntriples_many, export_turtle_many, RdfOutputFormat, RdfStreamWriter,
 };
 use linkml_runtime::schema_rdf::{
     schema_triples, SchemaRdfOptions, SchemaRdfProfile, TypePartition, TypeRegime, RDF_TYPE,
     SESAME_DIRECT_SUBCLASS_OF, SESAME_DIRECT_TYPE,
 };
-use linkml_runtime::turtle::{
-    turtle_to_string, write_nquads, write_ntriples, write_trig, write_turtle, WriteOptions,
-};
+use linkml_runtime::turtle::{turtle_to_string, write_ntriples, write_turtle, WriteOptions};
 use linkml_runtime::{load_yaml_file, LinkMLInstance};
 use linkml_schemaview::converter::Converter;
 use linkml_schemaview::identifier::{converter_from_schemas, Identifier};
@@ -25,6 +22,44 @@ use oxrdf::{GraphName, NamedNode};
 use oxttl::{NQuadsParser, NTriplesParser, TriGParser, TurtleParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+
+/// Write one instance as `format` through a `RdfStreamWriter`.
+fn write_via_stream<W: std::io::Write>(
+    format: RdfOutputFormat,
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &WriteOptions,
+) -> std::io::Result<()> {
+    let mut stream = RdfStreamWriter::new(w, format, sv, schema, conv, options)?;
+    stream.write(value)?;
+    stream.finish()?;
+    Ok(())
+}
+
+fn write_nquads<W: std::io::Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &WriteOptions,
+) -> std::io::Result<()> {
+    write_via_stream(RdfOutputFormat::NQuads, value, sv, schema, conv, w, options)
+}
+
+fn write_trig<W: std::io::Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &WriteOptions,
+) -> std::io::Result<()> {
+    write_via_stream(RdfOutputFormat::TriG, value, sv, schema, conv, w, options)
+}
 
 const NS: &str = "https://example.com/type-regimes/";
 
@@ -601,9 +636,33 @@ fn many_exporters_label_blank_nodes_uniquely_across_instances() {
     }
 
     let mut nq = Vec::new();
-    export_nquads_many(two(), &f.sv, &f.schema, &f.conv, &mut nq, &quad_options).unwrap();
+    let mut stream = RdfStreamWriter::new(
+        &mut nq,
+        RdfOutputFormat::NQuads,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &quad_options,
+    )
+    .unwrap();
+    for instance in two() {
+        stream.write(&instance).unwrap();
+    }
+    stream.finish().unwrap();
     let mut tg = Vec::new();
-    export_trig_many(two(), &f.sv, &f.schema, &f.conv, &mut tg, &quad_options).unwrap();
+    let mut stream = RdfStreamWriter::new(
+        &mut tg,
+        RdfOutputFormat::TriG,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &quad_options,
+    )
+    .unwrap();
+    for instance in two() {
+        stream.write(&instance).unwrap();
+    }
+    stream.finish().unwrap();
     for (name, quads) in [
         (
             "nquads",
@@ -948,5 +1007,105 @@ fn stream_writer_keeps_blank_nodes_distinct_in_every_format() {
             .err()
             .unwrap_or_else(|| panic!("{format:?}: expected InvalidInput"));
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+}
+
+/// Prefix names declared by the `@prefix` lines of a Turtle or TriG document.
+fn declared_prefixes(doc: &str) -> Vec<String> {
+    doc.lines()
+        .filter_map(|l| l.strip_prefix("@prefix "))
+        .map(|l| l.split(':').next().unwrap().to_string())
+        .collect()
+}
+
+/// A Turtle or TriG stream declares each prefix once, the first time an
+/// instance uses it, and parses back to the union of its instances. A second
+/// instance that brings a new prefix adds just that one line.
+#[test]
+fn stream_declares_each_prefix_once() {
+    let mut f = fixture();
+    f.conv
+        .add_record(linkml_schemaview::converter::Record::new(
+            "ex",
+            "http://example.org/",
+        ))
+        .unwrap();
+    let cv =
+        f.sv.get_class(&Identifier::new("Registry"), &f.conv)
+            .unwrap()
+            .unwrap();
+    let other = load_yaml_file(
+        Path::new(&data_path("type_regimes_second_prefix_data.yaml")),
+        &f.sv,
+        &cv,
+        &f.conv,
+    )
+    .unwrap()
+    .into_instance()
+    .unwrap();
+
+    // Skolemized, so the same instance twice is the same triples twice.
+    let flat_options = WriteOptions::default().with_skolem(true);
+    let quad_options = mapping(&[(TypePartition::Own, "own")]).with_skolem(true);
+    for (format, options) in [
+        (RdfOutputFormat::Turtle, &flat_options),
+        (RdfOutputFormat::TriG, &quad_options),
+    ] {
+        let stream_of = |instances: &[&LinkMLInstance]| -> String {
+            let mut stream =
+                RdfStreamWriter::new(Vec::new(), format, &f.sv, &f.schema, &f.conv, options)
+                    .unwrap();
+            for instance in instances {
+                stream.write(instance).unwrap();
+            }
+            String::from_utf8(stream.finish().unwrap()).unwrap()
+        };
+        let parse = |doc: &str| -> BTreeSet<(String, String, String, String)> {
+            TriGParser::new()
+                .for_reader(doc.as_bytes())
+                .map(|q| q.unwrap())
+                .map(|q| {
+                    (
+                        q.subject.to_string(),
+                        q.predicate.to_string(),
+                        q.object.to_string(),
+                        q.graph_name.to_string(),
+                    )
+                })
+                .collect()
+        };
+
+        // Same prefixes in both instances: each declared once.
+        let same = stream_of(&[&f.instance, &f.instance]);
+        let declared = declared_prefixes(&same);
+        assert_eq!(
+            declared.iter().collect::<BTreeSet<_>>().len(),
+            declared.len(),
+            "{format:?}: a prefix repeats:\n{same}"
+        );
+        assert_eq!(declared, declared_prefixes(&stream_of(&[&f.instance])));
+        assert_eq!(
+            parse(&same),
+            parse(&stream_of(&[&f.instance])),
+            "{format:?}"
+        );
+
+        // A new prefix in the second instance: just that line is added.
+        let both = stream_of(&[&f.instance, &other]);
+        let first = declared_prefixes(&stream_of(&[&f.instance]));
+        let all = declared_prefixes(&both);
+        assert_eq!(all.len(), first.len() + 1, "{format:?}:\n{both}");
+        assert_eq!(all[..first.len()], first[..]);
+        assert_eq!(all.last().unwrap(), "ex");
+        assert_eq!(
+            both.matches("@prefix ex:").count(),
+            1,
+            "{format:?}:\n{both}"
+        );
+        let union: BTreeSet<_> = parse(&stream_of(&[&f.instance]))
+            .union(&parse(&stream_of(&[&other])))
+            .cloned()
+            .collect();
+        assert_eq!(parse(&both), union, "{format:?}");
     }
 }

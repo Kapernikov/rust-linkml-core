@@ -3,8 +3,9 @@ use linkml_runtime::diff::{
     diff as diff_internal, element_identity_label, list_path_segments, patch as patch_internal,
     Delta, DeltaOp, DiffOptions, PatchTrace,
 };
+use linkml_runtime::rdf_export::{RdfOutputFormat, RdfStreamWriter};
 use linkml_runtime::schema_rdf::{TypePartition, TypeRegime};
-use linkml_runtime::turtle::{turtle_to_string, write_nquads, write_trig, WriteOptions};
+use linkml_runtime::turtle::{turtle_to_string, WriteOptions};
 use linkml_runtime::{
     lint_element_identity, lint_instance_identity, load_json_str, load_yaml_str, validate_issues,
     LinkMLInstance, LoadResult, NodeId, ValidationResult, ValidationSeverity, ValidationValue,
@@ -964,11 +965,6 @@ impl PyTypeRegime {
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
-    /// The partitions in the set, in declaration order.
-    fn partitions(&self) -> Vec<PyTypePartition> {
-        self.0.partitions().map(PyTypePartition::from).collect()
-    }
-
     fn __str__(&self) -> String {
         self.0.to_string()
     }
@@ -1794,9 +1790,17 @@ impl PyLinkMLInstance {
             .ok_or_else(|| PyException::new_err("no schema loaded"))?;
         let conv = rust_sv.converter();
         let options = partition_graphs.into_options(skolem);
-        let mut buf = Vec::new();
-        write_nquads(&self.value, rust_sv, &schema, &conv, &mut buf, &options)
-            .map_err(write_error_to_py)?;
+        let mut stream = RdfStreamWriter::new(
+            Vec::new(),
+            RdfOutputFormat::NQuads,
+            rust_sv,
+            &schema,
+            &conv,
+            &options,
+        )
+        .map_err(write_error_to_py)?;
+        stream.write(&self.value).map_err(write_error_to_py)?;
+        let buf = stream.finish().map_err(write_error_to_py)?;
         String::from_utf8(buf).map_err(|e| PyException::new_err(e.to_string()))
     }
 
@@ -1815,9 +1819,17 @@ impl PyLinkMLInstance {
             .ok_or_else(|| PyException::new_err("no schema loaded"))?;
         let conv = rust_sv.converter();
         let options = partition_graphs.into_options(skolem);
-        let mut buf = Vec::new();
-        write_trig(&self.value, rust_sv, &schema, &conv, &mut buf, &options)
-            .map_err(write_error_to_py)?;
+        let mut stream = RdfStreamWriter::new(
+            Vec::new(),
+            RdfOutputFormat::TriG,
+            rust_sv,
+            &schema,
+            &conv,
+            &options,
+        )
+        .map_err(write_error_to_py)?;
+        stream.write(&self.value).map_err(write_error_to_py)?;
+        let buf = stream.finish().map_err(write_error_to_py)?;
         String::from_utf8(buf).map_err(|e| PyException::new_err(e.to_string()))
     }
 
@@ -2600,8 +2612,15 @@ fn py_export_turtle(
     skolem: bool,
     regime: PyTypeRegime,
 ) -> PyResult<()> {
-    let options = ExportFormat::Turtle(WriteOptions::flat(regime.into()).with_skolem(skolem));
-    do_py_export(py, instances, schema_view, writer, options)
+    let options = WriteOptions::flat(regime.into()).with_skolem(skolem);
+    do_py_export(
+        py,
+        instances,
+        schema_view,
+        writer,
+        RdfOutputFormat::Turtle,
+        &options,
+    )
 }
 
 /// Write LinkML instances as N-Triples into a Python file-like object.
@@ -2615,8 +2634,15 @@ fn py_export_ntriples(
     skolem: bool,
     regime: PyTypeRegime,
 ) -> PyResult<()> {
-    let options = ExportFormat::NTriples(WriteOptions::flat(regime.into()).with_skolem(skolem));
-    do_py_export(py, instances, schema_view, writer, options)
+    let options = WriteOptions::flat(regime.into()).with_skolem(skolem);
+    do_py_export(
+        py,
+        instances,
+        schema_view,
+        writer,
+        RdfOutputFormat::NTriples,
+        &options,
+    )
 }
 
 /// Write LinkML instances as N-Quads into a Python file-like object, each type
@@ -2632,8 +2658,15 @@ fn py_export_nquads(
     partition_graphs: PartitionGraphs,
     skolem: bool,
 ) -> PyResult<()> {
-    let options = ExportFormat::NQuads(partition_graphs.into_options(skolem));
-    do_py_export(py, instances, schema_view, writer, options)
+    let options = partition_graphs.into_options(skolem);
+    do_py_export(
+        py,
+        instances,
+        schema_view,
+        writer,
+        RdfOutputFormat::NQuads,
+        &options,
+    )
 }
 
 /// Write LinkML instances as TriG into a Python file-like object, each type
@@ -2649,28 +2682,29 @@ fn py_export_trig(
     partition_graphs: PartitionGraphs,
     skolem: bool,
 ) -> PyResult<()> {
-    let options = ExportFormat::TriG(partition_graphs.into_options(skolem));
-    do_py_export(py, instances, schema_view, writer, options)
+    let options = partition_graphs.into_options(skolem);
+    do_py_export(
+        py,
+        instances,
+        schema_view,
+        writer,
+        RdfOutputFormat::TriG,
+        &options,
+    )
 }
 
-enum ExportFormat {
-    Turtle(WriteOptions),
-    NTriples(WriteOptions),
-    NQuads(WriteOptions),
-    TriG(WriteOptions),
-}
-
+/// Write `instances` (one instance, or any iterable of them) into `writer`
+/// through one [`RdfStreamWriter`]. The iterable is consumed lazily: each
+/// instance is written as it is produced and none is retained.
 fn do_py_export(
     _py: Python<'_>,
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
     writer: PyObject,
-    format: ExportFormat,
+    format: RdfOutputFormat,
+    options: &WriteOptions,
 ) -> PyResult<()> {
     use io_bridge::PyWriter;
-    use linkml_runtime::rdf_export::{
-        export_nquads_many, export_ntriples_many, export_trig_many, export_turtle_many,
-    };
 
     let sv = schema_view.as_rust();
     let conv = sv.converter();
@@ -2678,33 +2712,19 @@ fn do_py_export(
         .primary_schema()
         .ok_or_else(|| PyException::new_err("no schema loaded"))?;
 
-    // Collect instances: either a single PyLinkMLInstance, or iterate.
-    let mut items: Vec<LinkMLInstance> = Vec::new();
+    let mut py_writer = PyWriter::new(writer);
+    let buffered = std::io::BufWriter::new(&mut py_writer);
+    let mut stream = RdfStreamWriter::new(buffered, format, sv, &schema, &conv, options)
+        .map_err(write_error_to_py)?;
     if let Ok(single) = instances.extract::<PyRef<PyLinkMLInstance>>() {
-        items.push(single.value.clone());
+        stream.write(&single.value).map_err(write_error_to_py)?;
     } else {
         for item in instances.try_iter()? {
-            let bound = item?;
-            let one: PyRef<PyLinkMLInstance> = bound.extract()?;
-            items.push(one.value.clone());
+            let one: PyRef<PyLinkMLInstance> = item?.extract()?;
+            stream.write(&one.value).map_err(write_error_to_py)?;
         }
     }
-
-    let mut py_writer = PyWriter::new(writer);
-    let mut buffered = std::io::BufWriter::new(&mut py_writer);
-    let res = match format {
-        ExportFormat::Turtle(o) => export_turtle_many(items, sv, &schema, &conv, &mut buffered, &o),
-        ExportFormat::NTriples(o) => {
-            export_ntriples_many(items, sv, &schema, &conv, &mut buffered, &o)
-        }
-        ExportFormat::NQuads(o) => export_nquads_many(items, sv, &schema, &conv, &mut buffered, &o),
-        ExportFormat::TriG(o) => export_trig_many(items, sv, &schema, &conv, &mut buffered, &o),
-    };
-    res.map_err(write_error_to_py)?;
-    use std::io::Write;
-    buffered
-        .flush()
-        .map_err(|e| PyException::new_err(e.to_string()))?;
+    stream.finish().map_err(write_error_to_py)?;
     Ok(())
 }
 

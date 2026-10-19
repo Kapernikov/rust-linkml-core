@@ -3,10 +3,12 @@
 //! Mirrors `rdf_import` on the output side. Takes an instance (or an
 //! iterable of instances) plus a writer; streams RDF into the writer.
 //! [`RdfStreamWriter`] is the primitive for writing many instances into one
-//! stream; the `export_*_many` functions are conveniences over it.
+//! stream; the `export_turtle_many` / `export_ntriples_many` functions are conveniences
+//! over it. Quads are written only through the stream writer.
 
 #![cfg(feature = "ttl")]
 
+use std::collections::BTreeSet;
 use std::io::{Result as IoResult, Write};
 
 use linkml_meta::SchemaDefinition;
@@ -54,9 +56,12 @@ impl RdfOutputFormat {
 ///
 /// All instances share one blank node counter, so blank node labels never
 /// repeat within the stream. Each instance is serialized independently and
-/// appended: for Turtle and TriG that means every instance carries its own
-/// `@prefix` lines, which is valid in a single document. Memory use is
+/// appended. Memory use is
 /// bounded by one instance.
+///
+/// Turtle and TriG declare each `@prefix` once: the first time an instance in
+/// the stream uses it, just before that instance's triples (both formats
+/// allow `@prefix` between statements).
 pub struct RdfStreamWriter<'a, W: Write> {
     writer: W,
     format: RdfOutputFormat,
@@ -65,6 +70,7 @@ pub struct RdfStreamWriter<'a, W: Write> {
     conv: &'a Converter,
     options: WriteOptions,
     counter: usize,
+    declared_prefixes: BTreeSet<String>,
 }
 
 impl<'a, W: Write> RdfStreamWriter<'a, W> {
@@ -91,16 +97,21 @@ impl<'a, W: Write> RdfStreamWriter<'a, W> {
             conv,
             options: options.clone(),
             counter: 0,
+            declared_prefixes: BTreeSet::new(),
         })
     }
 
     /// Write one instance. Blank node labels never repeat within the stream.
     pub fn write(&mut self, instance: &LinkMLInstance) -> IoResult<()> {
         let (sv, schema, conv, options) = (self.sv, self.schema, self.conv, &self.options);
-        let (w, counter) = (&mut self.writer, &mut self.counter);
+        let (w, counter, declared) = (
+            &mut self.writer,
+            &mut self.counter,
+            &mut self.declared_prefixes,
+        );
         match self.format {
             RdfOutputFormat::Turtle => {
-                write_turtle_counted(instance, sv, schema, conv, w, options, counter)
+                write_turtle_counted(instance, sv, schema, conv, w, options, counter, declared)
             }
             RdfOutputFormat::NTriples => {
                 write_ntriples_counted(instance, sv, schema, conv, w, options, counter)
@@ -109,7 +120,7 @@ impl<'a, W: Write> RdfStreamWriter<'a, W> {
                 write_nquads_counted(instance, sv, schema, conv, w, options, counter)
             }
             RdfOutputFormat::TriG => {
-                write_trig_counted(instance, sv, schema, conv, w, options, counter)
+                write_trig_counted(instance, sv, schema, conv, w, options, counter, declared)
             }
         }
     }
@@ -211,58 +222,6 @@ where
 {
     export_many(
         RdfOutputFormat::NTriples,
-        instances,
-        sv,
-        schema,
-        conv,
-        writer,
-        options,
-    )
-}
-
-/// Write a stream of instances as N-Quads, each partition into the graph
-/// `options` routes it to. A convenience over [`RdfStreamWriter`] with
-/// [`RdfOutputFormat::NQuads`]; see [`crate::turtle::write_nquads`].
-pub fn export_nquads_many<W, I>(
-    instances: I,
-    sv: &SchemaView,
-    schema: &SchemaDefinition,
-    conv: &Converter,
-    writer: &mut W,
-    options: &WriteOptions,
-) -> IoResult<()>
-where
-    W: Write,
-    I: IntoIterator<Item = LinkMLInstance>,
-{
-    export_many(
-        RdfOutputFormat::NQuads,
-        instances,
-        sv,
-        schema,
-        conv,
-        writer,
-        options,
-    )
-}
-
-/// Write a stream of instances as TriG, each partition into the graph
-/// `options` routes it to. A convenience over [`RdfStreamWriter`] with
-/// [`RdfOutputFormat::TriG`]; see [`crate::turtle::write_trig`].
-pub fn export_trig_many<W, I>(
-    instances: I,
-    sv: &SchemaView,
-    schema: &SchemaDefinition,
-    conv: &Converter,
-    writer: &mut W,
-    options: &WriteOptions,
-) -> IoResult<()>
-where
-    W: Write,
-    I: IntoIterator<Item = LinkMLInstance>,
-{
-    export_many(
-        RdfOutputFormat::TriG,
         instances,
         sv,
         schema,

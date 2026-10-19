@@ -5367,10 +5367,6 @@ class TypeRegime:
         repeats and whitespace allowed; `{}` is the empty set). Raises
         `ValueError` on anything else.
         """
-    def partitions(self) -> builtins.list[TypePartition]:
-        r"""
-        The partitions in the set, in declaration order.
-        """
     def __str__(self) -> builtins.str: ...
     def __repr__(self) -> builtins.str: ...
     def __or__(self, other:TypeRegime | TypePartition) -> TypeRegime:

@@ -11,8 +11,9 @@
 //! not written. The flat writers ([`write_turtle`], [`turtle_to_string`],
 //! [`write_ntriples`]) cannot carry a graph name, so they accept only the
 //! default graph as a target ([`WriteOptions::flat`] builds that). The quad
-//! writers ([`write_nquads`], [`write_trig`]) accept any graph, the default
-//! graph included. With the default options the output is exactly the
+//! formats (N-Quads, TriG), written through
+//! [`RdfStreamWriter`](crate::rdf_export::RdfStreamWriter), accept any graph,
+//! the default graph included. With the default options the output is exactly the
 //! single-`rdf:type` output.
 //!
 //! A `designates_type` slot is never written; one mapped onto `rdf:type` is
@@ -31,9 +32,10 @@ use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, QuadRef,
 use oxttl::turtle::WriterTurtleSerializer;
 use oxttl::{NQuadsSerializer, NTriplesSerializer, TriGSerializer, TurtleSerializer};
 
+use crate::rdf_export::{RdfOutputFormat, RdfStreamWriter};
 use crate::schema_rdf::{TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE};
 use crate::LinkMLInstance;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Options shared by every RDF writer.
 ///
@@ -906,11 +908,16 @@ pub fn write_turtle<W: Write>(
     w: &mut W,
     options: &WriteOptions,
 ) -> IoResult<()> {
-    write_turtle_counted(value, sv, schema, conv, w, options, &mut 0)
+    let mut stream = RdfStreamWriter::new(w, RdfOutputFormat::Turtle, sv, schema, conv, options)?;
+    stream.write(value)?;
+    stream.finish()?;
+    Ok(())
 }
 
-/// [`write_turtle`] with the blank node counter supplied by the caller, so
-/// several instances written into one stream do not reuse labels.
+/// One Turtle instance with the blank node counter and the set of prefixes
+/// already declared supplied by the caller, so several instances written into
+/// one stream neither reuse labels nor repeat `@prefix` lines.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn write_turtle_counted<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -919,6 +926,7 @@ pub(crate) fn write_turtle_counted<W: Write>(
     w: &mut W,
     options: &WriteOptions,
     counter: &mut usize,
+    declared: &mut BTreeSet<String>,
 ) -> IoResult<()> {
     options.validate("Turtle", true)?;
     let mut sink = FlatSink {
@@ -929,27 +937,33 @@ pub(crate) fn write_turtle_counted<W: Write>(
     let out_buf = sink.ser.finish()?;
     let out = String::from_utf8(out_buf)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    w.write_all(with_prefix_header(&out, conv).as_bytes())
+    w.write_all(with_prefix_header(&out, conv, declared).as_bytes())
 }
 
 /// Compact IRIs in serialized `out` (Turtle or TriG, written without
 /// prefixes) to prefixed names and put the `@prefix` header for exactly the
-/// prefixes used in front of it.
+/// prefixes used in front of it, leaving out the prefixes `declared` already
+/// holds and adding the ones it writes. A fresh `declared` gives the header of
+/// a single document.
 ///
 /// An IRI is compacted only when its local name is a plain Turtle `PN_LOCAL`
 /// that needs no escape, so output stays readable by any parser (the
 /// serializer's own `with_prefix` would write `ex:Status\#unknown`). String
 /// literals are copied through untouched, whatever they contain.
-fn with_prefix_header(out: &str, conv: &Converter) -> String {
-    let (body, used_prefixes) = compact_iris(out, conv);
+fn with_prefix_header(out: &str, conv: &Converter, declared: &mut BTreeSet<String>) -> String {
+    let (body, mut used_prefixes) = compact_iris(out, conv);
+    used_prefixes
+        .entry("xsd".to_string())
+        .or_insert_with(|| "http://www.w3.org/2001/XMLSchema#".to_string());
     let mut header = String::new();
     for (pfx, uri) in &used_prefixes {
-        header.push_str(&format!("@prefix {}: <{}> .\n", pfx, uri));
+        if declared.insert(pfx.clone()) {
+            header.push_str(&format!("@prefix {}: <{}> .\n", pfx, uri));
+        }
     }
-    if !used_prefixes.contains_key("xsd") {
-        header.push_str("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
+    if !header.is_empty() {
+        header.push('\n');
     }
-    header.push('\n');
     header.push_str(&body);
     header
 }
@@ -1105,10 +1119,13 @@ pub fn write_ntriples<W: Write>(
     w: &mut W,
     options: &WriteOptions,
 ) -> IoResult<()> {
-    write_ntriples_counted(value, sv, schema, conv, w, options, &mut 0)
+    let mut stream = RdfStreamWriter::new(w, RdfOutputFormat::NTriples, sv, schema, conv, options)?;
+    stream.write(value)?;
+    stream.finish()?;
+    Ok(())
 }
 
-/// [`write_ntriples`] with a caller-supplied blank node counter.
+/// One N-Triples instance with a caller-supplied blank node counter.
 pub(crate) fn write_ntriples_counted<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -1128,24 +1145,12 @@ pub(crate) fn write_ntriples_counted<W: Write>(
     Ok(())
 }
 
-/// Write `value` as N-Quads, each partition into the graph `options` routes
-/// it to (the default graph included).
+/// One N-Quads instance, each partition into the graph `options` routes it to
+/// (the default graph included), with a caller-supplied blank node counter.
 ///
 /// The instance is walked once, so blank node labels agree across graphs.
 /// An empty `partition_graphs` is an `InvalidInput` error, and so is a
 /// `designates_type` slot mapped to `rdf:type`, as in the flat writers.
-pub fn write_nquads<W: Write>(
-    value: &LinkMLInstance,
-    sv: &SchemaView,
-    schema: &SchemaDefinition,
-    conv: &Converter,
-    w: &mut W,
-    options: &WriteOptions,
-) -> IoResult<()> {
-    write_nquads_counted(value, sv, schema, conv, w, options, &mut 0)
-}
-
-/// [`write_nquads`] with a caller-supplied blank node counter.
 pub(crate) fn write_nquads_counted<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -1166,23 +1171,10 @@ pub(crate) fn write_nquads_counted<W: Write>(
     Ok(())
 }
 
-/// Write `value` as TriG, each partition into the graph `options` routes it
-/// to (the default graph included).
-///
-/// Same content as [`write_nquads`], with the same `@prefix` header as
-/// [`write_turtle`]. Errors as [`write_nquads`] does.
-pub fn write_trig<W: Write>(
-    value: &LinkMLInstance,
-    sv: &SchemaView,
-    schema: &SchemaDefinition,
-    conv: &Converter,
-    w: &mut W,
-    options: &WriteOptions,
-) -> IoResult<()> {
-    write_trig_counted(value, sv, schema, conv, w, options, &mut 0)
-}
-
-/// [`write_trig`] with a caller-supplied blank node counter.
+/// One TriG instance with the same content as [`write_nquads_counted`] and the
+/// `@prefix` header of [`write_turtle`] (only for prefixes `declared` does not
+/// hold yet). Errors as [`write_nquads_counted`] does.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn write_trig_counted<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -1191,6 +1183,7 @@ pub(crate) fn write_trig_counted<W: Write>(
     w: &mut W,
     options: &WriteOptions,
     counter: &mut usize,
+    declared: &mut BTreeSet<String>,
 ) -> IoResult<()> {
     options.validate("TriG", false)?;
     let mut ser = TriGSerializer::new().for_writer(Vec::new());
@@ -1201,7 +1194,7 @@ pub(crate) fn write_trig_counted<W: Write>(
     walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
     let out = String::from_utf8(ser.finish()?)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    w.write_all(with_prefix_header(&out, conv).as_bytes())
+    w.write_all(with_prefix_header(&out, conv, declared).as_bytes())
 }
 
 #[cfg(test)]
@@ -1306,7 +1299,10 @@ mod tests {
         ]);
         let input = include_str!("../tests/data/iri_compaction_input.ttl");
         let golden = include_str!("../tests/data/iri_compaction_golden.ttl");
-        assert_eq!(with_prefix_header(input, &conv), golden);
+        assert_eq!(
+            with_prefix_header(input, &conv, &mut BTreeSet::new()),
+            golden
+        );
     }
 
     #[test]
@@ -1315,6 +1311,7 @@ mod tests {
         let out = with_prefix_header(
             "<http://example.com/a> <http://example.com/p> <http://example.com/StatusEnum#unknown> .",
             &conv,
+            &mut BTreeSet::new(),
         );
         assert!(
             out.ends_with("ex:a ex:p <http://example.com/StatusEnum#unknown> ."),
