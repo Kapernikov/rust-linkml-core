@@ -52,7 +52,7 @@ pub enum ImportError {
         candidates: Vec<String>,
     },
     /// A subject's `rdf:type` is not among the types its `sesame:directType`
-    /// implies (`rdf_types(direct_type, IsAAndMixins)`).
+    /// implies (`rdf_types(direct_type, IS_A_AND_MIXINS)`).
     TypeConflict {
         subject: String,
         direct_type: String,
@@ -238,7 +238,7 @@ fn resolve_enum_value(
 ///    (several: [`ImportError::AmbiguousType`]) and it must name a schema
 ///    class ([`ImportError::UnknownType`]). Every schema-class `rdf:type` of
 ///    the subject must be implied by it, i.e. be in
-///    `rdf_types(direct, IsAAndMixins)` ([`ImportError::TypeConflict`]).
+///    `rdf_types(direct, IS_A_AND_MIXINS)` ([`ImportError::TypeConflict`]).
 ///    The direct class is the result.
 /// 2. Otherwise the result is the unique non-mixin candidate among the
 ///    subject's schema-class `rdf:type`s that implies every other candidate
@@ -358,7 +358,7 @@ pub(crate) fn resolve_class<T: TripleSource>(
 }
 
 /// Canonical URIs of every class a subject of class `cv` may legitimately
-/// carry as `rdf:type`: `rdf_types(cv, IsAAndMixins)` (includes `cv`).
+/// carry as `rdf:type`: `rdf_types(cv, IS_A_AND_MIXINS)` (includes `cv`).
 /// Sort key comparing digit runs numerically, so `p/2` sorts before `p/10`.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct NaturalKey(Vec<(String, u64, String)>);
@@ -389,7 +389,7 @@ impl NaturalKey {
 }
 
 fn implied_class_keys(cv: &ClassView) -> Result<HashSet<String>, ImportError> {
-    Ok(rdf_types(cv, TypeRegime::IsAAndMixins)?
+    Ok(rdf_types(cv, TypeRegime::IS_A_AND_MIXINS)?
         .iter()
         .map(|c| c.canonical_uri().to_string())
         .collect())

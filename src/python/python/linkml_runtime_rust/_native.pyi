@@ -2843,7 +2843,7 @@ class LinkMLInstance:
     def unknown_fields(self) -> dict: ...
     def validation_issues(self) -> builtins.list[ValidationResult]: ...
     def as_python(self) -> typing.Any: ...
-    def as_turtle(self, skolem:typing.Optional[builtins.bool]=None, regime:TypeRegime=TypeRegime.Asserted) -> builtins.str: ...
+    def as_turtle(self, skolem:typing.Optional[builtins.bool]=None, regime:TypeRegime=TypeRegime.ASSERTED) -> builtins.str: ...
     def as_nquads(self, partition_graphs:typing.Mapping[TypePartition, builtins.str], *, skolem:builtins.bool=False) -> builtins.str:
         r"""
         This instance as N-Quads, each type partition in `partition_graphs`
@@ -5286,6 +5286,53 @@ class TypeMapping:
     def keywords(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
     def __new__(cls, framework_key:builtins.str, mapped_type:typing.Optional[builtins.str]=None, string_serialization:typing.Optional[builtins.str]=None, extensions:typing.Optional[builtins.dict[builtins.str, Annotation | Extension]]=None, annotations:typing.Optional[builtins.dict[builtins.str, Annotation]]=None, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> TypeMapping: ...
 
+class TypeRegime:
+    r"""
+    Which type triples the RDF writers emit: a set of `TypePartition`s; see
+    `linkml_runtime::schema_rdf::TypeRegime`. Use the named regimes
+    `TypeRegime.ASSERTED`, `TypeRegime.IS_A`, `TypeRegime.IS_A_AND_MIXINS`,
+    build one from partitions, or `TypeRegime.parse("own+is_a")`.
+    """
+    ASSERTED: TypeRegime = TypeRegime.ASSERTED
+    r"""
+    Only the instance's own class.
+    """
+    IS_A: TypeRegime = TypeRegime.IS_A
+    r"""
+    Own class, transitive is_a ancestors, and sesame:directType.
+    """
+    IS_A_AND_MIXINS: TypeRegime = TypeRegime.IS_A_AND_MIXINS
+    r"""
+    As IS_A, with mixins counted as superclasses.
+    """
+    def __eq__(self, other:builtins.object) -> builtins.bool: ...
+    def __hash__(self) -> builtins.int: ...
+    def __new__(cls, partitions:typing.Iterable[TypePartition]) -> TypeRegime:
+        r"""
+        The regime made of exactly the given partitions.
+        """
+    @staticmethod
+    def parse(s:builtins.str) -> TypeRegime:
+        r"""
+        Parse `str(regime)` output: a named regime, `none`, or partition names
+        (`own`, `is_a`, `mixin`, `direct`) joined by `+`. Raises `ValueError`
+        on anything else.
+        """
+    def partitions(self) -> builtins.list[TypePartition]:
+        r"""
+        The partitions in the set, in declaration order.
+        """
+    def __str__(self) -> builtins.str: ...
+    def __repr__(self) -> builtins.str: ...
+    def __or__(self, other:TypeRegime) -> TypeRegime:
+        r"""
+        The union of two regimes.
+        """
+    def __contains__(self, partition:TypePartition) -> builtins.bool:
+        r"""
+        Whether the partition is in the set.
+        """
+
 class UniqueKey:
     @property
     def unique_key_name(self) -> builtins.str: ...
@@ -5518,28 +5565,6 @@ class TypePartition(Enum):
     One sesame:directType naming the instance's own class.
     """
 
-class TypeRegime(Enum):
-    r"""
-    Which type triples the RDF writers emit; see `linkml_runtime::schema_rdf::TypeRegime`.
-    """
-    Asserted = ...
-    r"""
-    Only the instance's own class (the pre-regime output).
-    """
-    IsA = ...
-    r"""
-    Own class, transitive is_a ancestors, and sesame:directType.
-    """
-    IsAAndMixins = ...
-    r"""
-    As IsA, with mixins counted as superclasses.
-    """
-
-    def partitions(self) -> builtins.list[TypePartition]:
-        r"""
-        The partitions whose union is this regime's output.
-        """
-
 def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:builtins.bool, treat_changed_identifier_as_new_object:builtins.bool=True) -> builtins.list[Delta]:
     r"""
     Compute deltas between two instances.
@@ -5574,7 +5599,7 @@ def export_nquads(instances:typing.Any, schema_view:SchemaView, writer:typing.An
     partition in `partition_graphs` written into its named graph.
     """
 
-def export_ntriples(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False, regime:TypeRegime=TypeRegime.Asserted) -> None:
+def export_ntriples(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False, regime:TypeRegime=TypeRegime.ASSERTED) -> None:
     r"""
     Write LinkML instances as N-Triples into a Python file-like object.
     """
@@ -5585,7 +5610,7 @@ def export_trig(instances:typing.Any, schema_view:SchemaView, writer:typing.Any,
     partition in `partition_graphs` written into its named graph.
     """
 
-def export_turtle(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False, regime:TypeRegime=TypeRegime.Asserted) -> None:
+def export_turtle(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False, regime:TypeRegime=TypeRegime.ASSERTED) -> None:
     r"""
     Write LinkML instances as Turtle into a Python file-like object.
     

@@ -794,26 +794,18 @@ fn make_schema_view(source: Option<&Bound<'_, PyAny>>) -> PyResult<PySchemaView>
     PySchemaView::new(source)
 }
 
-/// Which type triples the RDF writers emit; see `linkml_runtime::schema_rdf::TypeRegime`.
-#[cfg_attr(feature = "stubgen", gen_stub_pyclass_enum)]
-#[pyclass(name = "TypeRegime", eq, eq_int, hash, frozen)]
+/// Which type triples the RDF writers emit: a set of `TypePartition`s; see
+/// `linkml_runtime::schema_rdf::TypeRegime`. Use the named regimes
+/// `TypeRegime.ASSERTED`, `TypeRegime.IS_A`, `TypeRegime.IS_A_AND_MIXINS`,
+/// build one from partitions, or `TypeRegime.parse("own+is_a")`.
+#[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
+#[pyclass(name = "TypeRegime", eq, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PyTypeRegime {
-    /// Only the instance's own class (the pre-regime output).
-    Asserted,
-    /// Own class, transitive is_a ancestors, and sesame:directType.
-    IsA,
-    /// As IsA, with mixins counted as superclasses.
-    IsAAndMixins,
-}
+pub struct PyTypeRegime(TypeRegime);
 
 impl From<PyTypeRegime> for TypeRegime {
     fn from(r: PyTypeRegime) -> Self {
-        match r {
-            PyTypeRegime::Asserted => TypeRegime::Asserted,
-            PyTypeRegime::IsA => TypeRegime::IsA,
-            PyTypeRegime::IsAAndMixins => TypeRegime::IsAAndMixins,
-        }
+        r.0
     }
 }
 
@@ -824,6 +816,9 @@ impl From<TypePartition> for PyTypePartition {
             TypePartition::IsA => PyTypePartition::IsA,
             TypePartition::Mixin => PyTypePartition::Mixin,
             TypePartition::Direct => PyTypePartition::Direct,
+            // `TypePartition` is `#[non_exhaustive]`: a new partition needs a
+            // Python counterpart added above before it can cross this boundary.
+            other => unreachable!("TypePartition::{other} has no Python counterpart"),
         }
     }
 }
@@ -839,16 +834,87 @@ impl From<PyTypePartition> for TypePartition {
     }
 }
 
+/// Any iterable of `TypePartition`, collected into a regime.
+struct PartitionSet(TypeRegime);
+
+impl<'py> FromPyObject<'py> for PartitionSet {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let mut set = TypeRegime::empty();
+        for item in ob.try_iter()? {
+            let p: PyTypePartition = item?.extract()?;
+            set = set.with(p.into());
+        }
+        Ok(PartitionSet(set))
+    }
+}
+
+#[cfg(feature = "stubgen")]
+impl PyStubType for PartitionSet {
+    fn type_output() -> TypeInfo {
+        TypeInfo::with_module("typing.Iterable[TypePartition]", "typing".into())
+    }
+}
+
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
 impl PyTypeRegime {
-    /// The partitions whose union is this regime's output.
+    /// The regime made of exactly the given partitions.
+    #[new]
+    fn new(partitions: PartitionSet) -> PyResult<Self> {
+        Ok(PyTypeRegime(partitions.0))
+    }
+
+    /// Only the instance's own class.
+    #[classattr]
+    const ASSERTED: PyTypeRegime = PyTypeRegime(TypeRegime::ASSERTED);
+
+    /// Own class, transitive is_a ancestors, and sesame:directType.
+    #[classattr]
+    const IS_A: PyTypeRegime = PyTypeRegime(TypeRegime::IS_A);
+
+    /// As IS_A, with mixins counted as superclasses.
+    #[classattr]
+    const IS_A_AND_MIXINS: PyTypeRegime = PyTypeRegime(TypeRegime::IS_A_AND_MIXINS);
+
+    /// Parse `str(regime)` output: a named regime, `none`, or partition names
+    /// (`own`, `is_a`, `mixin`, `direct`) joined by `+`. Raises `ValueError`
+    /// on anything else.
+    #[staticmethod]
+    fn parse(s: &str) -> PyResult<PyTypeRegime> {
+        s.parse::<TypeRegime>()
+            .map(PyTypeRegime)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// The partitions in the set, in declaration order.
     fn partitions(&self) -> Vec<PyTypePartition> {
-        TypeRegime::from(*self)
-            .partitions()
-            .iter()
-            .map(|p| PyTypePartition::from(*p))
-            .collect()
+        self.0.partitions().map(PyTypePartition::from).collect()
+    }
+
+    fn __str__(&self) -> String {
+        self.0.to_string()
+    }
+
+    fn __repr__(&self) -> String {
+        if self.0 == TypeRegime::ASSERTED {
+            "TypeRegime.ASSERTED".to_string()
+        } else if self.0 == TypeRegime::IS_A {
+            "TypeRegime.IS_A".to_string()
+        } else if self.0 == TypeRegime::IS_A_AND_MIXINS {
+            "TypeRegime.IS_A_AND_MIXINS".to_string()
+        } else {
+            format!("TypeRegime.parse('{}')", self.0)
+        }
+    }
+
+    /// The union of two regimes.
+    fn __or__(&self, other: &PyTypeRegime) -> PyTypeRegime {
+        PyTypeRegime(self.0.union(other.0))
+    }
+
+    /// Whether the partition is in the set.
+    fn __contains__(&self, partition: PyTypePartition) -> bool {
+        self.0.contains(partition.into())
     }
 }
 
@@ -1488,7 +1554,7 @@ impl PyLinkMLInstance {
         json_value_to_py(py, &self.value.to_json())
     }
 
-    #[pyo3(signature = (skolem=None, regime=PyTypeRegime::Asserted))]
+    #[pyo3(signature = (skolem=None, regime=PyTypeRegime::ASSERTED))]
     fn as_turtle<'py>(
         &self,
         py: Python<'py>,
@@ -2183,7 +2249,7 @@ fn build_py_rdf_stream(
 ///
 /// `instances` may be a single LinkMLInstance or an iterable of them.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "export_turtle", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime::Asserted))]
+#[pyfunction(name = "export_turtle", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime::ASSERTED))]
 fn py_export_turtle(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,
@@ -2202,7 +2268,7 @@ fn py_export_turtle(
 
 /// Write LinkML instances as N-Triples into a Python file-like object.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "export_ntriples", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime::Asserted))]
+#[pyfunction(name = "export_ntriples", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime::ASSERTED))]
 fn py_export_ntriples(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,

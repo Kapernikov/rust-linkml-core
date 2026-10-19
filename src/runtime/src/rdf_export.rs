@@ -27,8 +27,8 @@ use crate::LinkMLInstance;
 pub struct ExportOptions {
     /// Use skolem IRIs instead of blank nodes.
     pub skolem: bool,
-    /// Which type triples to write. The default, `Asserted`, is the
-    /// pre-regime output.
+    /// Which type triples to write. The default is
+    /// [`TypeRegime::ASSERTED`].
     pub regime: TypeRegime,
 }
 

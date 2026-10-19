@@ -159,9 +159,9 @@ fn flat_writer_honours_the_regime() {
     let f = fixture();
     let s1 = "<https://example.com/type-regimes/s1>";
     let m1 = "<https://example.com/type-regimes/m1>";
-    let asserted = flat(&f, TypeRegime::Asserted, true);
-    let is_a = flat(&f, TypeRegime::IsA, true);
-    let mixins = flat(&f, TypeRegime::IsAAndMixins, true);
+    let asserted = flat(&f, TypeRegime::ASSERTED, true);
+    let is_a = flat(&f, TypeRegime::IS_A, true);
+    let mixins = flat(&f, TypeRegime::IS_A_AND_MIXINS, true);
 
     assert_eq!(types_of(&asserted, s1, &rdf_type()), names(&["Signal"]));
     assert!(types_of(&asserted, s1, &direct_type()).is_empty());
@@ -230,7 +230,7 @@ fn turtle_string_follows_the_regime() {
         &f.sv,
         &f.schema,
         &f.conv,
-        TurtleOptions::default().with_regime(TypeRegime::IsAAndMixins),
+        TurtleOptions::default().with_regime(TypeRegime::IS_A_AND_MIXINS),
     )
     .unwrap();
     assert!(ttl.contains("directType"), "{ttl}");
@@ -286,15 +286,9 @@ fn mapping(parts: &[(TypePartition, &str)]) -> QuadOptions {
 #[test]
 fn quad_graph_equals_flat_output_of_its_partitions() {
     let f = fixture();
-    for regime in TypeRegime::ALL {
+    for regime in TypeRegime::NAMED {
         // All of the regime's partitions share one graph.
-        let options = mapping(
-            &regime
-                .partitions()
-                .iter()
-                .map(|p| (*p, "g"))
-                .collect::<Vec<_>>(),
-        );
+        let options = mapping(&regime.partitions().map(|p| (p, "g")).collect::<Vec<_>>());
         let expected = flat(&f, regime, true);
         for quads in [nquads(&f, &options), trig(&f, &options)] {
             assert_eq!(quads.len(), 1);
@@ -312,12 +306,12 @@ fn quad_partitions_go_to_separate_graphs() {
         (TypePartition::Mixin, "mixin"),
         (TypePartition::Direct, "direct"),
     ]);
-    let all = flat(&f, TypeRegime::IsAAndMixins, true);
+    let all = flat(&f, TypeRegime::IS_A_AND_MIXINS, true);
     for quads in [nquads(&f, &options), trig(&f, &options)] {
         let union: BTreeSet<Spo> = quads.values().flatten().cloned().collect();
         assert_eq!(union, all);
         let own = &quads[&graph("own").into_string()];
-        assert_eq!(*own, flat(&f, TypeRegime::Asserted, true));
+        assert_eq!(*own, flat(&f, TypeRegime::ASSERTED, true));
         assert!(quads[&graph("isa").into_string()]
             .iter()
             .all(|(_, p, _)| *p == rdf_type()));
@@ -334,9 +328,9 @@ fn quad_partitions_go_to_separate_graphs() {
     // Partitions missing from the map are not written; two may share a graph.
     let partial = mapping(&[(TypePartition::Own, "g"), (TypePartition::Direct, "g")]);
     let quads = nquads(&f, &partial);
-    let mut expected = flat(&f, TypeRegime::Asserted, true);
+    let mut expected = flat(&f, TypeRegime::ASSERTED, true);
     expected.extend(
-        flat(&f, TypeRegime::IsA, true)
+        flat(&f, TypeRegime::IS_A, true)
             .into_iter()
             .filter(|(_, p, _)| *p == direct_type()),
     );
@@ -432,13 +426,13 @@ fn schema_triples_publish_the_regime_edges() {
     let sub = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
 
     // Asserted: direct is_a only, no directSubClassOf.
-    let asserted = schema_edges(&f, TypeRegime::Asserted, sub);
+    let asserted = schema_edges(&f, TypeRegime::ASSERTED, sub);
     assert!(asserted.contains(&(iri("Signal"), iri("Asset"))));
     assert!(!asserted.contains(&(iri("MainSignal"), iri("Thing"))));
-    assert!(schema_edges(&f, TypeRegime::Asserted, SESAME_DIRECT_SUBCLASS_OF).is_empty());
+    assert!(schema_edges(&f, TypeRegime::ASSERTED, SESAME_DIRECT_SUBCLASS_OF).is_empty());
 
     // IsA: transitive closure, no mixin edges, no self edges.
-    let closure = schema_edges(&f, TypeRegime::IsA, sub);
+    let closure = schema_edges(&f, TypeRegime::IS_A, sub);
     for pair in [
         ("MainSignal", "Signal"),
         ("MainSignal", "Asset"),
@@ -455,7 +449,7 @@ fn schema_triples_publish_the_regime_edges() {
     assert!(!closure.contains(&(iri("SelfMixin"), iri("SelfMixin"))));
 
     // Direct edges: immediate superclass only.
-    let direct = schema_edges(&f, TypeRegime::IsA, SESAME_DIRECT_SUBCLASS_OF);
+    let direct = schema_edges(&f, TypeRegime::IS_A, SESAME_DIRECT_SUBCLASS_OF);
     assert!(direct.is_superset(&edges(&[
         ("MainSignal", "Signal"),
         ("Signal", "Asset"),
@@ -467,7 +461,7 @@ fn schema_triples_publish_the_regime_edges() {
 
     // IsAAndMixins: mixins are superclasses, and the nearer is_a/mixin edges
     // are the direct ones.
-    let with_mixins = schema_edges(&f, TypeRegime::IsAAndMixins, sub);
+    let with_mixins = schema_edges(&f, TypeRegime::IS_A_AND_MIXINS, sub);
     for pair in [
         ("Signal", "Located"),
         ("Signal", "Placed"),
@@ -481,7 +475,7 @@ fn schema_triples_publish_the_regime_edges() {
     }
     assert!(with_mixins.is_superset(&closure));
     assert!(with_mixins.iter().all(|(s, o)| s != o));
-    let direct_mixins = schema_edges(&f, TypeRegime::IsAAndMixins, SESAME_DIRECT_SUBCLASS_OF);
+    let direct_mixins = schema_edges(&f, TypeRegime::IS_A_AND_MIXINS, SESAME_DIRECT_SUBCLASS_OF);
     assert!(direct_mixins.contains(&(iri("Signal"), iri("Located"))));
     assert!(!direct_mixins.contains(&(iri("Signal"), iri("Placed"))));
     assert!(!direct_mixins.contains(&(iri("MainSignal"), iri("Located"))));
@@ -514,7 +508,7 @@ fn schema_regimes_leave_owl_restrictions_alone() {
         .map(|t| t.to_string())
         .collect()
     };
-    let asserted = non_class_edges(TypeRegime::Asserted);
+    let asserted = non_class_edges(TypeRegime::ASSERTED);
     let restriction_edges: Vec<&String> = asserted
         .iter()
         .filter(|t| t.contains(&format!("<{sub}> _:")))
@@ -523,7 +517,7 @@ fn schema_regimes_leave_owl_restrictions_alone() {
         !restriction_edges.is_empty(),
         "fixture must carry OWL restrictions for this test to mean anything"
     );
-    for regime in [TypeRegime::IsA, TypeRegime::IsAAndMixins] {
+    for regime in [TypeRegime::IS_A, TypeRegime::IS_A_AND_MIXINS] {
         assert_eq!(
             non_class_edges(regime),
             asserted,
@@ -559,7 +553,7 @@ fn blank_nodes<'a>(terms: impl Iterator<Item = &'a String>) -> BTreeSet<String> 
 #[test]
 fn many_exporters_label_blank_nodes_uniquely_across_instances() {
     let f = fixture();
-    let one = flat(&f, TypeRegime::Asserted, false);
+    let one = flat(&f, TypeRegime::ASSERTED, false);
     let per_instance = blank_nodes(one.iter().flat_map(|(s, _, o)| [s, o])).len();
     assert!(per_instance > 0);
     let two = || vec![f.instance.clone(), f.instance.clone()];
@@ -627,4 +621,82 @@ fn many_exporters_label_blank_nodes_uniquely_across_instances() {
         let n = blank_nodes(own.iter().flat_map(|(s, _, o)| [s, o])).len();
         assert_eq!(n, 2 * per_instance, "{name}: blank nodes merged");
     }
+}
+
+#[test]
+fn regime_set_algebra() {
+    use TypePartition::*;
+    let r: TypeRegime = [Own, Mixin].into_iter().collect();
+    assert!(r.contains(Own) && r.contains(Mixin) && !r.contains(IsA) && !r.contains(Direct));
+    assert_eq!(r.partitions().collect::<Vec<_>>(), vec![Own, Mixin]);
+    assert_eq!(TypeRegime::from(IsA), TypeRegime::empty().with(IsA));
+    assert_eq!(TypeRegime::default(), TypeRegime::ASSERTED);
+    assert_eq!(
+        TypeRegime::ASSERTED.union(IsA.into()).union(Direct.into()),
+        TypeRegime::IS_A
+    );
+    assert_eq!(TypeRegime::IS_A.with(Mixin), TypeRegime::IS_A_AND_MIXINS);
+    assert!(TypeRegime::ASSERTED.is_subset(TypeRegime::IS_A));
+    assert!(TypeRegime::IS_A.is_subset(TypeRegime::IS_A_AND_MIXINS));
+    assert!(!TypeRegime::IS_A_AND_MIXINS.is_subset(TypeRegime::IS_A));
+    assert!(TypeRegime::empty().is_subset(TypeRegime::empty()));
+    assert!(!r.is_subset(TypeRegime::IS_A));
+}
+
+#[test]
+fn regime_display_and_from_str_roundtrip_for_all_sets() {
+    for bits in 0u8..16 {
+        let set: TypeRegime = TypePartition::ALL
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| bits & (1 << i) != 0)
+            .map(|(_, p)| *p)
+            .collect();
+        let text = set.to_string();
+        assert_eq!(text.parse::<TypeRegime>().unwrap(), set, "{text}");
+    }
+    assert_eq!(TypeRegime::ASSERTED.to_string(), "asserted");
+    assert_eq!(TypeRegime::IS_A.to_string(), "is_a");
+    assert_eq!(TypeRegime::IS_A_AND_MIXINS.to_string(), "is_a_and_mixins");
+    assert_eq!(TypeRegime::empty().to_string(), "none");
+    assert_eq!(
+        [TypePartition::IsA, TypePartition::Own]
+            .into_iter()
+            .collect::<TypeRegime>()
+            .to_string(),
+        "own+is_a"
+    );
+    assert_eq!(TypeRegime::from(TypePartition::IsA).to_string(), "+is_a");
+    assert_eq!(
+        " direct + own+own "
+            .parse::<TypeRegime>()
+            .unwrap()
+            .to_string(),
+        "own+direct"
+    );
+    for p in TypePartition::ALL {
+        assert_eq!(p.to_string().parse::<TypePartition>().unwrap(), p);
+    }
+    for bad in ["", "Asserted", "own+", "own+bogus", "own,is_a", "none+own"] {
+        let err = bad.parse::<TypeRegime>().unwrap_err();
+        assert!(err.to_string().contains("asserted"), "{bad}: {err}");
+    }
+}
+
+#[test]
+fn schema_edges_follow_partition_membership() {
+    let f = fixture();
+    let sub = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
+    let no_direct: TypeRegime = [TypePartition::Own, TypePartition::IsA]
+        .into_iter()
+        .collect();
+    let closure = schema_edges(&f, no_direct, sub);
+    assert_eq!(closure, schema_edges(&f, TypeRegime::IS_A, sub));
+    assert!(schema_edges(&f, no_direct, SESAME_DIRECT_SUBCLASS_OF).is_empty());
+    // A set without Own still publishes the asserted hierarchy.
+    let mixin_only = TypeRegime::from(TypePartition::Mixin);
+    let edges_m = schema_edges(&f, mixin_only, sub);
+    assert!(edges_m.contains(&(iri("Signal"), iri("Asset"))));
+    assert!(edges_m.contains(&(iri("Signal"), iri("Located"))));
+    assert!(!edges_m.contains(&(iri("MainSignal"), iri("Thing"))));
 }

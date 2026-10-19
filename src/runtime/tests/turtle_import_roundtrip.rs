@@ -254,10 +254,9 @@ fn regimes_fixture() -> Fx {
 fn partition_graphs(regime: TypeRegime) -> BTreeMap<TypePartition, NamedNode> {
     regime
         .partitions()
-        .iter()
         .map(|p| {
             (
-                *p,
+                p,
                 NamedNode::new(format!("https://example.com/graphs/{p:?}")).unwrap(),
             )
         })
@@ -356,7 +355,7 @@ fn sorted(graph: &Graph) -> BTreeSet<String> {
 fn matrix(mut check: impl FnMut(&Fx, TypeRegime, Format, bool)) -> usize {
     let fx = regimes_fixture();
     let mut n = 0;
-    for regime in TypeRegime::ALL {
+    for regime in TypeRegime::NAMED {
         for format in FORMATS {
             for skolem in [true, false] {
                 check(&fx, regime, format, skolem);
@@ -399,7 +398,7 @@ fn matrix_every_regime_imports_like_asserted() {
         let got = import_graph(fx, &written(fx, &fx.instance, regime, format, skolem));
         let base = import_graph(
             fx,
-            &written(fx, &fx.instance, TypeRegime::Asserted, format, skolem),
+            &written(fx, &fx.instance, TypeRegime::ASSERTED, format, skolem),
         );
         assert_eq!(canon(got.to_json()), canon(base.to_json()), "{ctx}");
     });
@@ -451,7 +450,7 @@ fn matrix_written_types_match_rdf_types_and_direct_type() {
         let reference = typing(&written(
             fx,
             &fx.instance,
-            TypeRegime::Asserted,
+            TypeRegime::ASSERTED,
             format,
             skolem,
         ));
@@ -459,8 +458,8 @@ fn matrix_written_types_match_rdf_types_and_direct_type() {
         // are compared as a multiset of own classes, not by subject.
         let mut own_classes: Vec<String> = Vec::new();
         for (subject, (types, directs)) in &g {
-            let own = if regime == TypeRegime::Asserted {
-                assert!(directs.is_empty(), "{ctx}: directType under Asserted");
+            let own = if regime == TypeRegime::ASSERTED {
+                assert!(directs.is_empty(), "{ctx}: directType under ASSERTED");
                 assert_eq!(types.len(), 1, "{ctx}: {subject} types {types:?}");
                 types.iter().next().unwrap().clone()
             } else {
@@ -492,10 +491,63 @@ fn matrix_written_types_match_rdf_types_and_direct_type() {
             own_classes.len()
         );
         assert_eq!(own_classes, want, "{ctx}: own classes of the typed nodes");
-        // sesame:directType appears exactly when the regime is not Asserted.
+        // sesame:directType appears exactly when the regime contains Direct.
         let n_direct: usize = g.values().map(|(_, d)| d.len()).sum();
-        assert_eq!(n_direct == 0, regime == TypeRegime::Asserted, "{ctx}");
+        assert_eq!(n_direct == 0, regime == TypeRegime::ASSERTED, "{ctx}");
     });
+}
+
+/// A set that is not one of the named regimes behaves like any other: the
+/// writer keeps exactly its partitions and the importer reads it back.
+#[test]
+fn non_standard_partition_set_writes_consistently_and_imports_back() {
+    let built: TypeRegime = [TypePartition::Own, TypePartition::IsA]
+        .into_iter()
+        .collect();
+    let parsed: TypeRegime = "own+is_a".parse().unwrap();
+    assert_eq!(built, parsed);
+    assert!(!TypeRegime::NAMED.contains(&built));
+    let fx = regimes_fixture();
+    for regime in [built, parsed] {
+        for skolem in [true, false] {
+            let ctx = format!("skolem={skolem}");
+            let flat = written(&fx, &fx.instance, regime, Format::NTriples, skolem);
+            let g = typing(&flat);
+            assert_eq!(g.len(), 10, "{ctx}");
+            for (subject, (types, directs)) in &g {
+                assert!(directs.is_empty(), "{ctx}: directType on {subject}");
+                let own = types
+                    .iter()
+                    .map(|u| fx.sv.get_class_by_uri(u).unwrap().unwrap())
+                    .find(|c| {
+                        rdf_types(c, regime)
+                            .unwrap()
+                            .iter()
+                            .map(|t| t.canonical_uri().to_string())
+                            .collect::<BTreeSet<_>>()
+                            == *types
+                    });
+                assert!(
+                    own.is_some(),
+                    "{ctx}: {subject} types {types:?} are not rdf_types of any class"
+                );
+            }
+            // Quads restricted to the set's partitions are the flat output.
+            for format in [Format::NQuads, Format::TriG] {
+                assert_eq!(
+                    sorted(&written(&fx, &fx.instance, regime, format, skolem)),
+                    sorted(&flat),
+                    "{ctx} {format:?}"
+                );
+            }
+            let back = import_graph(&fx, &flat);
+            assert_eq!(
+                canon(fx.instance.to_json()),
+                canon(back.to_json()),
+                "{ctx}: re-imported instance differs"
+            );
+        }
+    }
 }
 
 #[test]
@@ -515,7 +567,7 @@ fn quads_union_equals_flat_isa_and_mixins_output() {
         let flat = written(
             &fx,
             &fx.instance,
-            TypeRegime::IsAAndMixins,
+            TypeRegime::IS_A_AND_MIXINS,
             Format::NTriples,
             skolem,
         );

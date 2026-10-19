@@ -8,7 +8,7 @@
 //!
 //! The flat writers ([`write_turtle`], [`turtle_to_string`], [`write_ntriples`])
 //! keep the partitions of [`TurtleOptions::regime`]; with the default
-//! `Asserted` regime the output is exactly the single-`rdf:type` output. The
+//! `ASSERTED` regime the output is exactly the single-`rdf:type` output. The
 //! quad writers ([`write_nquads`], [`write_trig`]) put each partition into the
 //! graph [`QuadOptions::partition_graphs`] names and drop unmapped ones.
 //! A `designates_type` slot is never written; one mapped onto `rdf:type` is
@@ -43,7 +43,8 @@ pub struct TurtleOptions {
     /// Use skolem IRIs instead of blank nodes for objects without an identifier.
     pub skolem: bool,
     /// Which type triples to write: the union of the regime's partitions.
-    /// The default, `Asserted`, writes exactly the pre-regime output.
+    /// The default, [`TypeRegime::ASSERTED`], writes only each node's own
+    /// `rdf:type`.
     pub regime: TypeRegime,
 }
 
@@ -356,12 +357,12 @@ trait TripleSink {
 /// Flat output: the union of a regime's partitions, as Turtle.
 struct FlatSink<W: Write> {
     ser: WriterTurtleSerializer<W>,
-    partitions: &'static [TypePartition],
+    regime: TypeRegime,
 }
 
 impl<W: Write> TripleSink for FlatSink<W> {
     fn wants(&self, partition: TypePartition) -> bool {
-        self.partitions.contains(&partition)
+        self.regime.contains(partition)
     }
 
     fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
@@ -872,7 +873,7 @@ pub(crate) fn write_turtle_counted<W: Write>(
 ) -> IoResult<()> {
     let mut sink = FlatSink {
         ser: TurtleSerializer::new().for_writer(Vec::new()),
-        partitions: options.regime.partitions(),
+        regime: options.regime,
     };
     walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
     let out_buf = sink.ser.finish()?;

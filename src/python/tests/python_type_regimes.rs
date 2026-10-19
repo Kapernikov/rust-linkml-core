@@ -61,21 +61,48 @@ def graphs_of(nquads):
         out.setdefault(graph.strip("<>"), set()).add(body)
     return out
 
-# Regime enum and its partitions.
-assert [p for p in lr.TypeRegime.IsAAndMixins.partitions()] == [
+# Regime as a set of partitions.
+assert [p for p in lr.TypeRegime.IS_A_AND_MIXINS.partitions()] == [
     lr.TypePartition.Own, lr.TypePartition.IsA, lr.TypePartition.Mixin, lr.TypePartition.Direct,
 ]
-assert lr.TypeRegime.Asserted.partitions() == [lr.TypePartition.Own]
+assert lr.TypeRegime.ASSERTED.partitions() == [lr.TypePartition.Own]
+assert lr.TypeRegime.IS_A.partitions() == [
+    lr.TypePartition.Own, lr.TypePartition.IsA, lr.TypePartition.Direct,
+]
+
+P = lr.TypePartition
+custom = lr.TypeRegime([P.IsA, P.Own])
+assert custom.partitions() == [P.Own, P.IsA]
+assert custom == lr.TypeRegime.parse("own+is_a") == lr.TypeRegime(iter([P.Own, P.IsA, P.Own]))
+assert str(custom) == "own+is_a" and repr(custom) == "TypeRegime.parse('own+is_a')"
+assert str(lr.TypeRegime.IS_A) == "is_a" and repr(lr.TypeRegime.IS_A) == "TypeRegime.IS_A"
+assert repr(lr.TypeRegime.ASSERTED) == "TypeRegime.ASSERTED"
+assert lr.TypeRegime.parse("is_a_and_mixins") == lr.TypeRegime.IS_A_AND_MIXINS
+assert str(lr.TypeRegime([])) == "none"
+assert lr.TypeRegime.ASSERTED | lr.TypeRegime([P.IsA, P.Direct]) == lr.TypeRegime.IS_A
+assert P.Mixin in lr.TypeRegime.IS_A_AND_MIXINS and P.Mixin not in lr.TypeRegime.IS_A
+assert lr.TypeRegime.IS_A != lr.TypeRegime.IS_A_AND_MIXINS
+seen = {lr.TypeRegime.IS_A: "a", lr.TypeRegime([P.Own, P.IsA, P.Direct]): "b"}
+assert seen == {lr.TypeRegime.IS_A: "b"}
+for bad in ("bogus", "own+", "Asserted"):
+    try:
+        lr.TypeRegime.parse(bad)
+    except ValueError as e:
+        assert "asserted" in str(e)
+    else:
+        raise AssertionError(bad)
+assert value.as_turtle(regime=custom) == value.as_turtle(regime=lr.TypeRegime.parse("own+is_a"))
+assert "directType" not in value.as_turtle(regime=custom) and "Asset" in value.as_turtle(regime=custom)
 
 # as_turtle: default unchanged, IsA adds ancestor types and sesame:directType.
 default = value.as_turtle()
 assert default == value.as_turtle(skolem=False)
-assert default == value.as_turtle(regime=lr.TypeRegime.Asserted)
+assert default == value.as_turtle(regime=lr.TypeRegime.ASSERTED)
 assert "directType" not in default
-isa = value.as_turtle(regime=lr.TypeRegime.IsA)
+isa = value.as_turtle(regime=lr.TypeRegime.IS_A)
 assert "directType" in isa and "Asset" in isa and "Thing" in isa
 assert "Placed" not in isa
-assert "Placed" in value.as_turtle(regime=lr.TypeRegime.IsAAndMixins)
+assert "Placed" in value.as_turtle(regime=lr.TypeRegime.IS_A_AND_MIXINS)
 
 # as_nquads: each partition lands in its own graph.
 G = {p: "https://example.com/graphs/" + n for p, n in [
@@ -95,12 +122,12 @@ assert not any(f"{rdf_type} <{NS}Asset>" in t for t in nq[G[lr.TypePartition.Own
 # Partitions missing from the map are omitted.
 only_own = graphs_of(value.as_nquads({lr.TypePartition.Own: G[lr.TypePartition.Own]}, skolem=True))
 assert set(only_own) == {G[lr.TypePartition.Own]}
-# The union of the graphs is the flat IsAAndMixins output.
+# The union of the graphs is the flat IS_A_AND_MIXINS output.
 one_graph = graphs_of(value.as_nquads({p: "https://example.com/graphs/g" for p in G}, skolem=True))
 assert list(one_graph) == ["https://example.com/graphs/g"]
 assert one_graph["https://example.com/graphs/g"] == set().union(*nq.values())
 flat_nt = io.BytesIO()
-lr.export_ntriples(value, sv, flat_nt, skolem=True, regime=lr.TypeRegime.IsAAndMixins)
+lr.export_ntriples(value, sv, flat_nt, skolem=True, regime=lr.TypeRegime.IS_A_AND_MIXINS)
 assert {l[:-2] for l in nt_lines(flat_nt.getvalue().decode())} == one_graph["https://example.com/graphs/g"]
 
 # An invalid graph IRI is a ValueError.
@@ -112,10 +139,10 @@ except ValueError as e:
 
 # Exporters write into a file-like object.
 buf = io.BytesIO()
-lr.export_turtle(value, sv, buf, regime=lr.TypeRegime.IsA)
+lr.export_turtle(value, sv, buf, regime=lr.TypeRegime.IS_A)
 assert "directType" in buf.getvalue().decode()
 buf = io.BytesIO()
-lr.export_ntriples(value, sv, buf, skolem=True, regime=lr.TypeRegime.IsA)
+lr.export_ntriples(value, sv, buf, skolem=True, regime=lr.TypeRegime.IS_A)
 assert f"{s1} <{SESAME}> <{NS}Signal> .".encode() in buf.getvalue()
 buf = io.BytesIO()
 lr.export_nquads(value, sv, buf, G, skolem=True)
@@ -140,7 +167,7 @@ def import_back(ttl):
     return inst.as_python()
 
 original = value.as_python()
-for regime in (lr.TypeRegime.Asserted, lr.TypeRegime.IsA, lr.TypeRegime.IsAAndMixins):
+for regime in (lr.TypeRegime.ASSERTED, lr.TypeRegime.IS_A, lr.TypeRegime.IS_A_AND_MIXINS):
     assert import_back(value.as_turtle(skolem=True, regime=regime)) == original, regime
 "#,
         )

@@ -281,17 +281,17 @@
 //!
 //! # Type regimes and subclass edges
 //!
-//! [`SchemaRdfOptions::regime`] decides which class hierarchy is published. In
-//! [`TypeRegime::Asserted`] each class has one `rdfs:subClassOf` to its direct
-//! `is_a` parent (the output before regimes existed). In `IsA` and
-//! `IsAAndMixins` that edge is replaced by [`subclass_edges`] (the transitive
-//! closure; mixins count only in `IsAAndMixins`) plus one
+//! [`SchemaRdfOptions::regime`] decides which class hierarchy is published.
+//! The direct `is_a` edge of each class is always an `rdfs:subClassOf`;
+//! [`subclass_edges`] adds one for every further class in the regime's
+//! `rdf:type` partitions (the transitive closure for `IS_A`, plus mixins for
+//! `IS_A_AND_MIXINS`), and a regime containing `Direct` adds one
 //! `sesame:directSubClassOf` per [`direct_subclass_edges`] pair. The instance
 //! writer writes the matching `rdf:type` / `sesame:directType` triples, so a
 //! query for `?s a <Class>` over instance data and the schema agree.
 //!
 //! The closure is over *named* classes only. The restriction blank nodes stay
-//! exactly as in `Asserted`, on the class that declares them: they are never
+//! exactly as in `ASSERTED`, on the class that declares them: they are never
 //! closed over (a class does not get its ancestors' restriction nodes, because
 //! it already carries its own for every induced slot, with `slot_usage`
 //! applied, and an inherited, wider restriction would contradict a narrowed
@@ -300,6 +300,8 @@
 //! restriction nodes; filter with `isIRI(?super)` for classes only.
 
 use std::collections::{BTreeSet, HashSet};
+use std::fmt;
+use std::str::FromStr;
 
 use linkml_schemaview::converter::Converter;
 use linkml_schemaview::identifier::{Identifier, PrefixCollision};
@@ -408,7 +410,7 @@ pub struct SchemaRdfOptions {
     /// The vocabulary to express the schema in.
     pub profile: SchemaRdfProfile,
     /// Which subclass edges to publish (see [`subclass_edges`] and
-    /// [`direct_subclass_edges`]). The default, `Asserted`, is today's output.
+    /// [`direct_subclass_edges`]). The default is [`TypeRegime::ASSERTED`].
     pub regime: TypeRegime,
 }
 
@@ -417,7 +419,7 @@ impl SchemaRdfOptions {
     pub fn new(profile: SchemaRdfProfile) -> Self {
         Self {
             profile,
-            regime: TypeRegime::Asserted,
+            regime: TypeRegime::ASSERTED,
         }
     }
 
@@ -507,53 +509,170 @@ pub const SESAME_DIRECT_SUBCLASS_OF: &str = "http://www.openrdf.org/schema/sesam
 /// Which type triples are written for an instance, and which subclass edges
 /// for the schema.
 ///
-/// A regime is a fixed union of [`TypePartition`]s ([`partitions`](Self::partitions)).
-/// Adding a regime means one arm here plus its partition list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
-pub enum TypeRegime {
-    /// Only the instance's own class: today's output. Schema: direct `is_a`
-    /// edges only.
-    #[default]
-    Asserted,
+/// A regime is a set of [`TypePartition`]s: the writer keeps exactly the
+/// triples whose partition the set [`contains`](Self::contains), and the
+/// schema edges follow the same membership. Any of the 16 sets is a valid
+/// regime; [`ASSERTED`](Self::ASSERTED), [`IS_A`](Self::IS_A) and
+/// [`IS_A_AND_MIXINS`](Self::IS_A_AND_MIXINS) are the named ones.
+///
+/// Displays as its name when it equals a named regime, otherwise as its
+/// partitions joined by `+` (`own+is_a`); the empty set displays as `none`.
+/// The single-partition set `{IsA}` displays as `+is_a`, since `is_a` names
+/// the regime. [`FromStr`] is the inverse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeRegime(u8);
+
+impl TypeRegime {
+    /// Only the instance's own class. Schema: the direct `is_a` edges only.
+    pub const ASSERTED: TypeRegime = TypeRegime::empty().with(TypePartition::Own);
     /// The own class, every transitive `is_a` ancestor, and
     /// `sesame:directType`. Schema: transitively closed `rdfs:subClassOf`
     /// plus `sesame:directSubClassOf`.
-    IsA,
-    /// As [`IsA`](Self::IsA), and mixins count as superclasses too.
-    IsAAndMixins,
-}
-
-impl TypeRegime {
-    /// Every regime, in declaration order.
-    pub const ALL: [TypeRegime; 3] = [
-        TypeRegime::Asserted,
-        TypeRegime::IsA,
-        TypeRegime::IsAAndMixins,
+    pub const IS_A: TypeRegime = TypeRegime::ASSERTED
+        .with(TypePartition::IsA)
+        .with(TypePartition::Direct);
+    /// As [`IS_A`](Self::IS_A), and mixins count as superclasses too.
+    pub const IS_A_AND_MIXINS: TypeRegime = TypeRegime::IS_A.with(TypePartition::Mixin);
+    /// The three named regimes: [`ASSERTED`](Self::ASSERTED),
+    /// [`IS_A`](Self::IS_A), [`IS_A_AND_MIXINS`](Self::IS_A_AND_MIXINS).
+    pub const NAMED: [TypeRegime; 3] = [
+        TypeRegime::ASSERTED,
+        TypeRegime::IS_A,
+        TypeRegime::IS_A_AND_MIXINS,
     ];
 
-    /// The partitions whose union is this regime's output.
-    pub fn partitions(self) -> &'static [TypePartition] {
-        match self {
-            TypeRegime::Asserted => &[TypePartition::Own],
-            TypeRegime::IsA => &[
-                TypePartition::Own,
-                TypePartition::IsA,
-                TypePartition::Direct,
-            ],
-            TypeRegime::IsAAndMixins => &[
-                TypePartition::Own,
-                TypePartition::IsA,
-                TypePartition::Mixin,
-                TypePartition::Direct,
-            ],
-        }
+    /// The set with no partition: writes no triple at all.
+    pub const fn empty() -> Self {
+        TypeRegime(0)
+    }
+
+    /// This set plus `p`.
+    pub const fn with(self, p: TypePartition) -> Self {
+        TypeRegime(self.0 | p.bit())
+    }
+
+    /// Whether `p` is in the set.
+    pub const fn contains(self, p: TypePartition) -> bool {
+        self.0 & p.bit() != 0
+    }
+
+    /// The partitions in either set.
+    pub const fn union(self, other: TypeRegime) -> Self {
+        TypeRegime(self.0 | other.0)
+    }
+
+    /// Whether every partition of `self` is in `other`.
+    pub const fn is_subset(self, other: TypeRegime) -> bool {
+        self.0 & !other.0 == 0
+    }
+
+    /// The partitions in the set, in declaration order.
+    pub fn partitions(self) -> impl Iterator<Item = TypePartition> {
+        TypePartition::ALL
+            .into_iter()
+            .filter(move |p| self.contains(*p))
     }
 }
+
+impl Default for TypeRegime {
+    /// [`TypeRegime::ASSERTED`].
+    fn default() -> Self {
+        TypeRegime::ASSERTED
+    }
+}
+
+impl From<TypePartition> for TypeRegime {
+    fn from(p: TypePartition) -> Self {
+        TypeRegime::empty().with(p)
+    }
+}
+
+impl FromIterator<TypePartition> for TypeRegime {
+    fn from_iter<I: IntoIterator<Item = TypePartition>>(iter: I) -> Self {
+        iter.into_iter()
+            .fold(TypeRegime::empty(), |acc, p| acc.with(p))
+    }
+}
+
+impl fmt::Display for TypeRegime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if *self == TypeRegime::ASSERTED {
+            return f.write_str("asserted");
+        }
+        if *self == TypeRegime::IS_A {
+            return f.write_str("is_a");
+        }
+        if *self == TypeRegime::IS_A_AND_MIXINS {
+            return f.write_str("is_a_and_mixins");
+        }
+        if *self == TypeRegime::empty() {
+            return f.write_str("none");
+        }
+        // The one-partition set {IsA} would read as the named regime `is_a`;
+        // a leading '+' marks it as a partition list.
+        if *self == TypeRegime::from(TypePartition::IsA) {
+            return f.write_str("+is_a");
+        }
+        for (i, p) in self.partitions().enumerate() {
+            if i > 0 {
+                f.write_str("+")?;
+            }
+            fmt::Display::fmt(&p, f)?;
+        }
+        Ok(())
+    }
+}
+
+impl FromStr for TypeRegime {
+    type Err = ParseTypeRegimeError;
+
+    /// Accepts `asserted`, `is_a`, `is_a_and_mixins`, `none`, or a
+    /// `+`-joined list of partition names in any order (duplicates allowed,
+    /// surrounding whitespace trimmed). A leading `+` forces list reading, so
+    /// `+is_a` is the set `{IsA}`.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        let list = s.strip_prefix('+').unwrap_or(s);
+        if list.len() == s.len() {
+            match s {
+                "asserted" => return Ok(TypeRegime::ASSERTED),
+                "is_a" => return Ok(TypeRegime::IS_A),
+                "is_a_and_mixins" => return Ok(TypeRegime::IS_A_AND_MIXINS),
+                "none" => return Ok(TypeRegime::empty()),
+                _ => {}
+            }
+        }
+        list.split('+')
+            .map(|token| token.trim().parse::<TypePartition>())
+            .collect()
+    }
+}
+
+/// A string that is not a type regime or partition name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseTypeRegimeError(String);
+
+impl fmt::Display for ParseTypeRegimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "unknown type regime or partition {:?}; expected one of \
+             asserted, is_a, is_a_and_mixins, none, or partition names \
+             (own, is_a, mixin, direct) joined by '+'",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for ParseTypeRegimeError {}
 
 /// A disjoint slice of an instance's type triples. Every triple the writer
 /// emits about types belongs to exactly one partition; everything else it
 /// emits belongs to [`Own`](Self::Own).
+///
+/// Ordered by declaration, which is also the order of [`ALL`](Self::ALL).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum TypePartition {
     /// The instance's own `rdf:type`, and all non-type triples.
     Own,
@@ -573,6 +692,37 @@ impl TypePartition {
         TypePartition::Mixin,
         TypePartition::Direct,
     ];
+
+    const fn bit(self) -> u8 {
+        1 << (self as u8)
+    }
+}
+
+impl fmt::Display for TypePartition {
+    /// `own`, `is_a`, `mixin` or `direct`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            TypePartition::Own => "own",
+            TypePartition::IsA => "is_a",
+            TypePartition::Mixin => "mixin",
+            TypePartition::Direct => "direct",
+        })
+    }
+}
+
+impl FromStr for TypePartition {
+    type Err = ParseTypeRegimeError;
+
+    /// The inverse of [`Display`](fmt::Display).
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "own" => Ok(TypePartition::Own),
+            "is_a" => Ok(TypePartition::IsA),
+            "mixin" => Ok(TypePartition::Mixin),
+            "direct" => Ok(TypePartition::Direct),
+            other => Err(ParseTypeRegimeError(other.to_string())),
+        }
+    }
 }
 
 fn class_key(cv: &ClassView) -> String {
@@ -627,31 +777,36 @@ pub fn type_partitions(cv: &ClassView) -> Result<Vec<(TypePartition, ClassView)>
 }
 
 /// The `rdf:type` objects of an instance of `cv` under `regime`: the `Own`,
-/// `IsA` and `Mixin` entries of [`type_partitions`] that the regime includes.
-/// `Direct` is not an `rdf:type` and is never listed. `cv` comes first.
+/// `IsA` and `Mixin` entries of [`type_partitions`] whose partition `regime`
+/// contains, `cv` first when it contains `Own`. `Direct` is not an `rdf:type`
+/// and is never listed.
 pub fn rdf_types(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>, SchemaViewError> {
-    let parts = regime.partitions();
     Ok(type_partitions(cv)?
         .into_iter()
-        .filter(|(p, _)| *p != TypePartition::Direct && parts.contains(p))
+        .filter(|(p, _)| *p != TypePartition::Direct && regime.contains(*p))
         .map(|(_, c)| c)
         .collect())
 }
 
 /// The inverse of [`rdf_types`]: every class whose instances have `cv` among
-/// their `rdf_types` under `regime`, `cv` itself first. Defined through
+/// their `rdf_types` under `regime`, `cv` itself first when `regime` contains
+/// `Own`. Defined through
 /// [`rdf_types`], so the writer and a query planner answering `?s a C`
 /// cannot disagree.
 pub fn type_family(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>, SchemaViewError> {
-    let candidates = match regime {
-        TypeRegime::Asserted => Vec::new(),
-        TypeRegime::IsA => cv.get_descendants(true, false)?,
-        TypeRegime::IsAAndMixins => cv.get_descendants(true, true)?,
+    let candidates = if regime.contains(TypePartition::IsA) || regime.contains(TypePartition::Mixin)
+    {
+        cv.get_descendants(true, regime.contains(TypePartition::Mixin))?
+    } else {
+        Vec::new()
     };
     let key = class_key(cv);
     let mut seen: HashSet<String> = HashSet::new();
     seen.insert(key.clone());
-    let mut out = vec![cv.clone()];
+    let mut out = Vec::new();
+    if regime.contains(TypePartition::Own) {
+        out.push(cv.clone());
+    }
     for cand in candidates {
         if !seen.insert(class_key(&cand)) {
             continue;
@@ -668,31 +823,24 @@ pub fn type_family(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>,
 
 /// The `(sub, super)` pairs published as `rdfs:subClassOf` under `regime`.
 ///
-/// `Asserted`: each class's direct `is_a` parent (today's schema output).
-/// Inferred regimes: the transitive closure, i.e. `(c, t)` for every `t` in
-/// `rdf_types(c, regime)` other than `c`; mixin edges only in `IsAAndMixins`.
-/// Self-edges are never listed. Sorted by class name pair.
+/// The schema's direct `is_a` edges, always, plus `(c, t)` for every `t` in
+/// `rdf_types(c, regime)` other than `c`. Self-edges are never listed; sorted
+/// by class name pair, without duplicates.
 pub fn subclass_edges(
     sv: &SchemaView,
     regime: TypeRegime,
 ) -> Result<Vec<(ClassView, ClassView)>, SchemaViewError> {
     let mut out = Vec::new();
     for cv in sv.class_views()? {
-        match regime {
-            TypeRegime::Asserted => {
-                if let Some(parent) = cv.parent_class()? {
-                    if class_key(&parent) != class_key(&cv) {
-                        out.push((cv.clone(), parent));
-                    }
-                }
+        let key = class_key(&cv);
+        if let Some(parent) = cv.parent_class()? {
+            if class_key(&parent) != key {
+                out.push((cv.clone(), parent));
             }
-            _ => {
-                let key = class_key(&cv);
-                for t in rdf_types(&cv, regime)? {
-                    if class_key(&t) != key {
-                        out.push((cv.clone(), t));
-                    }
-                }
+        }
+        for t in rdf_types(&cv, regime)? {
+            if class_key(&t) != key {
+                out.push((cv.clone(), t));
             }
         }
     }
@@ -703,12 +851,12 @@ pub fn subclass_edges(
 /// The `(sub, super)` pairs published as `sesame:directSubClassOf` under
 /// `regime`, by RDF4J's definition over [`subclass_edges`]: `super` is a
 /// superclass of `sub` and no third class lies strictly between them.
-/// Empty for `Asserted`. Sorted by class name pair.
+/// Empty unless `regime` contains `Direct`. Sorted by class name pair.
 pub fn direct_subclass_edges(
     sv: &SchemaView,
     regime: TypeRegime,
 ) -> Result<Vec<(ClassView, ClassView)>, SchemaViewError> {
-    if regime == TypeRegime::Asserted {
+    if !regime.contains(TypePartition::Direct) {
         return Ok(Vec::new());
     }
     let closure = subclass_edges(sv, regime)?;
@@ -1098,9 +1246,8 @@ impl Builder {
         }
     }
 
-    /// `rdfs:subClassOf` (closure) and `sesame:directSubClassOf` for an
-    /// inferred regime. A class whose IRI will not expand is skipped and
-    /// recorded, like the asserted parent edge.
+    /// `rdfs:subClassOf` and `sesame:directSubClassOf` for `regime`. A class
+    /// whose IRI will not expand is skipped and recorded.
     fn regime_edges(&mut self, sv: &SchemaView, conv: &Converter, regime: TypeRegime) {
         let closure = subclass_edges(sv, regime);
         let direct = direct_subclass_edges(sv, regime);
@@ -1139,9 +1286,7 @@ impl Builder {
             Ok(views) => views,
             Err(_) => return,
         };
-        if regime != TypeRegime::Asserted {
-            self.regime_edges(sv, conv, regime);
-        }
+        self.regime_edges(sv, conv, regime);
 
         for cv in &class_views {
             let Some(class_id) = instance_type_iri(cv, conv) else {
@@ -1157,20 +1302,6 @@ impl Builder {
             self.comment(&class_node, cv.def().description.as_ref());
             self.mappings(&class_node, conv, cv.name(), &mapping_groups!(cv.def()));
             self.has_keys(&class_node, cv, conv);
-
-            // Inferred regimes publish the whole edge set once, below.
-            let asserted_parent = if regime == TypeRegime::Asserted {
-                cv.parent_class().ok().flatten()
-            } else {
-                None
-            };
-            if let Some(parent) = asserted_parent {
-                if let Some(parent_id) = instance_type_iri(&parent, conv) {
-                    if let Some(parent_node) = self.expanded(&parent_id, conv, "parent class") {
-                        self.triple(&class_node, RDFS_SUBCLASS_OF, parent_node.into());
-                    }
-                }
-            }
 
             for slot in cv.slots() {
                 let slot_id = match slot_predicate_iri(slot, conv) {

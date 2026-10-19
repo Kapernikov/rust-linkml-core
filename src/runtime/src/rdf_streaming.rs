@@ -48,7 +48,7 @@ pub struct InlineStructure {
 /// class.
 ///
 /// A subject is a root iff it carries an `rdf:type` naming one of
-/// `root_classes` (exactly as the pre-regime importer enumerated them); it is
+/// `root_classes`; it is
 /// then imported once, as the class [`resolve_class`] picks from ALL its
 /// `rdf:type` / `sesame:directType` triples, however many root classes it
 /// matches (an inferred `Signal` that also carries `Asset` is one `Signal`,
