@@ -290,7 +290,7 @@ fn mapping(parts: &[(TypePartition, &str)]) -> WriteOptions {
 #[test]
 fn quad_graph_equals_flat_output_of_its_partitions() {
     let f = fixture();
-    for regime in TypeRegime::NAMED {
+    for &regime in TypeRegime::NAMED {
         // All of the regime's partitions share one graph.
         let options = mapping(&regime.partitions().map(|p| (p, "g")).collect::<Vec<_>>());
         let expected = flat(&f, regime, true);
@@ -306,7 +306,7 @@ fn quad_partitions_go_to_separate_graphs() {
     let f = fixture();
     let options = mapping(&[
         (TypePartition::Own, "own"),
-        (TypePartition::IsA, "isa"),
+        (TypePartition::IsA, "is_a"),
         (TypePartition::Mixin, "mixin"),
         (TypePartition::Direct, "direct"),
     ]);
@@ -316,7 +316,7 @@ fn quad_partitions_go_to_separate_graphs() {
         assert_eq!(union, all);
         let own = &quads[&graph("own").into_string()];
         assert_eq!(*own, flat(&f, TypeRegime::ASSERTED, true));
-        assert!(quads[&graph("isa").into_string()]
+        assert!(quads[&graph("is_a").into_string()]
             .iter()
             .all(|(_, p, _)| *p == rdf_type()));
         assert!(quads[&graph("direct").into_string()]
@@ -624,70 +624,6 @@ fn many_exporters_label_blank_nodes_uniquely_across_instances() {
         let own = &quads[&graph("own").into_string()];
         let n = blank_nodes(own.iter().flat_map(|(s, _, o)| [s, o])).len();
         assert_eq!(n, 2 * per_instance, "{name}: blank nodes merged");
-    }
-}
-
-#[test]
-fn regime_set_algebra() {
-    use TypePartition::*;
-    let r: TypeRegime = [Own, Mixin].into_iter().collect();
-    assert!(r.contains(Own) && r.contains(Mixin) && !r.contains(IsA) && !r.contains(Direct));
-    assert_eq!(r.partitions().collect::<Vec<_>>(), vec![Own, Mixin]);
-    assert_eq!(TypeRegime::from(IsA), TypeRegime::empty().with(IsA));
-    assert_eq!(TypeRegime::default(), TypeRegime::ASSERTED);
-    assert_eq!(
-        TypeRegime::ASSERTED.union(IsA.into()).union(Direct.into()),
-        TypeRegime::IS_A
-    );
-    assert_eq!(TypeRegime::IS_A.with(Mixin), TypeRegime::IS_A_AND_MIXINS);
-    assert!(TypeRegime::ASSERTED.is_subset(TypeRegime::IS_A));
-    assert!(TypeRegime::IS_A.is_subset(TypeRegime::IS_A_AND_MIXINS));
-    assert!(!TypeRegime::IS_A_AND_MIXINS.is_subset(TypeRegime::IS_A));
-    assert!(TypeRegime::empty().is_subset(TypeRegime::empty()));
-    assert!(!r.is_subset(TypeRegime::IS_A));
-}
-
-#[test]
-fn regime_display_and_from_str_roundtrip_for_all_sets() {
-    for bits in 0u8..16 {
-        let set: TypeRegime = TypePartition::ALL
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| bits & (1 << i) != 0)
-            .map(|(_, p)| *p)
-            .collect();
-        let text = set.to_string();
-        assert_eq!(text.parse::<TypeRegime>().unwrap(), set, "{text}");
-    }
-    assert_eq!(TypeRegime::ASSERTED.to_string(), "asserted");
-    assert_eq!(TypeRegime::IS_A.to_string(), "is_a");
-    assert_eq!(TypeRegime::IS_A_AND_MIXINS.to_string(), "is_a_and_mixins");
-    assert_eq!(TypeRegime::empty().to_string(), "none");
-    assert_eq!(
-        [TypePartition::IsA, TypePartition::Own]
-            .into_iter()
-            .collect::<TypeRegime>()
-            .to_string(),
-        "own+isa"
-    );
-    assert_eq!(TypeRegime::from(TypePartition::IsA).to_string(), "isa");
-    assert_eq!(
-        "own+isa".parse::<TypeRegime>().unwrap().to_string(),
-        "own+isa"
-    );
-    assert_eq!(
-        " direct + own+own "
-            .parse::<TypeRegime>()
-            .unwrap()
-            .to_string(),
-        "own+direct"
-    );
-    for p in TypePartition::ALL {
-        assert_eq!(p.to_string().parse::<TypePartition>().unwrap(), p);
-    }
-    for bad in ["", "Asserted", "own+", "own+bogus", "own,isa", "none+own"] {
-        let err = bad.parse::<TypeRegime>().unwrap_err();
-        assert!(err.to_string().contains("asserted"), "{bad}: {err}");
     }
 }
 

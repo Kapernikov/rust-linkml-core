@@ -523,11 +523,12 @@ pub const SESAME_DIRECT_SUBCLASS_OF: &str = "http://www.openrdf.org/schema/sesam
 /// regime; [`ASSERTED`](Self::ASSERTED), [`IS_A`](Self::IS_A) and
 /// [`IS_A_AND_MIXINS`](Self::IS_A_AND_MIXINS) are the named ones.
 ///
-/// Displays as its name when it equals a named regime, otherwise as its
-/// partitions joined by `+` (`own+isa`); the empty set displays as `none`.
-/// The partition spelling `isa` differs from the regime name `is_a`, so the
-/// set `{IsA}` displays as `isa` and every set round-trips through
-/// [`FromStr`].
+/// Displays as its name when it equals a named regime (`asserted`, `is_a`,
+/// `is_a_and_mixins`); every other set displays as its partitions in
+/// declaration order, comma-separated in braces (`{own,is_a}`, `{is_a}`, and
+/// `{}` for the empty set). [`FromStr`] reads both spellings back, so every
+/// set round-trips. Only braced text is a partition list, so the regime name
+/// `is_a` and the partition name `is_a` never collide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeRegime(u8);
 
@@ -542,9 +543,9 @@ impl TypeRegime {
         .with(TypePartition::Direct);
     /// As [`IS_A`](Self::IS_A), and mixins count as superclasses too.
     pub const IS_A_AND_MIXINS: TypeRegime = TypeRegime::IS_A.with(TypePartition::Mixin);
-    /// The three named regimes: [`ASSERTED`](Self::ASSERTED),
+    /// The three named regimes, in order: [`ASSERTED`](Self::ASSERTED),
     /// [`IS_A`](Self::IS_A), [`IS_A_AND_MIXINS`](Self::IS_A_AND_MIXINS).
-    pub const NAMED: [TypeRegime; 3] = [
+    pub const NAMED: &'static [TypeRegime] = &[
         TypeRegime::ASSERTED,
         TypeRegime::IS_A,
         TypeRegime::IS_A_AND_MIXINS,
@@ -570,6 +571,11 @@ impl TypeRegime {
         TypeRegime(self.0 | other.0)
     }
 
+    /// The partitions in both sets.
+    pub const fn intersection(self, other: TypeRegime) -> Self {
+        TypeRegime(self.0 & other.0)
+    }
+
     /// Whether every partition of `self` is in `other`.
     pub const fn is_subset(self, other: TypeRegime) -> bool {
         self.0 & !other.0 == 0
@@ -578,7 +584,8 @@ impl TypeRegime {
     /// The partitions in the set, in declaration order.
     pub fn partitions(self) -> impl Iterator<Item = TypePartition> {
         TypePartition::ALL
-            .into_iter()
+            .iter()
+            .copied()
             .filter(move |p| self.contains(*p))
     }
 }
@@ -604,6 +611,7 @@ impl FromIterator<TypePartition> for TypeRegime {
 }
 
 impl fmt::Display for TypeRegime {
+    /// The name of a named regime, else the braced partition list.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if *self == TypeRegime::ASSERTED {
             return f.write_str("asserted");
@@ -614,35 +622,43 @@ impl fmt::Display for TypeRegime {
         if *self == TypeRegime::IS_A_AND_MIXINS {
             return f.write_str("is_a_and_mixins");
         }
-        if *self == TypeRegime::empty() {
-            return f.write_str("none");
-        }
+        f.write_str("{")?;
         for (i, p) in self.partitions().enumerate() {
             if i > 0 {
-                f.write_str("+")?;
+                f.write_str(",")?;
             }
             fmt::Display::fmt(&p, f)?;
         }
-        Ok(())
+        f.write_str("}")
     }
 }
 
 impl FromStr for TypeRegime {
     type Err = ParseTypeRegimeError;
 
-    /// Accepts `asserted`, `is_a`, `is_a_and_mixins`, `none`, or a
-    /// `+`-joined list of partition names (`own`, `isa`, `mixin`, `direct`)
-    /// in any order (duplicates allowed, surrounding whitespace trimmed).
+    /// Accepts `asserted`, `is_a`, `is_a_and_mixins`, or a braced,
+    /// comma-separated list of partition names (`{own,is_a}`). The list may
+    /// be in any order, repeat a partition, and have whitespace around
+    /// tokens; `{}` is the empty set. A list equal to a named set is that
+    /// set. Anything else is an error.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
         match s {
             "asserted" => return Ok(TypeRegime::ASSERTED),
             "is_a" => return Ok(TypeRegime::IS_A),
             "is_a_and_mixins" => return Ok(TypeRegime::IS_A_AND_MIXINS),
-            "none" => return Ok(TypeRegime::empty()),
             _ => {}
         }
-        s.split('+')
+        let inner = s
+            .strip_prefix('{')
+            .and_then(|rest| rest.strip_suffix('}'))
+            .ok_or_else(|| ParseTypeRegimeError(s.to_string()))?
+            .trim();
+        if inner.is_empty() {
+            return Ok(TypeRegime::empty());
+        }
+        inner
+            .split(',')
             .map(|token| token.trim().parse::<TypePartition>())
             .collect()
     }
@@ -657,8 +673,8 @@ impl fmt::Display for ParseTypeRegimeError {
         write!(
             f,
             "unknown type regime or partition {:?}; expected one of \
-             asserted, is_a, is_a_and_mixins, none, or partition names \
-             (own, isa, mixin, direct) joined by '+'",
+             asserted, is_a, is_a_and_mixins, or a braced list of partition \
+             names (own, is_a, mixin, direct) such as {{own,is_a}}",
             self.0
         )
     }
@@ -686,7 +702,7 @@ pub enum TypePartition {
 
 impl TypePartition {
     /// Every partition, in declaration order.
-    pub const ALL: [TypePartition; 4] = [
+    pub const ALL: &'static [TypePartition] = &[
         TypePartition::Own,
         TypePartition::IsA,
         TypePartition::Mixin,
@@ -699,11 +715,11 @@ impl TypePartition {
 }
 
 impl fmt::Display for TypePartition {
-    /// `own`, `isa`, `mixin` or `direct`.
+    /// `own`, `is_a`, `mixin` or `direct`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             TypePartition::Own => "own",
-            TypePartition::IsA => "isa",
+            TypePartition::IsA => "is_a",
             TypePartition::Mixin => "mixin",
             TypePartition::Direct => "direct",
         })
@@ -717,7 +733,7 @@ impl FromStr for TypePartition {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "own" => Ok(TypePartition::Own),
-            "isa" => Ok(TypePartition::IsA),
+            "is_a" => Ok(TypePartition::IsA),
             "mixin" => Ok(TypePartition::Mixin),
             "direct" => Ok(TypePartition::Direct),
             other => Err(ParseTypeRegimeError(other.to_string())),

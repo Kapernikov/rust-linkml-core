@@ -353,7 +353,7 @@ fn sorted(graph: &Graph) -> BTreeSet<String> {
 fn matrix(mut check: impl FnMut(&Fx, TypeRegime, Format, bool)) -> usize {
     let fx = regimes_fixture();
     let mut n = 0;
-    for regime in TypeRegime::NAMED {
+    for &regime in TypeRegime::NAMED {
         for format in FORMATS {
             for skolem in [true, false] {
                 check(&fx, regime, format, skolem);
@@ -502,7 +502,7 @@ fn non_standard_partition_set_writes_consistently_and_imports_back() {
     let built: TypeRegime = [TypePartition::Own, TypePartition::IsA]
         .into_iter()
         .collect();
-    let parsed: TypeRegime = "own+isa".parse().unwrap();
+    let parsed: TypeRegime = "{own,is_a}".parse().unwrap();
     assert_eq!(built, parsed);
     assert!(!TypeRegime::NAMED.contains(&built));
     let fx = regimes_fixture();
