@@ -28,6 +28,10 @@ use crate::{new_node_id, LinkMLInstance, ValidationProblemType, ValidationResult
 // ── Error types ──────────────────────────────────────────────────────────────
 
 /// Errors that can occur during RDF/Turtle import.
+///
+/// A `subject` field holds the subject in N-Triples form (`<iri>` or
+/// `_:label`); a type field (`type_iri`, `direct_type`, `candidates`) holds a
+/// plain IRI.
 #[derive(Debug)]
 pub enum ImportError {
     /// I/O or parse error from oxttl
@@ -71,21 +75,21 @@ impl std::fmt::Display for ImportError {
         match self {
             ImportError::Parse(msg) => write!(f, "Turtle parse error: {msg}"),
             ImportError::UnknownType { subject, type_iri } => {
-                write!(f, "Unknown rdf:type <{type_iri}> for subject <{subject}>")
+                write!(f, "Unknown rdf:type <{type_iri}> for subject {subject}")
             }
             ImportError::InlinedCycle { subject } => {
-                write!(f, "Cycle detected when inlining subject <{subject}>")
+                write!(f, "Cycle detected when inlining subject {subject}")
             }
             ImportError::UnknownClass(name) => write!(f, "Root class not found: {name}"),
             ImportError::MissingType(subject) => {
-                write!(f, "No rdf:type triple for subject <{subject}>")
+                write!(f, "No rdf:type triple for subject {subject}")
             }
             ImportError::AmbiguousType {
                 subject,
                 candidates,
             } => write!(
                 f,
-                "Ambiguous type for subject <{subject}>: none of {} is more specific than all \
+                "Ambiguous type for subject {subject}: none of {} is more specific than all \
                  the others; add a sesame:directType triple naming the intended class",
                 candidates
                     .iter()
@@ -99,7 +103,7 @@ impl std::fmt::Display for ImportError {
                 type_iri,
             } => write!(
                 f,
-                "Subject <{subject}> has rdf:type <{type_iri}>, which its sesame:directType \
+                "Subject {subject} has rdf:type <{type_iri}>, which its sesame:directType \
                  <{direct_type}> does not imply"
             ),
             ImportError::SchemaError(e) => write!(f, "Schema error: {e}"),
@@ -259,7 +263,10 @@ pub(crate) fn resolve_class<T: TripleSource>(
     for term in store.objects_for_subject_predicate(subject, &type_node) {
         if !types_seen {
             types_seen = true;
-            first_type = term.to_string();
+            first_type = match term {
+                TermRef::NamedNode(nn) => nn.as_str().to_string(),
+                other => other.to_string(),
+            };
         }
         if let TermRef::NamedNode(nn) = term {
             let iri = nn.as_str();
