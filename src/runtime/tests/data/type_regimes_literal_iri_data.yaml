@@ -1,0 +1,6 @@
+# A string slot whose text contains IRIs in angle brackets, in a namespace the
+# schema has a prefix for. A writer must keep the literal as it is.
+id: tr:registry1
+signals:
+- id: tr:s1
+  name: "see <https://example.com/type-regimes/x> and <https://example.com/type-regimes/s1>"

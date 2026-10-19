@@ -805,3 +805,61 @@ fn type_partitions_does_not_list_direct() {
     assert!(!direct.is_empty());
     assert!(direct.iter().all(|(_, p, _)| *p == direct_type()));
 }
+
+/// Compacting IRIs to CURIEs must never touch a string literal that merely
+/// looks like an IRI: the writers compact through the serializer, not by
+/// rewriting the serialized text.
+#[test]
+fn iri_lookalikes_inside_literals_survive_turtle_and_trig() {
+    let text = "see <https://example.com/type-regimes/x> and <https://example.com/type-regimes/s1>";
+    let f = load(
+        "type_regimes_schema.yaml",
+        "type_regimes_literal_iri_data.yaml",
+        "Registry",
+    );
+    let literals = |quads: Vec<oxrdf::Quad>| -> Vec<String> {
+        quads
+            .into_iter()
+            .filter_map(|q| match q.object {
+                oxrdf::Term::Literal(l) => Some(l.value().to_string()),
+                _ => None,
+            })
+            .collect()
+    };
+
+    let ttl = turtle_to_string(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &WriteOptions::default(),
+    )
+    .unwrap();
+    assert!(ttl.contains(&format!("\"{text}\"")), "turtle:\n{ttl}");
+    let parsed = TurtleParser::new()
+        .for_reader(ttl.as_bytes())
+        .map(|t| t.unwrap().in_graph(GraphName::DefaultGraph))
+        .collect();
+    assert!(literals(parsed).iter().any(|v| v == text));
+
+    let mut buf = Vec::new();
+    write_trig(
+        &f.instance,
+        &f.sv,
+        &f.schema,
+        &f.conv,
+        &mut buf,
+        &mapping(&[(TypePartition::Own, "own")]),
+    )
+    .unwrap();
+    let trig_text = String::from_utf8(buf).unwrap();
+    assert!(
+        trig_text.contains(&format!("\"{text}\"")),
+        "trig:\n{trig_text}"
+    );
+    let parsed = TriGParser::new()
+        .for_reader(trig_text.as_bytes())
+        .map(|q| q.unwrap())
+        .collect();
+    assert!(literals(parsed).iter().any(|v| v == text));
+}

@@ -101,8 +101,17 @@ fn turtle_enum_without_meaning_emits_the_minted_concept_iri() {
     )
     .unwrap();
 
+    // The serializer may spell the IRI as a prefixed name with an escaped `#`
+    // (`ex:StatusEnum\#unknown`), so compare parsed terms, not text.
+    let objects: Vec<oxrdf::Term> = oxttl::TurtleParser::new()
+        .for_reader(ttl.as_bytes())
+        .map(|t| t.unwrap().object)
+        .collect();
     assert!(
-        ttl.contains("<https://example.com/enum-meaning-test/StatusEnum#unknown>"),
+        objects.contains(&oxrdf::Term::NamedNode(
+            oxrdf::NamedNode::new("https://example.com/enum-meaning-test/StatusEnum#unknown")
+                .unwrap()
+        )),
         "Enum without meaning should be its minted concept IRI. Got:\n{}",
         ttl
     );
