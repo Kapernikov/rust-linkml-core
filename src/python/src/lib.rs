@@ -18,7 +18,7 @@ use pyo3::conversion::{IntoPyObject, IntoPyObjectExt};
 use pyo3::exceptions::{PyException, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyAnyMethods;
-use pyo3::types::{PyAny, PyDict, PyMapping, PyModule, PyString, PyType};
+use pyo3::types::{PyAny, PyDict, PyList, PyMapping, PyModule, PyString, PyType};
 use pyo3::Bound;
 use pyo3::{wrap_pyfunction, wrap_pymodule};
 #[cfg(feature = "stubgen")]
@@ -804,9 +804,11 @@ impl PyStubType for PyTypePartition {
 /// Which type triples the RDF writers emit: a set of `TypePartition`s; see
 /// `linkml_runtime::schema_rdf::TypeRegime`. Use the named regimes
 /// `TypeRegime.ASSERTED`, `TypeRegime.IS_A`, `TypeRegime.IS_A_AND_MIXINS`,
-/// build one from partitions, or `TypeRegime.parse("own+isa")`.
+/// build one from a `TypePartition` or an iterable of them, or
+/// `TypeRegime.parse("{own,is_a}")`. Supports `|` (union), `&` (intersection),
+/// `<=` (subset), `in`, `len()` and iteration over its partitions.
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "TypeRegime", eq, hash, frozen)]
+#[pyclass(name = "TypeRegime", frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PyTypeRegime(TypeRegime);
 
@@ -849,11 +851,14 @@ impl From<PyTypePartition> for TypePartition {
     }
 }
 
-/// Any iterable of `TypePartition`, collected into a regime.
+/// A single `TypePartition` or any iterable of them, collected into a regime.
 struct PartitionSet(TypeRegime);
 
 impl<'py> FromPyObject<'py> for PartitionSet {
     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        if let Ok(p) = ob.extract::<PyTypePartition>() {
+            return Ok(PartitionSet(TypeRegime::from(TypePartition::from(p))));
+        }
         let mut set = TypeRegime::empty();
         for item in ob.try_iter()? {
             let p: PyTypePartition = item?.extract()?;
@@ -866,14 +871,59 @@ impl<'py> FromPyObject<'py> for PartitionSet {
 #[cfg(feature = "stubgen")]
 impl PyStubType for PartitionSet {
     fn type_output() -> TypeInfo {
-        TypeInfo::with_module("typing.Iterable[TypePartition]", "typing".into())
+        TypeInfo::with_module(
+            "TypePartition | typing.Iterable[TypePartition]",
+            "typing".into(),
+        )
+    }
+}
+
+/// A Python iterator over `TypePartition`s, returned by `TypeRegime.__iter__`.
+struct PartitionIter(Py<PyAny>);
+
+impl<'py> IntoPyObject<'py> for PartitionIter {
+    type Target = PyAny;
+    type Output = Bound<'py, PyAny>;
+    type Error = std::convert::Infallible;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        Ok(self.0.into_bound(py))
+    }
+}
+
+#[cfg(feature = "stubgen")]
+impl PyStubType for PartitionIter {
+    fn type_output() -> TypeInfo {
+        TypeInfo::with_module("typing.Iterator[TypePartition]", "typing".into())
+    }
+}
+
+/// The right-hand side of a regime operator: a `TypeRegime` or a single
+/// `TypePartition`.
+struct RegimeOperand(TypeRegime);
+
+impl<'py> FromPyObject<'py> for RegimeOperand {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        if let Ok(r) = ob.extract::<PyTypeRegime>() {
+            return Ok(RegimeOperand(r.0));
+        }
+        let p: PyTypePartition = ob.extract()?;
+        Ok(RegimeOperand(TypeRegime::from(TypePartition::from(p))))
+    }
+}
+
+#[cfg(feature = "stubgen")]
+impl PyStubType for RegimeOperand {
+    fn type_output() -> TypeInfo {
+        TypeInfo::unqualified("TypeRegime | TypePartition")
     }
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
 impl PyTypeRegime {
-    /// The regime made of exactly the given partitions.
+    /// The regime made of exactly the given partition, or of the partitions
+    /// of the given iterable.
     #[new]
     fn new(partitions: PartitionSet) -> PyResult<Self> {
         Ok(PyTypeRegime(partitions.0))
@@ -903,9 +953,10 @@ impl PyTypeRegime {
         PyTypeRegime(TypeRegime::IS_A_AND_MIXINS)
     }
 
-    /// Parse `str(regime)` output: a named regime, `none`, or partition names
-    /// (`own`, `isa`, `mixin`, `direct`) joined by `+`. Raises `ValueError`
-    /// on anything else.
+    /// Parse `str(regime)` output: `asserted`, `is_a`, `is_a_and_mixins`, or a
+    /// braced comma-separated partition list such as `{own,is_a}` (any order,
+    /// repeats and whitespace allowed; `{}` is the empty set). Raises
+    /// `ValueError` on anything else.
     #[staticmethod]
     fn parse(s: &str) -> PyResult<PyTypeRegime> {
         s.parse::<TypeRegime>()
@@ -934,9 +985,56 @@ impl PyTypeRegime {
         }
     }
 
-    /// The union of two regimes.
-    fn __or__(&self, other: &PyTypeRegime) -> PyTypeRegime {
+    /// The union with a regime or a single partition.
+    fn __or__(&self, other: RegimeOperand) -> PyTypeRegime {
         PyTypeRegime(self.0.union(other.0))
+    }
+
+    /// The union with a regime or a single partition (reflected).
+    fn __ror__(&self, other: RegimeOperand) -> PyTypeRegime {
+        PyTypeRegime(self.0.union(other.0))
+    }
+
+    /// The partitions common to this regime and a regime or a single
+    /// partition.
+    fn __and__(&self, other: RegimeOperand) -> PyTypeRegime {
+        PyTypeRegime(self.0.intersection(other.0))
+    }
+
+    /// The partitions common to this regime and a regime or a single
+    /// partition (reflected).
+    fn __rand__(&self, other: RegimeOperand) -> PyTypeRegime {
+        PyTypeRegime(self.0.intersection(other.0))
+    }
+
+    /// Whether every partition of this regime is in `other`.
+    fn __le__(&self, other: &PyTypeRegime) -> bool {
+        self.0.is_subset(other.0)
+    }
+
+    /// The number of partitions in the set.
+    fn __len__(&self) -> usize {
+        self.0.partitions().count()
+    }
+
+    /// Iterate the partitions in declaration order.
+    fn __iter__(&self, py: Python<'_>) -> PyResult<PartitionIter> {
+        let items: Vec<PyTypePartition> = self.0.partitions().map(PyTypePartition::from).collect();
+        let iter = PyList::new(py, items)?.try_iter()?;
+        Ok(PartitionIter(iter.into_any().unbind()))
+    }
+
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
+        other
+            .extract::<PyTypeRegime>()
+            .is_ok_and(|other| other.0 == self.0)
+    }
+
+    fn __hash__(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.0.hash(&mut h);
+        h.finish()
     }
 
     /// Whether the partition is in the set.
@@ -947,7 +1045,14 @@ impl PyTypeRegime {
 
 /// A disjoint slice of an instance's type triples; see
 /// `linkml_runtime::schema_rdf::TypePartition`.
-#[pyclass(name = "TypePartition", eq, eq_int, hash, frozen)]
+#[pyclass(
+    name = "TypePartition",
+    eq,
+    eq_int,
+    hash,
+    frozen,
+    rename_all = "SCREAMING_SNAKE_CASE"
+)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PyTypePartition {
     /// The instance's own rdf:type and all non-type triples.
@@ -958,6 +1063,32 @@ pub enum PyTypePartition {
     Mixin,
     /// One sesame:directType naming the instance's own class.
     Direct,
+}
+
+#[pymethods]
+impl PyTypePartition {
+    /// Parse `str(partition)` output: `own`, `is_a`, `mixin` or `direct`.
+    /// Raises `ValueError` on anything else.
+    #[staticmethod]
+    fn parse(s: &str) -> PyResult<PyTypePartition> {
+        s.parse::<TypePartition>()
+            .map(PyTypePartition::from)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    fn __str__(&self) -> String {
+        TypePartition::from(*self).to_string()
+    }
+
+    fn __repr__(&self) -> String {
+        match self {
+            PyTypePartition::Own => "TypePartition.OWN",
+            PyTypePartition::IsA => "TypePartition.IS_A",
+            PyTypePartition::Mixin => "TypePartition.MIXIN",
+            PyTypePartition::Direct => "TypePartition.DIRECT",
+        }
+        .to_string()
+    }
 }
 
 /// A mapping from `TypePartition` to a graph IRI, or `None` for the default
@@ -1042,10 +1173,6 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add(
         "AmbiguousTypeError",
         m.py().get_type::<AmbiguousTypeError>(),
-    )?;
-    m.add(
-        "ConflictingDirectTypesError",
-        m.py().get_type::<ConflictingDirectTypesError>(),
     )?;
     m.add(
         "ConflictingDirectTypesError",
@@ -2086,10 +2213,9 @@ pyo3::create_exception!(
 pyo3::create_exception!(
     _native,
     ConflictingDirectTypesError,
-    AmbiguousTypeError,
+    RdfImportError,
     "A subject has several distinct sesame:directType values. Attributes: \
-     `subject: str`, `direct_types: list[str]` (sorted) and `candidates` (the \
-     same list, so code catching `AmbiguousTypeError` keeps working)."
+     `subject: str` and `direct_types: list[str]` (sorted)."
 );
 pyo3::create_exception!(
     _native,
@@ -2109,7 +2235,9 @@ mod exception_stubs {
         TypeConflictError,
     };
     use pyo3_stub_gen::inventory;
-    use pyo3_stub_gen::type_info::{MemberInfo, PyClassInfo, PyMethodsInfo};
+    use pyo3_stub_gen::type_info::{
+        ArgInfo, MemberInfo, MethodInfo, MethodType, PyClassInfo, PyMethodsInfo,
+    };
     use pyo3_stub_gen::{PyStubType, TypeInfo};
     use std::any::TypeId;
 
@@ -2124,9 +2252,6 @@ mod exception_stubs {
     }
     fn rdf_import_error() -> TypeInfo {
         TypeInfo::unqualified("RdfImportError")
-    }
-    fn ambiguous_type_error() -> TypeInfo {
-        TypeInfo::unqualified("AmbiguousTypeError")
     }
     fn type_partition() -> TypeInfo {
         TypeInfo::unqualified("TypePartition")
@@ -2178,12 +2303,11 @@ mod exception_stubs {
             getters: &[
                 member("subject", str_type),
                 member("direct_types", str_list_type),
-                member("candidates", str_list_type),
             ],
             setters: &[],
             module: None,
             doc: "A subject has several distinct sesame:directType values.",
-            bases: &[ambiguous_type_error],
+            bases: &[rdf_import_error],
             has_eq: false,
             has_ord: false,
             has_hash: false,
@@ -2222,26 +2346,48 @@ mod exception_stubs {
             module: None,
             doc: "A disjoint slice of an instance's type triples; see \
                   `linkml_runtime::schema_rdf::TypePartition`. Not an `enum.Enum`: \
-                  the four members are class attributes.",
+                  the four members (`OWN`, `IS_A`, `MIXIN`, `DIRECT`) are class attributes.",
             bases: &[],
             has_eq: true,
             has_ord: false,
             has_hash: true,
-            has_str: false,
+            has_str: true,
         }
     }
     inventory::submit! {
         PyMethodsInfo {
             struct_id: TypeId::of::<PyTypePartition>,
             attrs: &[
-                MemberInfo { name: "Own", r#type: type_partition, doc: "The instance's own rdf:type and all non-type triples.", default: None, deprecated: None },
-                MemberInfo { name: "IsA", r#type: type_partition, doc: "rdf:type for each transitive is_a ancestor.", default: None, deprecated: None },
-                MemberInfo { name: "Mixin", r#type: type_partition, doc: "rdf:type for each class reachable only through a mixin edge.", default: None, deprecated: None },
-                MemberInfo { name: "Direct", r#type: type_partition, doc: "One sesame:directType naming the instance's own class.", default: None, deprecated: None },
+                MemberInfo { name: "OWN", r#type: type_partition, doc: "The instance's own rdf:type and all non-type triples.", default: None, deprecated: None },
+                MemberInfo { name: "IS_A", r#type: type_partition, doc: "rdf:type for each transitive is_a ancestor.", default: None, deprecated: None },
+                MemberInfo { name: "MIXIN", r#type: type_partition, doc: "rdf:type for each class reachable only through a mixin edge.", default: None, deprecated: None },
+                MemberInfo { name: "DIRECT", r#type: type_partition, doc: "One sesame:directType naming the instance's own class.", default: None, deprecated: None },
             ],
             getters: &[],
             setters: &[],
-            methods: &[],
+            methods: &[
+                MethodInfo {
+                    name: "parse",
+                    args: &[ArgInfo { name: "s", r#type: str_type, signature: None }],
+                    r#return: type_partition,
+                    doc: "Parse `str(partition)` output: `own`, `is_a`, `mixin` or `direct`. \
+                          Raises `ValueError` on anything else.",
+                    r#type: MethodType::Static,
+                    is_async: false,
+                    deprecated: None,
+                    type_ignored: None,
+                },
+                MethodInfo {
+                    name: "__repr__",
+                    args: &[],
+                    r#return: str_type,
+                    doc: "",
+                    r#type: MethodType::Instance,
+                    is_async: false,
+                    deprecated: None,
+                    type_ignored: None,
+                },
+            ],
         }
     }
 }
@@ -2287,15 +2433,6 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
                     ),
                     (
                         "direct_types",
-                        direct_types
-                            .clone()
-                            .into_pyobject(py)
-                            .unwrap()
-                            .into_any()
-                            .unbind(),
-                    ),
-                    (
-                        "candidates",
                         direct_types.into_pyobject(py).unwrap().into_any().unbind(),
                     ),
                 ],

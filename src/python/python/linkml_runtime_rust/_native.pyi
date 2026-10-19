@@ -1546,7 +1546,7 @@ class CommonMetadata:
     def keywords(self, value: typing.Optional[builtins.list[builtins.str]]) -> None: ...
     def __new__(cls, description:typing.Optional[builtins.str]=None, alt_descriptions:typing.Optional[builtins.dict[builtins.str, AltDescription]]=None, title:typing.Optional[builtins.str]=None, deprecated:typing.Optional[builtins.str]=None, todos:typing.Optional[typing.Sequence[builtins.str]]=None, notes:typing.Optional[typing.Sequence[builtins.str]]=None, comments:typing.Optional[typing.Sequence[builtins.str]]=None, examples:typing.Optional[builtins.list[Example]]=None, in_subset:typing.Optional[typing.Sequence[builtins.str]]=None, from_schema:typing.Optional[builtins.str]=None, imported_from:typing.Optional[builtins.str]=None, source:typing.Optional[builtins.str]=None, in_language:typing.Optional[builtins.str]=None, see_also:typing.Optional[typing.Sequence[builtins.str]]=None, deprecated_element_has_exact_replacement:typing.Optional[builtins.str]=None, deprecated_element_has_possible_replacement:typing.Optional[builtins.str]=None, aliases:typing.Optional[typing.Sequence[builtins.str]]=None, structured_aliases:typing.Optional[builtins.list[StructuredAlias]]=None, mappings:typing.Optional[typing.Sequence[builtins.str]]=None, exact_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, close_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, related_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, narrow_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, broad_mappings:typing.Optional[typing.Sequence[builtins.str]]=None, created_by:typing.Optional[builtins.str]=None, contributors:typing.Optional[typing.Sequence[builtins.str]]=None, created_on:typing.Optional[datetime.datetime]=None, last_updated_on:typing.Optional[datetime.datetime]=None, modified_by:typing.Optional[builtins.str]=None, status:typing.Optional[builtins.str]=None, rank:typing.Optional[builtins.int]=None, categories:typing.Optional[typing.Sequence[builtins.str]]=None, keywords:typing.Optional[typing.Sequence[builtins.str]]=None) -> CommonMetadata: ...
 
-class ConflictingDirectTypesError(AmbiguousTypeError):
+class ConflictingDirectTypesError(RdfImportError):
     r"""
     A subject has several distinct sesame:directType values.
     """
@@ -1554,8 +1554,6 @@ class ConflictingDirectTypesError(AmbiguousTypeError):
     def subject(self) -> builtins.str: ...
     @property
     def direct_types(self) -> builtins.list[builtins.str]: ...
-    @property
-    def candidates(self) -> builtins.list[builtins.str]: ...
 
 class Definition:
     @property
@@ -5307,33 +5305,42 @@ class TypeMapping:
 
 class TypePartition:
     r"""
-    A disjoint slice of an instance's type triples; see `linkml_runtime::schema_rdf::TypePartition`. Not an `enum.Enum`: the four members are class attributes.
+    A disjoint slice of an instance's type triples; see `linkml_runtime::schema_rdf::TypePartition`. Not an `enum.Enum`: the four members (`OWN`, `IS_A`, `MIXIN`, `DIRECT`) are class attributes.
     """
-    Own: TypePartition
+    OWN: TypePartition
     r"""
     The instance's own rdf:type and all non-type triples.
     """
-    IsA: TypePartition
+    IS_A: TypePartition
     r"""
     rdf:type for each transitive is_a ancestor.
     """
-    Mixin: TypePartition
+    MIXIN: TypePartition
     r"""
     rdf:type for each class reachable only through a mixin edge.
     """
-    Direct: TypePartition
+    DIRECT: TypePartition
     r"""
     One sesame:directType naming the instance's own class.
     """
     def __eq__(self, other:builtins.object) -> builtins.bool: ...
     def __hash__(self) -> builtins.int: ...
+    def __str__(self) -> builtins.str: ...
+    @staticmethod
+    def parse(s:builtins.str) -> TypePartition:
+        r"""
+        Parse `str(partition)` output: `own`, `is_a`, `mixin` or `direct`. Raises `ValueError` on anything else.
+        """
+    def __repr__(self) -> builtins.str: ...
 
 class TypeRegime:
     r"""
     Which type triples the RDF writers emit: a set of `TypePartition`s; see
     `linkml_runtime::schema_rdf::TypeRegime`. Use the named regimes
     `TypeRegime.ASSERTED`, `TypeRegime.IS_A`, `TypeRegime.IS_A_AND_MIXINS`,
-    build one from partitions, or `TypeRegime.parse("own+isa")`.
+    build one from a `TypePartition` or an iterable of them, or
+    `TypeRegime.parse("{own,is_a}")`. Supports `|` (union), `&` (intersection),
+    `<=` (subset), `in`, `len()` and iteration over its partitions.
     """
     ASSERTED: TypeRegime
     r"""
@@ -5347,18 +5354,18 @@ class TypeRegime:
     r"""
     As IS_A, with mixins counted as superclasses.
     """
-    def __eq__(self, other:builtins.object) -> builtins.bool: ...
-    def __hash__(self) -> builtins.int: ...
-    def __new__(cls, partitions:typing.Iterable[TypePartition]) -> TypeRegime:
+    def __new__(cls, partitions:TypePartition | typing.Iterable[TypePartition]) -> TypeRegime:
         r"""
-        The regime made of exactly the given partitions.
+        The regime made of exactly the given partition, or of the partitions
+        of the given iterable.
         """
     @staticmethod
     def parse(s:builtins.str) -> TypeRegime:
         r"""
-        Parse `str(regime)` output: a named regime, `none`, or partition names
-        (`own`, `isa`, `mixin`, `direct`) joined by `+`. Raises `ValueError`
-        on anything else.
+        Parse `str(regime)` output: `asserted`, `is_a`, `is_a_and_mixins`, or a
+        braced comma-separated partition list such as `{own,is_a}` (any order,
+        repeats and whitespace allowed; `{}` is the empty set). Raises
+        `ValueError` on anything else.
         """
     def partitions(self) -> builtins.list[TypePartition]:
         r"""
@@ -5366,10 +5373,38 @@ class TypeRegime:
         """
     def __str__(self) -> builtins.str: ...
     def __repr__(self) -> builtins.str: ...
-    def __or__(self, other:TypeRegime) -> TypeRegime:
+    def __or__(self, other:TypeRegime | TypePartition) -> TypeRegime:
         r"""
-        The union of two regimes.
+        The union with a regime or a single partition.
         """
+    def __ror__(self, other:TypeRegime | TypePartition) -> TypeRegime:
+        r"""
+        The union with a regime or a single partition (reflected).
+        """
+    def __and__(self, other:TypeRegime | TypePartition) -> TypeRegime:
+        r"""
+        The partitions common to this regime and a regime or a single
+        partition.
+        """
+    def __rand__(self, other:TypeRegime | TypePartition) -> TypeRegime:
+        r"""
+        The partitions common to this regime and a regime or a single
+        partition (reflected).
+        """
+    def __le__(self, other:TypeRegime) -> builtins.bool:
+        r"""
+        Whether every partition of this regime is in `other`.
+        """
+    def __len__(self) -> builtins.int:
+        r"""
+        The number of partitions in the set.
+        """
+    def __iter__(self) -> typing.Iterator[TypePartition]:
+        r"""
+        Iterate the partitions in declaration order.
+        """
+    def __eq__(self, other:typing.Any) -> builtins.bool: ...
+    def __hash__(self) -> builtins.int: ...
     def __contains__(self, partition:TypePartition) -> builtins.bool:
         r"""
         Whether the partition is in the set.
