@@ -27,9 +27,8 @@ use linkml_schemaview::slotview::{SlotView, TermDescriptor, TermKind};
 use serde_json::Value as JsonValue;
 use std::io::{Result as IoResult, Write};
 
-use oxrdf::{
-    BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, QuadRef, Term, Triple,
-};
+use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, QuadRef, Term, Triple};
+use oxttl::turtle::WriterTurtleSerializer;
 use oxttl::{NQuadsSerializer, NTriplesSerializer, TriGSerializer, TurtleSerializer};
 
 use crate::schema_rdf::{TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE};
@@ -379,21 +378,21 @@ trait TripleSink {
     fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()>;
 }
 
-/// Flat output: the partitions the options route, collected as triples. The
+/// Flat output: the partitions the options route, as Turtle triples. The
 /// options are validated to target the default graph only.
-struct FlatSink<'a> {
+struct FlatSink<'a, W: Write> {
+    ser: WriterTurtleSerializer<W>,
     graphs: &'a BTreeMap<TypePartition, GraphName>,
-    triples: Vec<Triple>,
 }
 
-impl TripleSink for FlatSink<'_> {
+impl<W: Write> TripleSink for FlatSink<'_, W> {
     fn wants(&self, partition: TypePartition) -> bool {
         self.graphs.contains_key(&partition)
     }
 
     fn emit(&mut self, partition: TypePartition, triple: &Triple) -> IoResult<()> {
         if self.wants(partition) {
-            self.triples.push(triple.clone());
+            self.ser.serialize_triple(triple.as_ref())?;
         }
         Ok(())
     }
@@ -912,9 +911,6 @@ pub fn write_turtle<W: Write>(
 
 /// [`write_turtle`] with the blank node counter supplied by the caller, so
 /// several instances written into one stream do not reuse labels.
-///
-/// The instance's triples are collected first, so the `@prefix` header can
-/// name exactly the prefixes its IRIs use; the serializer then compacts them.
 pub(crate) fn write_turtle_counted<W: Write>(
     value: &LinkMLInstance,
     sv: &SchemaView,
@@ -926,110 +922,162 @@ pub(crate) fn write_turtle_counted<W: Write>(
 ) -> IoResult<()> {
     options.validate("Turtle", true)?;
     let mut sink = FlatSink {
+        ser: TurtleSerializer::new().for_writer(Vec::new()),
         graphs: &options.partition_graphs,
-        triples: Vec::new(),
     };
     walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
-    let mut prefixes = Prefixes::default();
-    for triple in &sink.triples {
-        prefixes.note_triple(triple, conv);
-    }
-    let mut ser = prefixes
-        .apply(TurtleSerializer::new(), |ser, name, iri| {
-            ser.with_prefix(name, iri)
-        })?
-        .for_writer(&mut *w);
-    for triple in &sink.triples {
-        ser.serialize_triple(triple.as_ref())?;
-    }
-    ser.finish()?;
-    Ok(())
+    let out_buf = sink.ser.finish()?;
+    let out = String::from_utf8(out_buf)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    w.write_all(with_prefix_header(&out, conv).as_bytes())
 }
 
-/// The `@prefix` declarations one serialized document needs: the converter's
-/// prefix for every IRI the document writes (so none is declared unused), and
-/// `xsd` always.
-#[derive(Default)]
-struct Prefixes(BTreeMap<String, String>);
-
-impl Prefixes {
-    /// Record the prefix `conv` would compact `iri` with, if the result is a
-    /// valid Turtle prefixed name. `rdf:type` is skipped: it is written as `a`.
-    fn note_iri(&mut self, iri: &str, conv: &Converter) {
-        if iri == RDF_TYPE {
-            return;
-        }
-        let Ok(curie) = conv.compress(iri) else {
-            return;
-        };
-        if !is_valid_turtle_local_name(&curie) {
-            return;
-        }
-        let Some((prefix, local)) = curie.split_once(':') else {
-            return;
-        };
-        let Some(uri_prefix) = iri.strip_suffix(local) else {
-            return;
-        };
-        self.0
-            .entry(prefix.to_string())
-            .or_insert_with(|| uri_prefix.to_string());
+/// Compact IRIs in serialized `out` (Turtle or TriG, written without
+/// prefixes) to prefixed names and put the `@prefix` header for exactly the
+/// prefixes used in front of it.
+///
+/// An IRI is compacted only when its local name is a plain Turtle `PN_LOCAL`
+/// that needs no escape, so output stays readable by any parser (the
+/// serializer's own `with_prefix` would write `ex:Status\#unknown`). String
+/// literals are copied through untouched, whatever they contain.
+fn with_prefix_header(out: &str, conv: &Converter) -> String {
+    let (body, used_prefixes) = compact_iris(out, conv);
+    let mut header = String::new();
+    for (pfx, uri) in &used_prefixes {
+        header.push_str(&format!("@prefix {}: <{}> .\n", pfx, uri));
     }
+    if !used_prefixes.contains_key("xsd") {
+        header.push_str("@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n");
+    }
+    header.push('\n');
+    header.push_str(&body);
+    header
+}
 
-    fn note_term(&mut self, term: &Term, conv: &Converter) {
-        match term {
-            Term::NamedNode(n) => self.note_iri(n.as_str(), conv),
-            // `xsd:string` and language-tagged strings are written bare.
-            Term::Literal(l) if l.language().is_none() && l.datatype().as_str() != XSD_STRING => {
-                self.note_iri(l.datatype().as_str(), conv)
+/// Replace `<IRI>` tokens outside string literals with prefixed names where
+/// [`plain_curie`] allows, returning the text and the prefix to namespace map
+/// of every prefix used.
+///
+/// The scanner steps over string literals (`"…"`, `'…'` and their long forms,
+/// a backslash escaping the next character) and treats every `<` outside one
+/// as the start of an IRI, which is what the serializer writes. All delimiters
+/// are ASCII, so every slice below falls on a character boundary.
+fn compact_iris(out: &str, conv: &Converter) -> (String, BTreeMap<String, String>) {
+    let bytes = out.as_bytes();
+    let mut result = String::with_capacity(out.len());
+    let mut used: BTreeMap<String, String> = BTreeMap::new();
+    let mut last = 0; // start of text not yet copied
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            quote @ (b'"' | b'\'') => {
+                let long = bytes.get(i + 1) == Some(&quote) && bytes.get(i + 2) == Some(&quote);
+                i = skip_literal(bytes, i, quote, long);
             }
-            _ => {}
+            b'<' => {
+                let Some(len) = bytes[i + 1..].iter().position(|&b| b == b'>') else {
+                    break;
+                };
+                let end = i + 1 + len; // index of `>`
+                let iri = &out[i + 1..end];
+                if let Some((prefix, local)) = plain_curie(iri, conv) {
+                    result.push_str(&out[last..i]);
+                    result.push_str(&prefix);
+                    result.push(':');
+                    result.push_str(local);
+                    used.entry(prefix)
+                        .or_insert_with(|| iri[..iri.len() - local.len()].to_string());
+                    last = end + 1;
+                }
+                i = end + 1;
+            }
+            _ => i += 1,
         }
     }
+    result.push_str(&out[last..]);
+    (result, used)
+}
 
-    fn note_triple(&mut self, triple: &Triple, conv: &Converter) {
-        if let NamedOrBlankNode::NamedNode(n) = &triple.subject {
-            self.note_iri(n.as_str(), conv);
+/// Index just past the string literal starting at `start` (whose quote
+/// character is `quote`); the rest of the text when it is unterminated.
+fn skip_literal(bytes: &[u8], start: usize, quote: u8, long: bool) -> usize {
+    let mut i = start + if long { 3 } else { 1 };
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b if b == quote && !long => return i + 1,
+            b if b == quote
+                && bytes.get(i + 1) == Some(&quote)
+                && bytes.get(i + 2) == Some(&quote) =>
+            {
+                return i + 3
+            }
+            _ => i += 1,
         }
-        self.note_iri(triple.predicate.as_str(), conv);
-        self.note_term(&triple.object, conv);
     }
+    bytes.len()
+}
 
-    fn note_quad(&mut self, quad: &Quad, conv: &Converter) {
-        if let NamedOrBlankNode::NamedNode(n) = &quad.subject {
-            self.note_iri(n.as_str(), conv);
-        }
-        self.note_iri(quad.predicate.as_str(), conv);
-        self.note_term(&quad.object, conv);
-        if let GraphName::NamedNode(n) = &quad.graph_name {
-            self.note_iri(n.as_str(), conv);
-        }
-    }
+/// The prefix and local name `conv` compacts `iri` to, when the local name is
+/// a plain `PN_LOCAL` (no escape, no percent sequence) and the prefix a valid
+/// `PN_PREFIX`.
+fn plain_curie<'a>(iri: &'a str, conv: &Converter) -> Option<(String, &'a str)> {
+    let curie = conv.compress(iri).ok()?;
+    let (prefix, local) = curie.split_once(':')?;
+    // `local` is the tail of `iri`; it must be, for the namespace to be
+    // recoverable as `iri` minus `local`.
+    let local = iri.strip_suffix(local).map(|ns| &iri[ns.len()..])?;
+    (is_plain_pn_local(local) && is_pn_prefix(prefix)).then(|| (prefix.to_string(), local))
+}
 
-    /// Declare every collected prefix (and `xsd`) on a serializer through its
-    /// `with_prefix`.
-    fn apply<S>(
-        mut self,
-        mut ser: S,
-        with_prefix: impl Fn(S, &str, &str) -> Result<S, oxrdf::IriParseError>,
-    ) -> IoResult<S> {
-        self.0
-            .entry("xsd".to_string())
-            .or_insert_with(|| XSD_NS.to_string());
-        for (name, iri) in &self.0 {
-            ser = with_prefix(ser, name, iri).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("prefix {name}: <{iri}> is not a valid IRI: {e}"),
-                )
-            })?;
+fn is_pn_chars_base(c: char) -> bool {
+    matches!(c,
+        'A'..='Z' | 'a'..='z' | '\u{00C0}'..='\u{00D6}' | '\u{00D8}'..='\u{00F6}'
+        | '\u{00F8}'..='\u{02FF}' | '\u{0370}'..='\u{037D}' | '\u{037F}'..='\u{1FFF}'
+        | '\u{200C}'..='\u{200D}' | '\u{2070}'..='\u{218F}' | '\u{2C00}'..='\u{2FEF}'
+        | '\u{3001}'..='\u{D7FF}' | '\u{F900}'..='\u{FDCF}' | '\u{FDF0}'..='\u{FFFD}'
+        | '\u{10000}'..='\u{EFFFF}')
+}
+
+fn is_pn_chars_u(c: char) -> bool {
+    is_pn_chars_base(c) || c == '_'
+}
+
+fn is_pn_chars(c: char) -> bool {
+    is_pn_chars_u(c)
+        || matches!(c, '-' | '0'..='9' | '\u{00B7}' | '\u{0300}'..='\u{036F}' | '\u{203F}'..='\u{2040}')
+}
+
+/// Turtle `PN_PREFIX`: `PN_CHARS_BASE ((PN_CHARS | '.')* PN_CHARS)?`.
+fn is_pn_prefix(prefix: &str) -> bool {
+    let mut chars = prefix.chars();
+    match chars.next() {
+        None => true,
+        Some(first) => {
+            is_pn_chars_base(first)
+                && prefix.chars().all(|c| is_pn_chars(c) || c == '.')
+                && !prefix.ends_with('.')
         }
-        Ok(ser)
     }
 }
 
-const XSD_NS: &str = "http://www.w3.org/2001/XMLSchema#";
-const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
+/// Turtle `PN_LOCAL` restricted to its escape-free alternatives:
+/// `(PN_CHARS_U | ':' | [0-9]) ((PN_CHARS | '.' | ':')* (PN_CHARS | ':'))?`.
+/// The empty local name is allowed (`ex:`); `PLX` (percent sequences and
+/// backslash escapes) is not.
+fn is_plain_pn_local(local: &str) -> bool {
+    let mut chars = local.chars();
+    match chars.next() {
+        None => true,
+        Some(first) => {
+            (is_pn_chars_u(first) || first == ':' || first.is_ascii_digit())
+                && local
+                    .chars()
+                    .all(|c| is_pn_chars(c) || c == '.' || c == ':')
+                && !local.ends_with('.')
+        }
+    }
+}
 
 /// [`write_turtle`] into a `String`.
 pub fn turtle_to_string(
@@ -1078,15 +1126,6 @@ pub(crate) fn write_ntriples_counted<W: Write>(
     walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
     sink.ser.finish();
     Ok(())
-}
-
-/// Check if the local name part of a CURIE is valid for Turtle syntax.
-/// Characters like `#` and `/` are not allowed in Turtle local names.
-fn is_valid_turtle_local_name(curie: &str) -> bool {
-    let Some((_prefix, local)) = curie.split_once(':') else {
-        return false;
-    };
-    !local.contains('#') && !local.contains('/')
 }
 
 /// Write `value` as N-Quads, each partition into the graph `options` routes
@@ -1154,29 +1193,15 @@ pub(crate) fn write_trig_counted<W: Write>(
     counter: &mut usize,
 ) -> IoResult<()> {
     options.validate("TriG", false)?;
-    let mut quads: Vec<Quad> = Vec::new();
+    let mut ser = TriGSerializer::new().for_writer(Vec::new());
     let mut sink = QuadSink {
         graphs: &options.partition_graphs,
-        write: |quad: QuadRef<'_>| {
-            quads.push(quad.into_owned());
-            Ok(())
-        },
+        write: |quad: QuadRef<'_>| ser.serialize_quad(quad),
     };
     walk(value, sv, schema, conv, &mut sink, options.skolem, counter)?;
-    let mut prefixes = Prefixes::default();
-    for quad in &quads {
-        prefixes.note_quad(quad, conv);
-    }
-    let mut ser = prefixes
-        .apply(TriGSerializer::new(), |ser, name, iri| {
-            ser.with_prefix(name, iri)
-        })?
-        .for_writer(&mut *w);
-    for quad in &quads {
-        ser.serialize_quad(quad.as_ref())?;
-    }
-    ser.finish()?;
-    Ok(())
+    let out = String::from_utf8(ser.finish()?)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    w.write_all(with_prefix_header(&out, conv).as_bytes())
 }
 
 #[cfg(test)]
@@ -1192,56 +1217,121 @@ mod tests {
         conv
     }
 
-    fn used(iris: &[&str], conv: &Converter) -> BTreeMap<String, String> {
-        let mut p = Prefixes::default();
-        for iri in iris {
-            p.note_iri(iri, conv);
-        }
-        p.0
-    }
-
     #[test]
-    fn prefixes_skip_a_local_name_starting_with_hash() {
-        // RSM prefix maps to a URI without trailing # or /, so the IRI would
-        // compress to RSM:#EAID_xxx, which is not a Turtle prefixed name.
+    fn compact_keeps_iri_when_local_name_starts_with_hash() {
+        // RSM maps to a URI without trailing # or /, so the IRI would compress
+        // to RSM:#EAID_xxx, which is not a Turtle prefixed name.
         let conv = make_converter(&[("RSM", "http://rsm.uic.org/RSM12")]);
-        assert!(used(&["http://rsm.uic.org/RSM12#EAID_55DDBCD9"], &conv).is_empty());
+        let input = "<http://rsm.uic.org/RSM12#EAID_55DDBCD9> a RSM:Thing .";
+        let (result, used) = compact_iris(input, &conv);
+        assert_eq!(result, input);
+        assert!(!used.contains_key("RSM"));
     }
 
     #[test]
-    fn prefixes_skip_a_local_name_containing_slash() {
+    fn compact_keeps_iri_when_local_name_contains_slash() {
         let conv = make_converter(&[("asset360", "https://data.example.com/asset360/")]);
-        assert!(used(&["https://data.example.com/asset360/unit/Meter"], &conv).is_empty());
+        let input = "<https://data.example.com/asset360/unit/Meter> a asset360:Thing .";
+        let (result, used) = compact_iris(input, &conv);
+        assert_eq!(result, input);
+        assert!(!used.contains_key("asset360"));
     }
 
     #[test]
-    fn prefixes_record_valid_curies_and_ignore_rdf_type() {
+    fn compact_keeps_iri_when_local_name_needs_an_escape() {
         let conv = make_converter(&[("ex", "http://example.com/")]);
-        let got = used(
-            &[
-                "http://example.com/Thing",
-                "http://example.com/Class",
-                RDF_TYPE,
-            ],
+        for iri in [
+            "http://example.com/StatusEnum#unknown",
+            "http://example.com/a%20b",
+            "http://example.com/end.",
+            "http://example.com/a(b)",
+        ] {
+            let input = format!("<{iri}> a <http://example.com/Class> .");
+            let (result, used) = compact_iris(&input, &conv);
+            assert_eq!(result, format!("<{iri}> a ex:Class ."));
+            assert_eq!(used["ex"], "http://example.com/");
+        }
+    }
+
+    #[test]
+    fn compact_compresses_plain_local_names() {
+        let conv = make_converter(&[("ex", "http://example.com/")]);
+        let input = "<http://example.com/Thing> a <http://example.com/Class_1.x-y> .";
+        let (result, used) = compact_iris(input, &conv);
+        assert_eq!(result, "ex:Thing a ex:Class_1.x-y .");
+        assert_eq!(used["ex"], "http://example.com/");
+    }
+
+    #[test]
+    fn compact_never_touches_literals() {
+        let conv = make_converter(&[("ex", "http://example.com/")]);
+        let iri = "<http://example.com/x>";
+        for lit in [
+            format!(r#""see {iri}""#),
+            format!("'see {iri}'"),
+            format!(r#""say \"hi\" {iri}""#),
+            format!(r#""""a "quoted" {iri} and "" more""""#),
+            format!("'''it's {iri}'''"),
+            format!(r#""é <http://example.com/é> {iri}""#),
+        ] {
+            let input = format!("{iri} <http://example.com/p> {lit} .");
+            let (result, _) = compact_iris(&input, &conv);
+            assert_eq!(result, format!("ex:x ex:p {lit} ."), "input: {input}");
+        }
+    }
+
+    #[test]
+    fn compact_is_safe_on_unterminated_input() {
+        let conv = make_converter(&[("ex", "http://example.com/")]);
+        for input in [
+            "\"abc",
+            "\"\"\"abc\"\"",
+            "<http://example.com/x",
+            "\"é\\",
+            "é<é>é",
+        ] {
+            let _ = compact_iris(input, &conv);
+        }
+    }
+
+    #[test]
+    fn header_matches_the_golden_the_regex_writer_produced() {
+        // `iri_compaction_golden.ttl` is what the pre-serializer-prefix writer
+        // (regex compaction) made of this input, which has no IRI-lookalike
+        // inside a literal: the output must stay byte-identical.
+        let conv = make_converter(&[
+            ("ex", "http://example.com/"),
+            ("vocab", "https://example.com/vocab#"),
+            ("xsd", "http://www.w3.org/2001/XMLSchema#"),
+        ]);
+        let input = include_str!("../tests/data/iri_compaction_input.ttl");
+        let golden = include_str!("../tests/data/iri_compaction_golden.ttl");
+        assert_eq!(with_prefix_header(input, &conv), golden);
+    }
+
+    #[test]
+    fn hash_local_names_stay_full_iris_and_plain_ones_compact() {
+        let conv = make_converter(&[("ex", "http://example.com/")]);
+        let out = with_prefix_header(
+            "<http://example.com/a> <http://example.com/p> <http://example.com/StatusEnum#unknown> .",
             &conv,
         );
-        assert_eq!(got.len(), 1);
-        assert_eq!(got["ex"], "http://example.com/");
+        assert!(
+            out.ends_with("ex:a ex:p <http://example.com/StatusEnum#unknown> ."),
+            "{out}"
+        );
+        assert!(!out.contains('\\'));
     }
 
     #[test]
-    fn is_valid_turtle_local_name_rejects_hash() {
-        assert!(!is_valid_turtle_local_name("RSM:#EAID_xxx"));
-    }
-
-    #[test]
-    fn is_valid_turtle_local_name_rejects_slash() {
-        assert!(!is_valid_turtle_local_name("asset360:unit/Meter"));
-    }
-
-    #[test]
-    fn is_valid_turtle_local_name_accepts_valid() {
-        assert!(is_valid_turtle_local_name("ex:Thing"));
-        assert!(is_valid_turtle_local_name("schema:Person"));
+    fn pn_local_accepts_plain_and_rejects_escaped() {
+        assert!(is_plain_pn_local("Thing"));
+        assert!(is_plain_pn_local("1abc"));
+        assert!(is_plain_pn_local(""));
+        assert!(!is_plain_pn_local("a#b"));
+        assert!(!is_plain_pn_local("a/b"));
+        assert!(!is_plain_pn_local("a%41"));
+        assert!(!is_plain_pn_local("-a"));
+        assert!(!is_plain_pn_local("a."));
     }
 }

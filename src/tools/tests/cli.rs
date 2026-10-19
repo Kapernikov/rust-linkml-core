@@ -24,16 +24,11 @@ fn skolem_flag_creates_named_nodes() {
 
     let ttl = std::fs::read_to_string(&out_path).unwrap();
     // The keyless child of the `obj` slot is named after the slot it hangs off.
-    // The slash cannot appear bare in a Turtle prefixed name, so the serializer
-    // must escape it (`poly:root\/obj`) or keep the full IRI; never `poly:root/obj`.
+    // Skolem IRIs with slashes in the local name are kept as full IRIs because
+    // "poly:root/obj" is invalid Turtle (slash in local name).
     assert!(
-        ttl.contains("poly:root\\/obj") || ttl.contains("<https://example.com/poly/root/obj>"),
-        "Expected an escaped prefixed name or a full IRI for the skolem node. Got:\n{}",
-        ttl
-    );
-    assert!(
-        !ttl.contains("poly:root/obj"),
-        "A bare slash in a local name is invalid Turtle. Got:\n{}",
+        ttl.contains("<https://example.com/poly/root/obj>"),
+        "Expected full IRI for skolem node with slash in local name. Got:\n{}",
         ttl
     );
 }

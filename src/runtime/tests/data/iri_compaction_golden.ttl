@@ -1,0 +1,16 @@
+@prefix ex: <http://example.com/> .
+@prefix vocab: <https://example.com/vocab#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:thing1 a ex:Thing ;
+	ex:count "3"^^xsd:integer ;
+	ex:ratio "1.5"^^xsd:float ;
+	ex:label "plain text"@en ;
+	ex:status <http://example.com/StatusEnum#unknown> ;
+	ex:vocab vocab:Active ;
+	ex:child <http://example.com/thing1/child/0> ;
+	ex:note "tab\there, \"quoted\" and a < b > c" .
+<http://example.com/thing1/child/0> a ex:Thing ;
+	ex:name "é ü" ;
+	ex:other <http://other.example.org/Elsewhere> .
+_:b0 ex:p ex:Thing .

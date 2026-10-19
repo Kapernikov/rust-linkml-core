@@ -4,3 +4,5 @@ id: tr:registry1
 signals:
 - id: tr:s1
   name: "see <https://example.com/type-regimes/x> and <https://example.com/type-regimes/s1>"
+- id: tr:s2
+  name: 'say "hi" then <https://example.com/type-regimes/s2> and "<https://example.com/type-regimes/x>"'

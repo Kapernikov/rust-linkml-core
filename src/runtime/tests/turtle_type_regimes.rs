@@ -813,6 +813,9 @@ fn type_partitions_does_not_list_direct() {
 #[test]
 fn iri_lookalikes_inside_literals_survive_turtle_and_trig() {
     let text = "see <https://example.com/type-regimes/x> and <https://example.com/type-regimes/s1>";
+    // Quotes escaped inside the literal, an IRI after them.
+    let quoted = r#"say "hi" then <https://example.com/type-regimes/s2> and "<https://example.com/type-regimes/x>""#;
+    let quoted_escaped = quoted.replace('"', "\\\"");
     let f = load(
         "type_regimes_schema.yaml",
         "type_regimes_literal_iri_data.yaml",
@@ -837,11 +840,17 @@ fn iri_lookalikes_inside_literals_survive_turtle_and_trig() {
     )
     .unwrap();
     assert!(ttl.contains(&format!("\"{text}\"")), "turtle:\n{ttl}");
+    assert!(ttl.contains(&quoted_escaped), "turtle:\n{ttl}");
     let parsed = TurtleParser::new()
         .for_reader(ttl.as_bytes())
         .map(|t| t.unwrap().in_graph(GraphName::DefaultGraph))
         .collect();
     assert!(literals(parsed).iter().any(|v| v == text));
+    let parsed = TurtleParser::new()
+        .for_reader(ttl.as_bytes())
+        .map(|t| t.unwrap().in_graph(GraphName::DefaultGraph))
+        .collect();
+    assert!(literals(parsed).iter().any(|v| v == quoted));
 
     let mut buf = Vec::new();
     write_trig(
@@ -863,6 +872,7 @@ fn iri_lookalikes_inside_literals_survive_turtle_and_trig() {
         .map(|q| q.unwrap())
         .collect();
     assert!(literals(parsed).iter().any(|v| v == text));
+    assert!(trig_text.contains(&quoted_escaped), "trig:\n{trig_text}");
 }
 
 /// Two instances written one `write` at a time through one `RdfStreamWriter`
