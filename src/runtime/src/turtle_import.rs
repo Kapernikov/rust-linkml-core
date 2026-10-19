@@ -328,7 +328,12 @@ pub(crate) fn resolve_class<T: TripleSource>(
         let covers_all = candidates
             .iter()
             .all(|(_, other)| implied.contains(&other.canonical_uri().to_string()));
-        if covers_all {
+        // Two type IRIs may name the same class; count it once.
+        if covers_all
+            && !winners
+                .iter()
+                .any(|w| w.canonical_uri().to_string() == cand.canonical_uri().to_string())
+        {
             winners.push(cand);
         }
     }
