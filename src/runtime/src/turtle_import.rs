@@ -39,6 +39,20 @@ pub enum ImportError {
     UnknownClass(String),
     /// A required rdf:type triple is missing for a subject
     MissingType(String),
+    /// A subject has no `sesame:directType` and its schema `rdf:type`s do not
+    /// have a unique most specific class (one that descends from all the
+    /// others), or it has several `sesame:directType`s.
+    AmbiguousType {
+        subject: String,
+        candidates: Vec<String>,
+    },
+    /// A subject's `rdf:type` is not among the types its `sesame:directType`
+    /// implies (`rdf_types(direct_type, IsAAndMixins)`).
+    TypeConflict {
+        subject: String,
+        direct_type: String,
+        type_iri: String,
+    },
     /// Schema lookup failed
     SchemaError(SchemaViewError),
     /// Literal value could not be converted
@@ -65,6 +79,28 @@ impl std::fmt::Display for ImportError {
             ImportError::MissingType(subject) => {
                 write!(f, "No rdf:type triple for subject <{subject}>")
             }
+            ImportError::AmbiguousType {
+                subject,
+                candidates,
+            } => write!(
+                f,
+                "Ambiguous type for subject <{subject}>: none of {} is more specific than all \
+                 the others; add a sesame:directType triple naming the intended class",
+                candidates
+                    .iter()
+                    .map(|c| format!("<{c}>"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            ImportError::TypeConflict {
+                subject,
+                direct_type,
+                type_iri,
+            } => write!(
+                f,
+                "Subject <{subject}> has rdf:type <{type_iri}>, which its sesame:directType \
+                 <{direct_type}> does not imply"
+            ),
             ImportError::SchemaError(e) => write!(f, "Schema error: {e}"),
             ImportError::LiteralConversion {
                 value,

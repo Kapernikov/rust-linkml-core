@@ -36,7 +36,14 @@ fn turtle_enum_meaning_emits_named_node() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        TurtleOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     // Single-valued enum with meaning should be a named node, not a string literal
     assert!(
@@ -85,7 +92,14 @@ fn turtle_enum_without_meaning_emits_the_minted_concept_iri() {
     .unwrap()
     .into_instance()
     .unwrap();
-    let ttl = turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        TurtleOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     assert!(
         ttl.contains("<https://example.com/enum-meaning-test/StatusEnum#unknown>"),

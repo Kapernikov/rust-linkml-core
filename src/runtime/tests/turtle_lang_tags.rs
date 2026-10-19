@@ -52,7 +52,14 @@ fn get_station_ttl() -> String {
     .unwrap()
     .into_instance()
     .unwrap();
-    turtle_to_string(&v, &sv, &schema, &conv, TurtleOptions { skolem: false }).unwrap()
+    turtle_to_string(
+        &v,
+        &sv,
+        &schema,
+        &conv,
+        TurtleOptions::default().with_skolem(false),
+    )
+    .unwrap()
 }
 
 // ─── Feature 1: in_language on slot ───

@@ -279,11 +279,11 @@
 //! [`slot_predicate_iri`] does the same for slot predicates. Having the
 //! decision made independently in two places is how it silently drifts.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 use linkml_schemaview::converter::Converter;
 use linkml_schemaview::identifier::{Identifier, PrefixCollision};
-use linkml_schemaview::schemaview::{ClassView, SchemaView, SlotView};
+use linkml_schemaview::schemaview::{ClassView, SchemaView, SchemaViewError, SlotView};
 use oxrdf::{BlankNode, Literal, NamedNode, NamedNodeRef, NamedOrBlankNode, Term, Triple};
 
 /// `rdf:type`.
@@ -387,12 +387,24 @@ pub enum SchemaRdfProfile {
 pub struct SchemaRdfOptions {
     /// The vocabulary to express the schema in.
     pub profile: SchemaRdfProfile,
+    /// Which subclass edges to publish (see [`subclass_edges`] and
+    /// [`direct_subclass_edges`]). The default, `Asserted`, is today's output.
+    pub regime: TypeRegime,
 }
 
 impl SchemaRdfOptions {
     /// Options for one profile.
     pub fn new(profile: SchemaRdfProfile) -> Self {
-        Self { profile }
+        Self {
+            profile,
+            regime: TypeRegime::Asserted,
+        }
+    }
+
+    /// The same options under another type regime.
+    pub fn with_regime(mut self, regime: TypeRegime) -> Self {
+        self.regime = regime;
+        self
     }
 }
 
@@ -464,6 +476,251 @@ pub fn slot_predicate_iri(slot: &SlotView, conv: &Converter) -> Result<String, S
 /// [`linkml_schemaview::enumview`], where it sits beside the enum so that this
 /// module, the instance writer and a SQL pushdown all name a value identically.
 pub use linkml_schemaview::enumview::permissible_value_iri;
+
+/// `sesame:directType`: an instance's most specific type (RDF4J / GraphDB
+/// vocabulary). Written only in the inferred [`TypeRegime`]s.
+pub const SESAME_DIRECT_TYPE: &str = "http://www.openrdf.org/schema/sesame#directType";
+/// `sesame:directSubClassOf`: a class's immediate superclass (RDF4J / GraphDB
+/// vocabulary). Written only in the inferred [`TypeRegime`]s.
+pub const SESAME_DIRECT_SUBCLASS_OF: &str = "http://www.openrdf.org/schema/sesame#directSubClassOf";
+
+/// Which type triples are written for an instance, and which subclass edges
+/// for the schema.
+///
+/// A regime is a fixed union of [`TypePartition`]s ([`partitions`](Self::partitions)).
+/// Adding a regime means one arm here plus its partition list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub enum TypeRegime {
+    /// Only the instance's own class: today's output. Schema: direct `is_a`
+    /// edges only.
+    #[default]
+    Asserted,
+    /// The own class, every transitive `is_a` ancestor, and
+    /// `sesame:directType`. Schema: transitively closed `rdfs:subClassOf`
+    /// plus `sesame:directSubClassOf`.
+    IsA,
+    /// As [`IsA`](Self::IsA), and mixins count as superclasses too.
+    IsAAndMixins,
+}
+
+impl TypeRegime {
+    /// Every regime, in declaration order.
+    pub const ALL: [TypeRegime; 3] = [
+        TypeRegime::Asserted,
+        TypeRegime::IsA,
+        TypeRegime::IsAAndMixins,
+    ];
+
+    /// The partitions whose union is this regime's output.
+    pub fn partitions(self) -> &'static [TypePartition] {
+        match self {
+            TypeRegime::Asserted => &[TypePartition::Own],
+            TypeRegime::IsA => &[
+                TypePartition::Own,
+                TypePartition::IsA,
+                TypePartition::Direct,
+            ],
+            TypeRegime::IsAAndMixins => &[
+                TypePartition::Own,
+                TypePartition::IsA,
+                TypePartition::Mixin,
+                TypePartition::Direct,
+            ],
+        }
+    }
+}
+
+/// A disjoint slice of an instance's type triples. Every triple the writer
+/// emits about types belongs to exactly one partition; everything else it
+/// emits belongs to [`Own`](Self::Own).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TypePartition {
+    /// The instance's own `rdf:type`, and all non-type triples.
+    Own,
+    /// `rdf:type` for each transitive `is_a` ancestor.
+    IsA,
+    /// `rdf:type` for each class reachable only through a mixin edge.
+    Mixin,
+    /// One `sesame:directType` naming the instance's own class.
+    Direct,
+}
+
+impl TypePartition {
+    /// Every partition, in declaration order.
+    pub const ALL: [TypePartition; 4] = [
+        TypePartition::Own,
+        TypePartition::IsA,
+        TypePartition::Mixin,
+        TypePartition::Direct,
+    ];
+}
+
+fn class_key(cv: &ClassView) -> String {
+    cv.canonical_uri().to_string()
+}
+
+/// Every type triple an instance of `cv` can carry, each tagged with its
+/// partition.
+///
+/// `Own` is `cv` itself; `IsA` the transitive `is_a` ancestors, nearest first;
+/// `Mixin` every class reachable only through at least one mixin edge (mixins
+/// of `cv` or of an ancestor, and their own `is_a` parents and mixins); and
+/// `Direct` is `cv` again, as the object of `sesame:directType`. A class is
+/// listed once among `Own`/`IsA`/`Mixin`, in the first of those that reaches
+/// it. Cycle-safe: a class that lists itself (or a descendant) as `is_a` or
+/// mixin terminates the walk instead of recursing.
+pub fn type_partitions(cv: &ClassView) -> Result<Vec<(TypePartition, ClassView)>, SchemaViewError> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = vec![(TypePartition::Own, cv.clone())];
+    seen.insert(class_key(cv));
+
+    // is_a chain
+    let mut chain = vec![cv.clone()];
+    let mut current = cv.clone();
+    while let Some(parent) = current.parent_class()? {
+        if !seen.insert(class_key(&parent)) {
+            break;
+        }
+        out.push((TypePartition::IsA, parent.clone()));
+        chain.push(parent.clone());
+        current = parent;
+    }
+
+    // Everything reachable through at least one mixin edge, breadth first.
+    let mut queue: std::collections::VecDeque<ClassView> = std::collections::VecDeque::new();
+    for c in &chain {
+        queue.extend(c.mixin_classes()?);
+    }
+    while let Some(next) = queue.pop_front() {
+        if !seen.insert(class_key(&next)) {
+            continue;
+        }
+        if let Some(parent) = next.parent_class()? {
+            queue.push_back(parent);
+        }
+        queue.extend(next.mixin_classes()?);
+        out.push((TypePartition::Mixin, next));
+    }
+
+    out.push((TypePartition::Direct, cv.clone()));
+    Ok(out)
+}
+
+/// The `rdf:type` objects of an instance of `cv` under `regime`: the `Own`,
+/// `IsA` and `Mixin` entries of [`type_partitions`] that the regime includes.
+/// `Direct` is not an `rdf:type` and is never listed. `cv` comes first.
+pub fn rdf_types(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>, SchemaViewError> {
+    let parts = regime.partitions();
+    Ok(type_partitions(cv)?
+        .into_iter()
+        .filter(|(p, _)| *p != TypePartition::Direct && parts.contains(p))
+        .map(|(_, c)| c)
+        .collect())
+}
+
+/// The inverse of [`rdf_types`]: every class whose instances have `cv` among
+/// their `rdf_types` under `regime`, `cv` itself first. Defined through
+/// [`rdf_types`], so the writer and a query planner answering `?s a C`
+/// cannot disagree.
+pub fn type_family(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>, SchemaViewError> {
+    let candidates = match regime {
+        TypeRegime::Asserted => Vec::new(),
+        TypeRegime::IsA => cv.get_descendants(true, false)?,
+        TypeRegime::IsAAndMixins => cv.get_descendants(true, true)?,
+    };
+    let key = class_key(cv);
+    let mut seen: HashSet<String> = HashSet::new();
+    seen.insert(key.clone());
+    let mut out = vec![cv.clone()];
+    for cand in candidates {
+        if !seen.insert(class_key(&cand)) {
+            continue;
+        }
+        if rdf_types(&cand, regime)?
+            .iter()
+            .any(|t| class_key(t) == key)
+        {
+            out.push(cand);
+        }
+    }
+    Ok(out)
+}
+
+/// The `(sub, super)` pairs published as `rdfs:subClassOf` under `regime`.
+///
+/// `Asserted`: each class's direct `is_a` parent (today's schema output).
+/// Inferred regimes: the transitive closure, i.e. `(c, t)` for every `t` in
+/// `rdf_types(c, regime)` other than `c`; mixin edges only in `IsAAndMixins`.
+/// Self-edges are never listed. Sorted by class name pair.
+pub fn subclass_edges(
+    sv: &SchemaView,
+    regime: TypeRegime,
+) -> Result<Vec<(ClassView, ClassView)>, SchemaViewError> {
+    let mut out = Vec::new();
+    for cv in sv.class_views()? {
+        match regime {
+            TypeRegime::Asserted => {
+                if let Some(parent) = cv.parent_class()? {
+                    if class_key(&parent) != class_key(&cv) {
+                        out.push((cv.clone(), parent));
+                    }
+                }
+            }
+            _ => {
+                let key = class_key(&cv);
+                for t in rdf_types(&cv, regime)? {
+                    if class_key(&t) != key {
+                        out.push((cv.clone(), t));
+                    }
+                }
+            }
+        }
+    }
+    sort_edges(&mut out);
+    Ok(out)
+}
+
+/// The `(sub, super)` pairs published as `sesame:directSubClassOf` under
+/// `regime`, by RDF4J's definition over [`subclass_edges`]: `super` is a
+/// superclass of `sub` and no third class lies strictly between them.
+/// Empty for `Asserted`. Sorted by class name pair.
+pub fn direct_subclass_edges(
+    sv: &SchemaView,
+    regime: TypeRegime,
+) -> Result<Vec<(ClassView, ClassView)>, SchemaViewError> {
+    if regime == TypeRegime::Asserted {
+        return Ok(Vec::new());
+    }
+    let closure = subclass_edges(sv, regime)?;
+    let pairs: HashSet<(String, String)> = closure
+        .iter()
+        .map(|(a, b)| (class_key(a), class_key(b)))
+        .collect();
+    let mut supers: std::collections::HashMap<String, Vec<String>> = Default::default();
+    for (a, b) in &pairs {
+        supers.entry(a.clone()).or_default().push(b.clone());
+    }
+    let mut out = Vec::new();
+    for (sub, sup) in closure {
+        let (sk, pk) = (class_key(&sub), class_key(&sup));
+        let between = supers
+            .get(&sk)
+            .into_iter()
+            .flatten()
+            .any(|mid| *mid != pk && *mid != sk && pairs.contains(&(mid.clone(), pk.clone())));
+        if !between {
+            out.push((sub, sup));
+        }
+    }
+    Ok(out)
+}
+
+fn sort_edges(edges: &mut Vec<(ClassView, ClassView)>) {
+    edges.sort_by(|a, b| {
+        (class_key(&a.0), class_key(&a.1)).cmp(&(class_key(&b.0), class_key(&b.1)))
+    });
+    edges.dedup_by(|a, b| class_key(&a.0) == class_key(&b.0) && class_key(&a.1) == class_key(&b.1));
+}
 
 /// Triplify one [`SchemaView`].
 ///

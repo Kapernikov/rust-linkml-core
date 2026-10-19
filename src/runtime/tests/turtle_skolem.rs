@@ -60,7 +60,7 @@ fn serialize_skolem() -> Vec<String> {
         &schema,
         &conv,
         &mut buf,
-        TurtleOptions { skolem: true },
+        TurtleOptions::default().with_skolem(true),
     )
     .unwrap();
     let nt = String::from_utf8(buf).unwrap();

@@ -4,6 +4,7 @@
 import builtins
 import datetime
 import typing
+from enum import Enum
 
 class AltDescription:
     @property
@@ -2833,7 +2834,12 @@ class LinkMLInstance:
     def unknown_fields(self) -> dict: ...
     def validation_issues(self) -> builtins.list[ValidationResult]: ...
     def as_python(self) -> typing.Any: ...
-    def as_turtle(self, skolem:typing.Optional[builtins.bool]) -> builtins.str: ...
+    def as_turtle(self, skolem:typing.Optional[builtins.bool]=None, regime:TypeRegime=TypeRegime.Asserted) -> builtins.str: ...
+    def as_nquads(self, partition_graphs:typing.Mapping[TypePartition, builtins.str], *, skolem:builtins.bool=False) -> builtins.str:
+        r"""
+        This instance as N-Quads, each type partition in `partition_graphs`
+        written into its named graph (partitions not in the map are omitted).
+        """
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
 
@@ -5464,6 +5470,50 @@ class ValidationResult:
     def __repr__(self) -> builtins.str: ...
     def __str__(self) -> builtins.str: ...
 
+class TypePartition(Enum):
+    r"""
+    A disjoint slice of an instance's type triples; see
+    `linkml_runtime::schema_rdf::TypePartition`.
+    """
+    Own = ...
+    r"""
+    The instance's own rdf:type and all non-type triples.
+    """
+    IsA = ...
+    r"""
+    rdf:type for each transitive is_a ancestor.
+    """
+    Mixin = ...
+    r"""
+    rdf:type for each class reachable only through a mixin edge.
+    """
+    Direct = ...
+    r"""
+    One sesame:directType naming the instance's own class.
+    """
+
+class TypeRegime(Enum):
+    r"""
+    Which type triples the RDF writers emit; see `linkml_runtime::schema_rdf::TypeRegime`.
+    """
+    Asserted = ...
+    r"""
+    Only the instance's own class (the pre-regime output).
+    """
+    IsA = ...
+    r"""
+    Own class, transitive is_a ancestors, and sesame:directType.
+    """
+    IsAAndMixins = ...
+    r"""
+    As IsA, with mixins counted as superclasses.
+    """
+
+    def partitions(self) -> builtins.list[TypePartition]:
+        r"""
+        The partitions whose union is this regime's output.
+        """
+
 def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:builtins.bool, treat_changed_identifier_as_new_object:builtins.bool=True) -> builtins.list[Delta]:
     r"""
     Compute deltas between two instances.
@@ -5492,12 +5542,24 @@ def diff(source:LinkMLInstance, target:LinkMLInstance, treat_missing_as_null:bui
     changes.
     """
 
-def export_ntriples(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False) -> None:
+def export_nquads(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, partition_graphs:typing.Mapping[TypePartition, builtins.str], *, skolem:builtins.bool=False) -> None:
+    r"""
+    Write LinkML instances as N-Quads into a Python file-like object, each type
+    partition in `partition_graphs` written into its named graph.
+    """
+
+def export_ntriples(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False, regime:TypeRegime=TypeRegime.Asserted) -> None:
     r"""
     Write LinkML instances as N-Triples into a Python file-like object.
     """
 
-def export_turtle(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False) -> None:
+def export_trig(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, partition_graphs:typing.Mapping[TypePartition, builtins.str], *, skolem:builtins.bool=False) -> None:
+    r"""
+    Write LinkML instances as TriG into a Python file-like object, each type
+    partition in `partition_graphs` written into its named graph.
+    """
+
+def export_turtle(instances:typing.Any, schema_view:SchemaView, writer:typing.Any, *, skolem:builtins.bool=False, regime:TypeRegime=TypeRegime.Asserted) -> None:
     r"""
     Write LinkML instances as Turtle into a Python file-like object.
     

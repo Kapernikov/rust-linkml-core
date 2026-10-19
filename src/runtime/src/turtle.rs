@@ -12,10 +12,68 @@ use oxttl::turtle::WriterTurtleSerializer;
 use oxttl::{NTriplesSerializer, TurtleParser, TurtleSerializer};
 
 use crate::regex_support::Regex;
+use crate::schema_rdf::{TypePartition, TypeRegime};
 use crate::LinkMLInstance;
+use std::collections::BTreeMap;
 
+/// Options for the flat (triple) writers: [`write_turtle`], [`turtle_to_string`]
+/// and [`write_ntriples`].
+///
+/// Built with [`TurtleOptions::default`] and the `with_*` methods; the struct
+/// is `#[non_exhaustive]` so new options do not break callers.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct TurtleOptions {
+    /// Use skolem IRIs instead of blank nodes for objects without an identifier.
     pub skolem: bool,
+    /// Which type triples to write: the union of the regime's partitions.
+    /// The default, `Asserted`, writes exactly the pre-regime output.
+    pub regime: TypeRegime,
+}
+
+impl TurtleOptions {
+    /// The same options with skolem IRIs on or off.
+    pub fn with_skolem(mut self, skolem: bool) -> Self {
+        self.skolem = skolem;
+        self
+    }
+
+    /// The same options under another type regime.
+    pub fn with_regime(mut self, regime: TypeRegime) -> Self {
+        self.regime = regime;
+        self
+    }
+}
+
+/// Options for the quad writers: [`write_nquads`] and [`write_trig`].
+///
+/// Each [`TypePartition`] in `partition_graphs` is written into its named
+/// graph; partitions not in the map are not written. Several partitions may
+/// share one graph, which writes a regime's graph directly. The library holds
+/// no graph IRIs of its own: the caller supplies stable ones.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct QuadOptions {
+    /// Use skolem IRIs instead of blank nodes for objects without an identifier.
+    pub skolem: bool,
+    /// The named graph each written partition goes into.
+    pub partition_graphs: BTreeMap<TypePartition, NamedNode>,
+}
+
+impl QuadOptions {
+    /// Options writing each partition in `partition_graphs` into its graph.
+    pub fn new(partition_graphs: BTreeMap<TypePartition, NamedNode>) -> Self {
+        Self {
+            skolem: false,
+            partition_graphs,
+        }
+    }
+
+    /// The same options with skolem IRIs on or off.
+    pub fn with_skolem(mut self, skolem: bool) -> Self {
+        self.skolem = skolem;
+        self
+    }
 }
 
 enum Node {
@@ -792,6 +850,40 @@ fn is_valid_turtle_local_name(curie: &str) -> bool {
         return false;
     };
     !local.contains('#') && !local.contains('/')
+}
+
+/// Write RDF data as N-Quads, one named graph per type partition (see
+/// [`QuadOptions`]).
+pub fn write_nquads<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &QuadOptions,
+) -> IoResult<()> {
+    let _ = (value, sv, schema, conv, w, options);
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "write_nquads: not implemented yet (API skeleton)",
+    ))
+}
+
+/// Write RDF data as TriG, one named graph per type partition (see
+/// [`QuadOptions`]).
+pub fn write_trig<W: Write>(
+    value: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    w: &mut W,
+    options: &QuadOptions,
+) -> IoResult<()> {
+    let _ = (value, sv, schema, conv, w, options);
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "write_trig: not implemented yet (API skeleton)",
+    ))
 }
 
 #[cfg(test)]

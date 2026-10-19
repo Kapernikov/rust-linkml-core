@@ -246,9 +246,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &schema,
                     &conv,
                     &mut writer,
-                    ExportOptions {
-                        skolem: args.skolem,
-                    },
+                    ExportOptions::default().with_skolem(args.skolem),
                 )?;
                 count += 1;
             }
@@ -262,9 +260,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &schema,
                     &conv,
                     &mut writer,
-                    ExportOptions {
-                        skolem: args.skolem,
-                    },
+                    ExportOptions::default().with_skolem(args.skolem),
                 )?;
                 count += 1;
             }

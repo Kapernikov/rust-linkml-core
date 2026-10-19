@@ -617,7 +617,7 @@ fn json_and_rdf_loaders_agree_on_the_designator_spelling() {
         &sv,
         &schema,
         &conv,
-        TurtleOptions { skolem: false },
+        TurtleOptions::default().with_skolem(false),
     )
     .unwrap();
     let stream = import_turtle(

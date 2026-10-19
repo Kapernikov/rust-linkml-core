@@ -48,8 +48,14 @@ fn roundtrip(
     original: &linkml_runtime::LinkMLInstance,
     class_name: &str,
 ) -> serde_json::Value {
-    let ttl =
-        turtle_to_string(original, sv, schema, conv, TurtleOptions { skolem: false }).unwrap();
+    let ttl = turtle_to_string(
+        original,
+        sv,
+        schema,
+        conv,
+        TurtleOptions::default().with_skolem(false),
+    )
+    .unwrap();
 
     let stream = import_turtle(
         std::io::Cursor::new(ttl.as_bytes()),

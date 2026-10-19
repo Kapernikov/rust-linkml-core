@@ -60,7 +60,7 @@ fn turtle_prefix_conflict_produces_valid_output() {
         &sv,
         &derived_schema,
         &conv,
-        TurtleOptions { skolem: false },
+        TurtleOptions::default().with_skolem(false),
     )
     .unwrap();
 
@@ -149,7 +149,7 @@ fn turtle_all_imported_prefixes_are_declared() {
         &sv,
         &derived_schema,
         &conv,
-        TurtleOptions { skolem: false },
+        TurtleOptions::default().with_skolem(false),
     )
     .unwrap();
 

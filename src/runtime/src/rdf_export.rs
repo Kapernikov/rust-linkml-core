@@ -11,19 +11,45 @@ use linkml_meta::SchemaDefinition;
 use linkml_schemaview::schemaview::SchemaView;
 use linkml_schemaview::Converter;
 
-use crate::turtle::{write_ntriples, write_turtle, TurtleOptions};
+use crate::schema_rdf::TypeRegime;
+use crate::turtle::{
+    write_nquads, write_ntriples, write_trig, write_turtle, QuadOptions, TurtleOptions,
+};
 use crate::LinkMLInstance;
 
-/// Options for export.
+/// Options for the flat (triple) exports.
+///
+/// Built with [`ExportOptions::default`] and the `with_*` methods; the struct
+/// is `#[non_exhaustive]` so new options do not break callers.
 #[derive(Debug, Default, Clone)]
+#[non_exhaustive]
 pub struct ExportOptions {
     /// Use skolem IRIs instead of blank nodes.
     pub skolem: bool,
+    /// Which type triples to write. The default, `Asserted`, is the
+    /// pre-regime output.
+    pub regime: TypeRegime,
+}
+
+impl ExportOptions {
+    /// The same options with skolem IRIs on or off.
+    pub fn with_skolem(mut self, skolem: bool) -> Self {
+        self.skolem = skolem;
+        self
+    }
+
+    /// The same options under another type regime.
+    pub fn with_regime(mut self, regime: TypeRegime) -> Self {
+        self.regime = regime;
+        self
+    }
 }
 
 impl From<&ExportOptions> for TurtleOptions {
     fn from(o: &ExportOptions) -> Self {
-        TurtleOptions { skolem: o.skolem }
+        TurtleOptions::default()
+            .with_skolem(o.skolem)
+            .with_regime(o.regime)
     }
 }
 
@@ -87,6 +113,68 @@ where
 {
     for instance in instances {
         write_ntriples(&instance, sv, schema, conv, writer, (&options).into())?;
+    }
+    Ok(())
+}
+
+/// Write a single instance as N-Quads, one named graph per type partition.
+pub fn export_nquads<W: Write>(
+    instance: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    writer: &mut W,
+    options: &QuadOptions,
+) -> IoResult<()> {
+    write_nquads(instance, sv, schema, conv, writer, options)
+}
+
+/// Write a stream of instances as N-Quads.
+pub fn export_nquads_many<W, I>(
+    instances: I,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    writer: &mut W,
+    options: &QuadOptions,
+) -> IoResult<()>
+where
+    W: Write,
+    I: IntoIterator<Item = LinkMLInstance>,
+{
+    for instance in instances {
+        write_nquads(&instance, sv, schema, conv, writer, options)?;
+    }
+    Ok(())
+}
+
+/// Write a single instance as TriG, one named graph per type partition.
+pub fn export_trig<W: Write>(
+    instance: &LinkMLInstance,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    writer: &mut W,
+    options: &QuadOptions,
+) -> IoResult<()> {
+    write_trig(instance, sv, schema, conv, writer, options)
+}
+
+/// Write a stream of instances as TriG.
+pub fn export_trig_many<W, I>(
+    instances: I,
+    sv: &SchemaView,
+    schema: &SchemaDefinition,
+    conv: &Converter,
+    writer: &mut W,
+    options: &QuadOptions,
+) -> IoResult<()>
+where
+    W: Write,
+    I: IntoIterator<Item = LinkMLInstance>,
+{
+    for instance in instances {
+        write_trig(&instance, sv, schema, conv, writer, options)?;
     }
     Ok(())
 }
