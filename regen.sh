@@ -67,8 +67,11 @@ describe_commit() {
   if command -v gh >/dev/null 2>&1; then
     # Every PR whose head contains the commit, not just one: a stacked branch
     # puts the same commit in several, and any of them reproduces it.
-    prs=$(gh api "repos/$PR_REPO/commits/$sha/pulls" \
-      --jq '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null || true)
+    # On an unknown commit gh prints the error body on stdout; discard it.
+    if ! prs=$(gh api "repos/$PR_REPO/commits/$sha/pulls" \
+      --jq '[.[].number] | map("#" + tostring) | join(", ")' 2>/dev/null); then
+      prs=
+    fi
   fi
   if [[ -n $prs && $prs != "null" ]]; then
     echo "$sha $subject  ($PR_REPO$prs)"

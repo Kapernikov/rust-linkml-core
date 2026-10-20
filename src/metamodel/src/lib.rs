@@ -366,6 +366,14 @@ impl ::pyo3_stub_gen::PyStubType for PvFormulaOptions {
         )
     }
 }
+
+#[cfg(feature = "stubgen")]
+impl ::pyo3_stub_gen::runtime::PyRuntimeType for PvFormulaOptions {
+    fn runtime_type_object(py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::PyAny>> {
+        // Enums are exposed to Python as plain strings.
+        Ok(py.get_type::<pyo3::types::PyString>().into_any())
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PresenceEnum {
@@ -432,6 +440,14 @@ impl ::pyo3_stub_gen::PyStubType for PresenceEnum {
             "typing.Literal['UNCOMMITTED', 'PRESENT', 'ABSENT']",
             "typing".into(),
         )
+    }
+}
+
+#[cfg(feature = "stubgen")]
+impl ::pyo3_stub_gen::runtime::PyRuntimeType for PresenceEnum {
+    fn runtime_type_object(py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::PyAny>> {
+        // Enums are exposed to Python as plain strings.
+        Ok(py.get_type::<pyo3::types::PyString>().into_any())
     }
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -512,6 +528,14 @@ impl ::pyo3_stub_gen::PyStubType for RelationalRoleEnum {
         )
     }
 }
+
+#[cfg(feature = "stubgen")]
+impl ::pyo3_stub_gen::runtime::PyRuntimeType for RelationalRoleEnum {
+    fn runtime_type_object(py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::PyAny>> {
+        // Enums are exposed to Python as plain strings.
+        Ok(py.get_type::<pyo3::types::PyString>().into_any())
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AliasPredicateEnum {
@@ -583,6 +607,14 @@ impl ::pyo3_stub_gen::PyStubType for AliasPredicateEnum {
             "typing.Literal['EXACT_SYNONYM', 'RELATED_SYNONYM', 'BROAD_SYNONYM', 'NARROW_SYNONYM']",
             "typing".into(),
         )
+    }
+}
+
+#[cfg(feature = "stubgen")]
+impl ::pyo3_stub_gen::runtime::PyRuntimeType for AliasPredicateEnum {
+    fn runtime_type_object(py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::PyAny>> {
+        // Enums are exposed to Python as plain strings.
+        Ok(py.get_type::<pyo3::types::PyString>().into_any())
     }
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -661,6 +693,14 @@ impl ::pyo3_stub_gen::PyStubType for ObligationLevelEnum {
             "typing.Literal['REQUIRED', 'RECOMMENDED', 'OPTIONAL', 'EXAMPLE', 'DISCOURAGED']",
             "typing".into(),
         )
+    }
+}
+
+#[cfg(feature = "stubgen")]
+impl ::pyo3_stub_gen::runtime::PyRuntimeType for ObligationLevelEnum {
+    fn runtime_type_object(py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::PyAny>> {
+        // Enums are exposed to Python as plain strings.
+        Ok(py.get_type::<pyo3::types::PyString>().into_any())
     }
 }
 
