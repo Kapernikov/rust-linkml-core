@@ -21,7 +21,7 @@ use linkml_schemaview::schemaview::{
 };
 use linkml_schemaview::Converter;
 
-use crate::schema_rdf::{rdf_types, TypeRegime, SESAME_DIRECT_TYPE};
+use crate::schema_rdf::{rdf_types, TypeInference, SESAME_DIRECT_TYPE};
 use crate::triple_source::TripleSource;
 use crate::{new_node_id, LinkMLInstance, ValidationProblemType, ValidationResult};
 
@@ -410,7 +410,7 @@ impl NaturalKey {
 }
 
 fn implied_class_keys(cv: &ClassView) -> Result<HashSet<String>, ImportError> {
-    Ok(rdf_types(cv, TypeRegime::IS_A_AND_MIXINS)?
+    Ok(rdf_types(cv, TypeInference::IS_A_AND_MIXINS)?
         .iter()
         .map(|c| c.canonical_uri().to_string())
         .collect())

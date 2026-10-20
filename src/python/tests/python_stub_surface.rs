@@ -2,7 +2,7 @@
 //! importable from it.
 //!
 //! `pyo3-stub-gen` files a `#[gen_stub_pyclass]` under the extension module by
-//! default, so `python/linkml_runtime_rust/_native.pyi` declares
+//! default, so `python/linkml_runtime_rust/_native/__init__.pyi` declares
 //! `SchemaView`, `ClassView`, `Annotation`, `Extension`, every metamodel struct
 //! — and names them throughout its own signatures. Registering them anywhere
 //! else, or nowhere, makes the stub describe an API that does not exist:
@@ -18,7 +18,8 @@ use pyo3::types::PyModule;
 use std::path::PathBuf;
 
 fn stub_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("python/linkml_runtime_rust/_native.pyi")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("python/linkml_runtime_rust/_native/__init__.pyi")
 }
 
 /// The top-level `class <Name>:` declarations in the generated stub.
@@ -40,8 +41,8 @@ fn every_class_the_stub_declares_is_importable_from_the_module() {
         declared.len()
     );
 
-    pyo3::prepare_freethreaded_python();
-    let missing = Python::with_gil(|py| {
+    Python::initialize();
+    let missing = Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime_rust_native_under_test").unwrap();
         linkml_runtime_python::runtime_module(&module).unwrap();
         declared
@@ -53,7 +54,7 @@ fn every_class_the_stub_declares_is_importable_from_the_module() {
 
     assert!(
         missing.is_empty(),
-        "{} of {} classes declared in _native.pyi are not registered in the \
+        "{} of {} classes declared in _native/__init__.pyi are not registered in the \
          module, so `from linkml_runtime_rust._native import <name>` type-checks \
          and then raises ImportError. Register them in `runtime_module`:\n  {}",
         missing.len(),

@@ -4,7 +4,7 @@ use linkml_runtime::diff::{
     Delta, DeltaOp, DiffOptions, PatchTrace,
 };
 use linkml_runtime::rdf_export::{RdfOutputFormat, RdfStreamWriter};
-use linkml_runtime::schema_rdf::{TypePartition, TypeRegime};
+use linkml_runtime::schema_rdf::{TypeInference, TypePartition};
 use linkml_runtime::turtle::{turtle_to_string, WriteOptions};
 use linkml_runtime::{
     lint_element_identity, lint_instance_identity, load_json_str, load_yaml_str, validate_issues,
@@ -90,7 +90,7 @@ impl From<Arc<SchemaView>> for PySchemaView {
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "ClassView")]
+#[pyclass(name = "ClassView", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyClassView {
     inner: ClassView,
@@ -117,7 +117,7 @@ impl From<&ClassView> for PyClassView {
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "SlotView")]
+#[pyclass(name = "SlotView", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PySlotView {
     inner: SlotView,
@@ -144,7 +144,7 @@ impl From<&SlotView> for PySlotView {
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "EnumView")]
+#[pyclass(name = "EnumView", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyEnumView {
     inner: EnumView,
@@ -721,7 +721,7 @@ impl PyEnumView {
 /// Make every type the stubs attribute to this module importable from it.
 ///
 /// `pyo3-stub-gen` files a `#[gen_stub_pyclass]` under the extension module by
-/// default, so `_native.pyi` declares all of these — and the metamodel structs
+/// default, so `_native/__init__.pyi` declares all of these — and the metamodel structs
 /// are named 148 times over in its own signatures (`Annotation` alone). Until
 /// they are registered, `from linkml_runtime_rust._native import Annotation`
 /// type-checks and raises `ImportError`, and a consumer cannot annotate a
@@ -803,27 +803,27 @@ impl PyStubType for PyTypePartition {
 }
 
 /// Which type triples the RDF writers emit: a set of `TypePartition`s; see
-/// `linkml_runtime::schema_rdf::TypeRegime`. Use the named regimes
-/// `TypeRegime.ASSERTED`, `TypeRegime.IS_A`, `TypeRegime.IS_A_AND_MIXINS`,
+/// `linkml_runtime::schema_rdf::TypeInference`. Use the named inferences
+/// `TypeInference.ASSERTED`, `TypeInference.IS_A`, `TypeInference.IS_A_AND_MIXINS`,
 /// build one from a `TypePartition` or an iterable of them, or
-/// `TypeRegime.parse("{own,is_a}")`. Supports `|` (union), `&` (intersection),
+/// `TypeInference.parse("{own,is_a}")`. Supports `|` (union), `&` (intersection),
 /// `<=` (subset), `in`, `len()` and iteration over its partitions.
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "TypeRegime", frozen)]
+#[pyclass(name = "TypeInference", frozen, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PyTypeRegime(TypeRegime);
+pub struct PyTypeInference(TypeInference);
 
-impl From<PyTypeRegime> for TypeRegime {
-    fn from(r: PyTypeRegime) -> Self {
+impl From<PyTypeInference> for TypeInference {
+    fn from(r: PyTypeInference) -> Self {
         r.0
     }
 }
 
-/// Wrap a Rust regime for Python, so a binding built on this crate can return
+/// Wrap a Rust inference for Python, so a binding built on this crate can return
 /// one directly.
-impl From<TypeRegime> for PyTypeRegime {
-    fn from(r: TypeRegime) -> Self {
-        PyTypeRegime(r)
+impl From<TypeInference> for PyTypeInference {
+    fn from(r: TypeInference) -> Self {
+        PyTypeInference(r)
     }
 }
 
@@ -852,15 +852,16 @@ impl From<PyTypePartition> for TypePartition {
     }
 }
 
-/// A single `TypePartition` or any iterable of them, collected into a regime.
-struct PartitionSet(TypeRegime);
+/// A single `TypePartition` or any iterable of them, collected into an inference.
+struct PartitionSet(TypeInference);
 
-impl<'py> FromPyObject<'py> for PartitionSet {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for PartitionSet {
+    type Error = PyErr;
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         if let Ok(p) = ob.extract::<PyTypePartition>() {
-            return Ok(PartitionSet(TypeRegime::from(TypePartition::from(p))));
+            return Ok(PartitionSet(TypeInference::from(TypePartition::from(p))));
         }
-        let mut set = TypeRegime::empty();
+        let mut set = TypeInference::empty();
         for item in ob.try_iter()? {
             let p: PyTypePartition = item?.extract()?;
             set = set.with(p.into());
@@ -872,14 +873,15 @@ impl<'py> FromPyObject<'py> for PartitionSet {
 #[cfg(feature = "stubgen")]
 impl PyStubType for PartitionSet {
     fn type_output() -> TypeInfo {
-        TypeInfo::with_module(
-            "TypePartition | typing.Iterable[TypePartition]",
-            "typing".into(),
-        )
+        // `TypePartition` is defined in this module, so the expression must not
+        // be attributed to `typing` (which `with_module` would do).
+        let mut info = TypeInfo::unqualified("TypePartition | typing.Iterable[TypePartition]");
+        info.import.insert("typing".into());
+        info
     }
 }
 
-/// A Python iterator over `TypePartition`s, returned by `TypeRegime.__iter__`.
+/// A Python iterator over `TypePartition`s, returned by `TypeInference.__iter__`.
 struct PartitionIter(Py<PyAny>);
 
 impl<'py> IntoPyObject<'py> for PartitionIter {
@@ -899,69 +901,72 @@ impl PyStubType for PartitionIter {
     }
 }
 
-/// The right-hand side of a regime operator: a `TypeRegime` or a single
+/// The right-hand side of an inference operator: a `TypeInference` or a single
 /// `TypePartition`.
-struct RegimeOperand(TypeRegime);
+struct InferenceOperand(TypeInference);
 
-impl<'py> FromPyObject<'py> for RegimeOperand {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        if let Ok(r) = ob.extract::<PyTypeRegime>() {
-            return Ok(RegimeOperand(r.0));
+impl<'a, 'py> FromPyObject<'a, 'py> for InferenceOperand {
+    type Error = PyErr;
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        if let Ok(r) = ob.extract::<PyTypeInference>() {
+            return Ok(InferenceOperand(r.0));
         }
         let p: PyTypePartition = ob.extract()?;
-        Ok(RegimeOperand(TypeRegime::from(TypePartition::from(p))))
+        Ok(InferenceOperand(TypeInference::from(TypePartition::from(
+            p,
+        ))))
     }
 }
 
 #[cfg(feature = "stubgen")]
-impl PyStubType for RegimeOperand {
+impl PyStubType for InferenceOperand {
     fn type_output() -> TypeInfo {
-        TypeInfo::unqualified("TypeRegime | TypePartition")
+        TypeInfo::unqualified("TypeInference | TypePartition")
     }
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
-impl PyTypeRegime {
-    /// The regime made of exactly the given partition, or of the partitions
+impl PyTypeInference {
+    /// The inference made of exactly the given partition, or of the partitions
     /// of the given iterable.
     #[new]
     fn new(partitions: PartitionSet) -> PyResult<Self> {
-        Ok(PyTypeRegime(partitions.0))
+        Ok(PyTypeInference(partitions.0))
     }
 
     // These are functions rather than consts so the stub declares plain typed
-    // attributes (`ASSERTED: TypeRegime`) instead of a default expression.
+    // attributes (`ASSERTED: TypeInference`) instead of a default expression.
 
     /// Only the instance's own class.
     #[classattr]
     #[allow(non_snake_case)]
-    fn ASSERTED() -> PyTypeRegime {
-        PyTypeRegime(TypeRegime::ASSERTED)
+    fn ASSERTED() -> PyTypeInference {
+        PyTypeInference(TypeInference::ASSERTED)
     }
 
     /// Own class, transitive is_a ancestors, and sesame:directType.
     #[classattr]
     #[allow(non_snake_case)]
-    fn IS_A() -> PyTypeRegime {
-        PyTypeRegime(TypeRegime::IS_A)
+    fn IS_A() -> PyTypeInference {
+        PyTypeInference(TypeInference::IS_A)
     }
 
     /// As IS_A, with mixins counted as superclasses.
     #[classattr]
     #[allow(non_snake_case)]
-    fn IS_A_AND_MIXINS() -> PyTypeRegime {
-        PyTypeRegime(TypeRegime::IS_A_AND_MIXINS)
+    fn IS_A_AND_MIXINS() -> PyTypeInference {
+        PyTypeInference(TypeInference::IS_A_AND_MIXINS)
     }
 
-    /// Parse `str(regime)` output: `asserted`, `is_a`, `is_a_and_mixins`, or a
+    /// Parse `str(inference)` output: `asserted`, `is_a`, `is_a_and_mixins`, or a
     /// braced comma-separated partition list such as `{own,is_a}` (any order,
     /// repeats and whitespace allowed; `{}` is the empty set). Raises
     /// `ValueError` on anything else.
     #[staticmethod]
-    fn parse(s: &str) -> PyResult<PyTypeRegime> {
-        s.parse::<TypeRegime>()
-            .map(PyTypeRegime)
+    fn parse(s: &str) -> PyResult<PyTypeInference> {
+        s.parse::<TypeInference>()
+            .map(PyTypeInference)
             .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
@@ -970,41 +975,41 @@ impl PyTypeRegime {
     }
 
     fn __repr__(&self) -> String {
-        if self.0 == TypeRegime::ASSERTED {
-            "TypeRegime.ASSERTED".to_string()
-        } else if self.0 == TypeRegime::IS_A {
-            "TypeRegime.IS_A".to_string()
-        } else if self.0 == TypeRegime::IS_A_AND_MIXINS {
-            "TypeRegime.IS_A_AND_MIXINS".to_string()
+        if self.0 == TypeInference::ASSERTED {
+            "TypeInference.ASSERTED".to_string()
+        } else if self.0 == TypeInference::IS_A {
+            "TypeInference.IS_A".to_string()
+        } else if self.0 == TypeInference::IS_A_AND_MIXINS {
+            "TypeInference.IS_A_AND_MIXINS".to_string()
         } else {
-            format!("TypeRegime.parse('{}')", self.0)
+            format!("TypeInference.parse('{}')", self.0)
         }
     }
 
-    /// The union with a regime or a single partition.
-    fn __or__(&self, other: RegimeOperand) -> PyTypeRegime {
-        PyTypeRegime(self.0.union(other.0))
+    /// The union with an inference or a single partition.
+    fn __or__(&self, other: InferenceOperand) -> PyTypeInference {
+        PyTypeInference(self.0.union(other.0))
     }
 
-    /// The union with a regime or a single partition (reflected).
-    fn __ror__(&self, other: RegimeOperand) -> PyTypeRegime {
-        PyTypeRegime(self.0.union(other.0))
+    /// The union with an inference or a single partition (reflected).
+    fn __ror__(&self, other: InferenceOperand) -> PyTypeInference {
+        PyTypeInference(self.0.union(other.0))
     }
 
-    /// The partitions common to this regime and a regime or a single
+    /// The partitions common to this inference and an inference or a single
     /// partition.
-    fn __and__(&self, other: RegimeOperand) -> PyTypeRegime {
-        PyTypeRegime(self.0.intersection(other.0))
+    fn __and__(&self, other: InferenceOperand) -> PyTypeInference {
+        PyTypeInference(self.0.intersection(other.0))
     }
 
-    /// The partitions common to this regime and a regime or a single
+    /// The partitions common to this inference and an inference or a single
     /// partition (reflected).
-    fn __rand__(&self, other: RegimeOperand) -> PyTypeRegime {
-        PyTypeRegime(self.0.intersection(other.0))
+    fn __rand__(&self, other: InferenceOperand) -> PyTypeInference {
+        PyTypeInference(self.0.intersection(other.0))
     }
 
-    /// Whether every partition of this regime is in `other`.
-    fn __le__(&self, other: &PyTypeRegime) -> bool {
+    /// Whether every partition of this inference is in `other`.
+    fn __le__(&self, other: &PyTypeInference) -> bool {
         self.0.is_subset(other.0)
     }
 
@@ -1022,7 +1027,7 @@ impl PyTypeRegime {
 
     fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
         other
-            .extract::<PyTypeRegime>()
+            .extract::<PyTypeInference>()
             .is_ok_and(|other| other.0 == self.0)
     }
 
@@ -1047,6 +1052,7 @@ impl PyTypeRegime {
     eq_int,
     hash,
     frozen,
+    from_py_object,
     rename_all = "SCREAMING_SNAKE_CASE"
 )]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -1091,9 +1097,10 @@ impl PyTypePartition {
 /// graph.
 struct PartitionGraphs(std::collections::BTreeMap<TypePartition, GraphName>);
 
-impl<'py> FromPyObject<'py> for PartitionGraphs {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
-        let mapping = ob.downcast::<PyMapping>()?;
+impl<'a, 'py> FromPyObject<'a, 'py> for PartitionGraphs {
+    type Error = PyErr;
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let mapping = ob.cast::<PyMapping>()?;
         let mut graphs = std::collections::BTreeMap::new();
         for item in mapping.items()?.try_iter()? {
             let (partition, graph): (PyTypePartition, Option<String>) = item?.extract()?;
@@ -1162,7 +1169,7 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(py_export_ntriples, m)?)?;
     m.add_function(wrap_pyfunction!(py_export_nquads, m)?)?;
     m.add_function(wrap_pyfunction!(py_export_trig, m)?)?;
-    m.add_class::<PyTypeRegime>()?;
+    m.add_class::<PyTypeInference>()?;
     m.add_class::<PyTypePartition>()?;
     m.add_class::<PyRdfStream>()?;
     m.add("RdfImportError", m.py().get_type::<RdfImportError>())?;
@@ -1184,7 +1191,7 @@ pub fn runtime_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "LinkMLInstance")]
+#[pyclass(name = "LinkMLInstance", skip_from_py_object)]
 pub struct PyLinkMLInstance {
     pub value: LinkMLInstance,
     pub sv: Py<PySchemaView>,
@@ -1233,8 +1240,9 @@ impl From<DeltaOp> for PyDeltaOp {
     }
 }
 
-impl<'py> FromPyObject<'py> for PyDeltaOp {
-    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for PyDeltaOp {
+    type Error = PyErr;
+    fn extract(ob: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let raw: &str = ob.extract()?;
         match raw.to_ascii_lowercase().as_str() {
             "add" => Ok(PyDeltaOp::Add),
@@ -1271,7 +1279,7 @@ impl PyStubType for PyDeltaOp {
 }
 
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[pyclass(name = "Delta")]
+#[pyclass(name = "Delta", skip_from_py_object)]
 #[derive(Clone)]
 pub struct PyDelta {
     pub inner: Delta,
@@ -1298,8 +1306,11 @@ impl From<ValidationResult> for PyValidationResult {
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
 impl PyValidationResult {
+    // Named explicitly: the stub generator would otherwise print the raw
+    // identifier `r#type`, which is not valid Python.
     #[getter]
-    fn r#type(&self) -> String {
+    #[pyo3(name = "type")]
+    fn problem_type(&self) -> String {
         self.inner.problem_type.label().to_string()
     }
 
@@ -1329,7 +1340,7 @@ impl PyValidationResult {
     }
 
     #[getter]
-    fn object<'py>(&self, py: Python<'py>) -> PyResult<PyObject> {
+    fn object<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
         validation_value_to_py(py, &self.inner.object)
     }
 
@@ -1375,8 +1386,8 @@ impl PyDelta {
         py: Python<'_>,
         path: Vec<String>,
         op: PyDeltaOp,
-        old: Option<PyObject>,
-        new: Option<PyObject>,
+        old: Option<Py<PyAny>>,
+        new: Option<Py<PyAny>>,
     ) -> PyResult<Self> {
         let old_value = match old {
             Some(obj) => Some(py_to_json_value(py, obj.bind(py))?),
@@ -1407,7 +1418,7 @@ impl PyDelta {
     }
 
     #[getter]
-    fn old<'py>(&self, py: Python<'py>) -> PyObject {
+    fn old<'py>(&self, py: Python<'py>) -> Py<PyAny> {
         match &self.inner.old {
             Some(v) => json_value_to_py(py, v),
             None => py.None(),
@@ -1416,7 +1427,7 @@ impl PyDelta {
 
     #[getter]
     #[allow(clippy::wrong_self_convention, clippy::new_ret_no_self)]
-    fn new<'py>(&self, py: Python<'py>) -> PyObject {
+    fn new<'py>(&self, py: Python<'py>) -> Py<PyAny> {
         match &self.inner.new {
             Some(v) => json_value_to_py(py, v),
             None => py.None(),
@@ -1457,13 +1468,13 @@ impl PyDelta {
     }
 }
 
-fn json_value_to_py(py: Python<'_>, v: &JsonValue) -> PyObject {
+fn json_value_to_py(py: Python<'_>, v: &JsonValue) -> Py<PyAny> {
     let s = serde_json::to_string(v).unwrap();
     let json_mod = PyModule::import(py, "json").unwrap();
     json_mod.call_method1("loads", (s,)).unwrap().unbind()
 }
 
-fn validation_value_to_py(py: Python<'_>, value: &ValidationValue) -> PyResult<PyObject> {
+fn validation_value_to_py(py: Python<'_>, value: &ValidationValue) -> PyResult<Py<PyAny>> {
     match value {
         ValidationValue::None => Ok(py.None()),
         ValidationValue::Literal(v) => Ok(PyString::new(py, v).into_any().unbind()),
@@ -1523,7 +1534,7 @@ where
 
 impl Clone for PyLinkMLInstance {
     fn clone(&self) -> Self {
-        Python::with_gil(|py| Self {
+        Python::attach(|py| Self {
             value: self.value.clone(),
             sv: self.sv.clone_ref(py),
         })
@@ -1744,18 +1755,18 @@ impl PyLinkMLInstance {
         validation_results_to_py(py, validate_issues(&self.value))
     }
 
-    fn as_python<'py>(&self, py: Python<'py>) -> PyObject {
+    fn as_python<'py>(&self, py: Python<'py>) -> Py<PyAny> {
         json_value_to_py(py, &self.value.to_json())
     }
 
-    /// This instance as Turtle. `regime` picks which type triples are
+    /// This instance as Turtle. `inference` picks which type triples are
     /// written; Turtle cannot carry graph names.
-    #[pyo3(signature = (*, skolem=false, regime=PyTypeRegime(TypeRegime::ASSERTED)))]
+    #[pyo3(signature = (*, skolem=false, inference=PyTypeInference(TypeInference::ASSERTED)))]
     fn as_turtle<'py>(
         &self,
         py: Python<'py>,
         skolem: bool,
-        regime: PyTypeRegime,
+        inference: PyTypeInference,
     ) -> PyResult<String> {
         let sv_ref = self.sv.bind(py).borrow();
         let rust_sv = sv_ref.as_rust();
@@ -1768,7 +1779,7 @@ impl PyLinkMLInstance {
             rust_sv,
             &schema,
             &conv,
-            &WriteOptions::flat(regime.into()).with_skolem(skolem),
+            &WriteOptions::flat(inference.into()).with_skolem(skolem),
         )
         .map_err(write_error_to_py)
     }
@@ -2248,7 +2259,8 @@ mod exception_stubs {
     };
     use pyo3_stub_gen::inventory;
     use pyo3_stub_gen::type_info::{
-        ArgInfo, MemberInfo, MethodInfo, MethodType, PyClassInfo, PyMethodsInfo,
+        MemberInfo, MethodInfo, MethodType, ParameterDefault, ParameterInfo, ParameterKind,
+        PyClassInfo, PyMethodsInfo,
     };
     use pyo3_stub_gen::{PyStubType, TypeInfo};
     use std::any::TypeId;
@@ -2291,6 +2303,7 @@ mod exception_stubs {
             has_ord: false,
             has_hash: false,
             has_str: false,
+            subclass: true,
         }
     }
     inventory::submit! {
@@ -2306,6 +2319,7 @@ mod exception_stubs {
             has_ord: false,
             has_hash: false,
             has_str: false,
+            subclass: true,
         }
     }
     inventory::submit! {
@@ -2324,6 +2338,7 @@ mod exception_stubs {
             has_ord: false,
             has_hash: false,
             has_str: false,
+            subclass: true,
         }
     }
     inventory::submit! {
@@ -2343,6 +2358,7 @@ mod exception_stubs {
             has_ord: false,
             has_hash: false,
             has_str: false,
+            subclass: true,
         }
     }
     // `TypePartition` is a pyo3 enum, which is not an `enum.Enum`: members
@@ -2364,6 +2380,7 @@ mod exception_stubs {
             has_ord: false,
             has_hash: true,
             has_str: true,
+            subclass: false,
         }
     }
     inventory::submit! {
@@ -2377,10 +2394,18 @@ mod exception_stubs {
             ],
             getters: &[],
             setters: &[],
+            file: file!(),
+            line: line!(),
+            column: column!(),
             methods: &[
                 MethodInfo {
                     name: "parse",
-                    args: &[ArgInfo { name: "s", r#type: str_type, signature: None }],
+                    parameters: &[ParameterInfo {
+                        name: "s",
+                        kind: ParameterKind::PositionalOrKeyword,
+                        type_info: str_type,
+                        default: ParameterDefault::None,
+                    }],
                     r#return: type_partition,
                     doc: "Parse `str(partition)` output: `own`, `is_a`, `mixin` or `direct`. \
                           Raises `ValueError` on anything else.",
@@ -2388,16 +2413,18 @@ mod exception_stubs {
                     is_async: false,
                     deprecated: None,
                     type_ignored: None,
+                    is_overload: false,
                 },
                 MethodInfo {
                     name: "__repr__",
-                    args: &[],
+                    parameters: &[],
                     r#return: str_type,
                     doc: "",
                     r#type: MethodType::Instance,
                     is_async: false,
                     deprecated: None,
                     type_ignored: None,
+                    is_overload: false,
                 },
             ],
         }
@@ -2420,8 +2447,8 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
             None => subject,
         }
     };
-    let set = |err: PyErr, attrs: Vec<(&str, PyObject)>| -> PyErr {
-        Python::with_gil(|py| {
+    let set = |err: PyErr, attrs: Vec<(&str, Py<PyAny>)>| -> PyErr {
+        Python::attach(|py| {
             let value = err.value(py);
             for (name, v) in attrs {
                 if let Err(set_err) = value.setattr(name, v) {
@@ -2435,7 +2462,7 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
         ImportError::ConflictingDirectTypes {
             subject,
             direct_types,
-        } => Python::with_gil(|py| {
+        } => Python::attach(|py| {
             set(
                 ConflictingDirectTypesError::new_err(msg),
                 vec![
@@ -2453,7 +2480,7 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
         ImportError::AmbiguousType {
             subject,
             candidates,
-        } => Python::with_gil(|py| {
+        } => Python::attach(|py| {
             set(
                 AmbiguousTypeError::new_err(msg),
                 vec![
@@ -2472,7 +2499,7 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
             subject,
             direct_type,
             type_iri,
-        } => Python::with_gil(|py| {
+        } => Python::attach(|py| {
             set(
                 TypeConflictError::new_err(msg),
                 vec![
@@ -2507,7 +2534,7 @@ fn import_error_to_py(e: linkml_runtime::turtle_import::ImportError) -> PyErr {
 #[pyfunction(name = "import_turtle", signature = (reader, schema_view, root_classes, *, disk_path=None, strict=false))]
 fn py_import_turtle(
     py: Python<'_>,
-    reader: PyObject,
+    reader: Py<PyAny>,
     schema_view: &PySchemaView,
     root_classes: Vec<String>,
     disk_path: Option<String>,
@@ -2536,7 +2563,7 @@ fn py_import_turtle(
 #[pyfunction(name = "import_ntriples", signature = (reader, schema_view, root_classes, *, disk_path=None, strict=false))]
 fn py_import_ntriples(
     py: Python<'_>,
-    reader: PyObject,
+    reader: Py<PyAny>,
     schema_view: &PySchemaView,
     root_classes: Vec<String>,
     disk_path: Option<String>,
@@ -2555,7 +2582,7 @@ fn py_import_ntriples(
 
 fn build_py_rdf_stream(
     py: Python<'_>,
-    reader: PyObject,
+    reader: Py<PyAny>,
     schema_view: &PySchemaView,
     root_classes: Vec<String>,
     disk_path: Option<String>,
@@ -2603,16 +2630,16 @@ fn build_py_rdf_stream(
 ///
 /// `instances` may be a single LinkMLInstance or an iterable of them.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "export_turtle", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime(TypeRegime::ASSERTED)))]
+#[pyfunction(name = "export_turtle", signature = (instances, schema_view, writer, *, skolem=false, inference=PyTypeInference(TypeInference::ASSERTED)))]
 fn py_export_turtle(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
-    writer: PyObject,
+    writer: Py<PyAny>,
     skolem: bool,
-    regime: PyTypeRegime,
+    inference: PyTypeInference,
 ) -> PyResult<()> {
-    let options = WriteOptions::flat(regime.into()).with_skolem(skolem);
+    let options = WriteOptions::flat(inference.into()).with_skolem(skolem);
     do_py_export(
         py,
         instances,
@@ -2625,16 +2652,16 @@ fn py_export_turtle(
 
 /// Write LinkML instances as N-Triples into a Python file-like object.
 #[cfg_attr(feature = "stubgen", gen_stub_pyfunction)]
-#[pyfunction(name = "export_ntriples", signature = (instances, schema_view, writer, *, skolem=false, regime=PyTypeRegime(TypeRegime::ASSERTED)))]
+#[pyfunction(name = "export_ntriples", signature = (instances, schema_view, writer, *, skolem=false, inference=PyTypeInference(TypeInference::ASSERTED)))]
 fn py_export_ntriples(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
-    writer: PyObject,
+    writer: Py<PyAny>,
     skolem: bool,
-    regime: PyTypeRegime,
+    inference: PyTypeInference,
 ) -> PyResult<()> {
-    let options = WriteOptions::flat(regime.into()).with_skolem(skolem);
+    let options = WriteOptions::flat(inference.into()).with_skolem(skolem);
     do_py_export(
         py,
         instances,
@@ -2654,7 +2681,7 @@ fn py_export_nquads(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
-    writer: PyObject,
+    writer: Py<PyAny>,
     partition_graphs: PartitionGraphs,
     skolem: bool,
 ) -> PyResult<()> {
@@ -2678,7 +2705,7 @@ fn py_export_trig(
     py: Python<'_>,
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
-    writer: PyObject,
+    writer: Py<PyAny>,
     partition_graphs: PartitionGraphs,
     skolem: bool,
 ) -> PyResult<()> {
@@ -2700,7 +2727,7 @@ fn do_py_export(
     _py: Python<'_>,
     instances: Bound<'_, PyAny>,
     schema_view: &PySchemaView,
-    writer: PyObject,
+    writer: Py<PyAny>,
     format: RdfOutputFormat,
     options: &WriteOptions,
 ) -> PyResult<()> {

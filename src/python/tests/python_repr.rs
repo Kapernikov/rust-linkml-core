@@ -4,13 +4,13 @@ use pyo3::types::PyDict;
 
 #[test]
 fn python_reprs() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);

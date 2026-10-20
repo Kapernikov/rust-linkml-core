@@ -1,4 +1,4 @@
-//! Importer half of the RDF type regimes: any writer regime's output
+//! Importer half of the RDF type inference: any writer inference's output
 //! (`rdf:type` for ancestors/mixins plus `sesame:directType`) must import as
 //! the same instance as the plain asserted output.
 #![cfg(feature = "ttl")]

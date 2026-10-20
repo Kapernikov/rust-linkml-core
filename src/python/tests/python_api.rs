@@ -63,13 +63,13 @@ fn indexed_paths_path() -> PathBuf {
 
 #[test]
 fn construct_via_python() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
@@ -91,14 +91,14 @@ assert "https://w3id.org/linkml/mappings" in unresolved
 
 #[test]
 fn definitions_via_python() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
     let yaml = std::fs::read_to_string(meta_path()).unwrap();
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
@@ -153,9 +153,7 @@ results['is_same_clone'] = sv.is_same(sv_clone)
             .get_item("results")
             .expect("results lookup failed")
             .expect("results missing");
-        let results = results_value
-            .downcast::<PyDict>()
-            .expect("results not a dict");
+        let results = results_value.cast::<PyDict>().expect("results not a dict");
 
         let schema_name_value: Bound<'_, PyAny> = results
             .get_item("schema_name")
@@ -245,13 +243,13 @@ results['is_same_clone'] = sv.is_same(sv_clone)
 
 #[test]
 fn slots_for_path_exposed() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
@@ -292,9 +290,7 @@ results = {
             .get_item("results")
             .expect("results lookup failed")
             .expect("results missing");
-        let results = results_value
-            .downcast::<PyDict>()
-            .expect("results not a dict");
+        let results = results_value.cast::<PyDict>().expect("results not a dict");
 
         let count: usize = results
             .get_item("count")
@@ -323,13 +319,13 @@ results = {
 
 #[test]
 fn slots_for_path_follow_references_exposed() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
@@ -371,9 +367,7 @@ results = {
             .get_item("results")
             .expect("results lookup failed")
             .expect("results missing");
-        let results = results_value
-            .downcast::<PyDict>()
-            .expect("results not a dict");
+        let results = results_value.cast::<PyDict>().expect("results not a dict");
 
         let default_count: usize = results
             .get_item("default_count")
@@ -402,14 +396,14 @@ results = {
 
 #[test]
 fn enum_canonical_via_python() {
-    pyo3::prepare_freethreaded_python();
+    Python::initialize();
     let yaml = std::fs::read_to_string(simple_enum_path()).unwrap();
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);

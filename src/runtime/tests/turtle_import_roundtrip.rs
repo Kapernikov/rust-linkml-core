@@ -4,7 +4,7 @@ use linkml_runtime::{
     load_yaml_file,
     rdf_export::{RdfOutputFormat, RdfStreamWriter},
     rdf_import::{import_turtle, ImportOptions},
-    schema_rdf::{rdf_types, TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE},
+    schema_rdf::{rdf_types, TypeInference, TypePartition, RDF_TYPE, SESAME_DIRECT_TYPE},
     turtle::{turtle_to_string, write_ntriples, WriteOptions},
     LinkMLInstance,
 };
@@ -228,12 +228,12 @@ fn roundtrip_lang_tags() {
     );
 }
 
-// ─── Round-trip matrix: type regimes × output format × skolem ───
+// ─── Round-trip matrix: type inference × output format × skolem ───
 //
 // The negative case (two unrelated schema types and no sesame:directType →
 // `ImportError::AmbiguousType`) is covered exactly, including the message, by
 // `unrelated_types_without_direct_type_are_ambiguous_with_readable_message` in
-// `type_regimes_import.rs`; it is not repeated here.
+// `type_inference_import.rs`; it is not repeated here.
 //
 // Fixture (`type_regimes_schema.yaml`): abstract `Thing` <- `Asset` <- `Signal`
 // <- `MainSignal`, mixin chain `Located` -> `Placed` deeper than the is_a
@@ -265,7 +265,7 @@ struct Fx {
     instance: LinkMLInstance,
 }
 
-fn regimes_fixture() -> Fx {
+fn inferences_fixture() -> Fx {
     let (schema, sv, conv) = load_schema_with_types("type_regimes_schema.yaml");
     let class = sv
         .get_class(&Identifier::new("Registry"), &conv)
@@ -288,8 +288,8 @@ fn regimes_fixture() -> Fx {
     }
 }
 
-fn partition_graphs(regime: TypeRegime) -> BTreeMap<TypePartition, GraphName> {
-    regime
+fn partition_graphs(inference: TypeInference) -> BTreeMap<TypePartition, GraphName> {
+    inference
         .partitions()
         .map(|p| {
             (
@@ -302,18 +302,18 @@ fn partition_graphs(regime: TypeRegime) -> BTreeMap<TypePartition, GraphName> {
         .collect()
 }
 
-/// Write `instance` in `format` under `regime`, parse it back and return the
+/// Write `instance` in `format` under `inference`, parse it back and return the
 /// union of all graphs as one canonicalized triple graph.
 fn written(
     fx: &Fx,
     instance: &LinkMLInstance,
-    regime: TypeRegime,
+    inference: TypeInference,
     format: Format,
     skolem: bool,
 ) -> Graph {
     let mut graph = Graph::new();
-    let opts = WriteOptions::flat(regime).with_skolem(skolem);
-    let quad_opts = WriteOptions::quads(partition_graphs(regime)).with_skolem(skolem);
+    let opts = WriteOptions::flat(inference).with_skolem(skolem);
+    let quad_opts = WriteOptions::quads(partition_graphs(inference)).with_skolem(skolem);
     let mut buf = Vec::new();
     match format {
         Format::Turtle => {
@@ -388,14 +388,14 @@ fn sorted(graph: &Graph) -> BTreeSet<String> {
     graph.iter().map(|t: TripleRef| t.to_string()).collect()
 }
 
-/// Run `check` for every (regime, format, skolem) cell; returns the matrix size.
-fn matrix(mut check: impl FnMut(&Fx, TypeRegime, Format, bool)) -> usize {
-    let fx = regimes_fixture();
+/// Run `check` for every (inference, format, skolem) cell; returns the matrix size.
+fn matrix(mut check: impl FnMut(&Fx, TypeInference, Format, bool)) -> usize {
+    let fx = inferences_fixture();
     let mut n = 0;
-    for &regime in TypeRegime::NAMED {
+    for &inference in TypeInference::NAMED {
         for format in FORMATS {
             for skolem in [true, false] {
-                check(&fx, regime, format, skolem);
+                check(&fx, inference, format, skolem);
                 n += 1;
             }
         }
@@ -405,9 +405,9 @@ fn matrix(mut check: impl FnMut(&Fx, TypeRegime, Format, bool)) -> usize {
 
 #[test]
 fn matrix_import_of_write_is_the_original() {
-    let cells = matrix(|fx, regime, format, skolem| {
-        let ctx = format!("regime={regime:?} format={format:?} skolem={skolem}");
-        let back = import_graph(fx, &written(fx, &fx.instance, regime, format, skolem));
+    let cells = matrix(|fx, inference, format, skolem| {
+        let ctx = format!("inference={inference:?} format={format:?} skolem={skolem}");
+        let back = import_graph(fx, &written(fx, &fx.instance, inference, format, skolem));
         assert_eq!(
             canon(fx.instance.to_json()),
             canon(back.to_json()),
@@ -429,13 +429,13 @@ fn matrix_import_of_write_is_the_original() {
 }
 
 #[test]
-fn matrix_every_regime_imports_like_asserted() {
-    matrix(|fx, regime, format, skolem| {
-        let ctx = format!("regime={regime:?} format={format:?} skolem={skolem}");
-        let got = import_graph(fx, &written(fx, &fx.instance, regime, format, skolem));
+fn matrix_every_inference_imports_like_asserted() {
+    matrix(|fx, inference, format, skolem| {
+        let ctx = format!("inference={inference:?} format={format:?} skolem={skolem}");
+        let got = import_graph(fx, &written(fx, &fx.instance, inference, format, skolem));
         let base = import_graph(
             fx,
-            &written(fx, &fx.instance, TypeRegime::ASSERTED, format, skolem),
+            &written(fx, &fx.instance, TypeInference::ASSERTED, format, skolem),
         );
         assert_eq!(canon(got.to_json()), canon(base.to_json()), "{ctx}");
     });
@@ -443,11 +443,11 @@ fn matrix_every_regime_imports_like_asserted() {
 
 #[test]
 fn matrix_write_import_write_is_isomorphic() {
-    matrix(|fx, regime, format, skolem| {
-        let ctx = format!("regime={regime:?} format={format:?} skolem={skolem}");
-        let first = written(fx, &fx.instance, regime, format, skolem);
+    matrix(|fx, inference, format, skolem| {
+        let ctx = format!("inference={inference:?} format={format:?} skolem={skolem}");
+        let first = written(fx, &fx.instance, inference, format, skolem);
         let back = import_graph(fx, &first);
-        let second = written(fx, &back, regime, format, skolem);
+        let second = written(fx, &back, inference, format, skolem);
         let (a, b) = (sorted(&first), sorted(&second));
         assert!(
             a == b,
@@ -481,13 +481,13 @@ fn typing(g: &Graph) -> BTreeMap<String, (BTreeSet<String>, Vec<String>)> {
 
 #[test]
 fn matrix_written_types_match_rdf_types_and_direct_type() {
-    matrix(|fx, regime, format, skolem| {
-        let ctx = format!("regime={regime:?} format={format:?} skolem={skolem}");
-        let g = typing(&written(fx, &fx.instance, regime, format, skolem));
+    matrix(|fx, inference, format, skolem| {
+        let ctx = format!("inference={inference:?} format={format:?} skolem={skolem}");
+        let g = typing(&written(fx, &fx.instance, inference, format, skolem));
         let reference = typing(&written(
             fx,
             &fx.instance,
-            TypeRegime::ASSERTED,
+            TypeInference::ASSERTED,
             format,
             skolem,
         ));
@@ -495,7 +495,7 @@ fn matrix_written_types_match_rdf_types_and_direct_type() {
         // are compared as a multiset of own classes, not by subject.
         let mut own_classes: Vec<String> = Vec::new();
         for (subject, (types, directs)) in &g {
-            let own = if regime == TypeRegime::ASSERTED {
+            let own = if inference == TypeInference::ASSERTED {
                 assert!(directs.is_empty(), "{ctx}: directType under ASSERTED");
                 assert_eq!(types.len(), 1, "{ctx}: {subject} types {types:?}");
                 types.iter().next().unwrap().clone()
@@ -508,7 +508,7 @@ fn matrix_written_types_match_rdf_types_and_direct_type() {
                 .get_class_by_uri(&own)
                 .unwrap()
                 .unwrap_or_else(|| panic!("{ctx}: unknown class {own}"));
-            let expect: BTreeSet<String> = rdf_types(&class, regime)
+            let expect: BTreeSet<String> = rdf_types(&class, inference)
                 .unwrap()
                 .iter()
                 .map(|c| c.canonical_uri().to_string())
@@ -528,27 +528,27 @@ fn matrix_written_types_match_rdf_types_and_direct_type() {
             own_classes.len()
         );
         assert_eq!(own_classes, want, "{ctx}: own classes of the typed nodes");
-        // sesame:directType appears exactly when the regime contains Direct.
+        // sesame:directType appears exactly when the inference contains Direct.
         let n_direct: usize = g.values().map(|(_, d)| d.len()).sum();
-        assert_eq!(n_direct == 0, regime == TypeRegime::ASSERTED, "{ctx}");
+        assert_eq!(n_direct == 0, inference == TypeInference::ASSERTED, "{ctx}");
     });
 }
 
-/// A set that is not one of the named regimes behaves like any other: the
+/// A set that is not one of the named inferences behaves like any other: the
 /// writer keeps exactly its partitions and the importer reads it back.
 #[test]
 fn non_standard_partition_set_writes_consistently_and_imports_back() {
-    let built: TypeRegime = [TypePartition::Own, TypePartition::IsA]
+    let built: TypeInference = [TypePartition::Own, TypePartition::IsA]
         .into_iter()
         .collect();
-    let parsed: TypeRegime = "{own,is_a}".parse().unwrap();
+    let parsed: TypeInference = "{own,is_a}".parse().unwrap();
     assert_eq!(built, parsed);
-    assert!(!TypeRegime::NAMED.contains(&built));
-    let fx = regimes_fixture();
-    for regime in [built, parsed] {
+    assert!(!TypeInference::NAMED.contains(&built));
+    let fx = inferences_fixture();
+    for inference in [built, parsed] {
         for skolem in [true, false] {
             let ctx = format!("skolem={skolem}");
-            let flat = written(&fx, &fx.instance, regime, Format::NTriples, skolem);
+            let flat = written(&fx, &fx.instance, inference, Format::NTriples, skolem);
             let g = typing(&flat);
             assert_eq!(g.len(), 10, "{ctx}");
             for (subject, (types, directs)) in &g {
@@ -557,7 +557,7 @@ fn non_standard_partition_set_writes_consistently_and_imports_back() {
                     .iter()
                     .map(|u| fx.sv.get_class_by_uri(u).unwrap().unwrap())
                     .find(|c| {
-                        rdf_types(c, regime)
+                        rdf_types(c, inference)
                             .unwrap()
                             .iter()
                             .map(|t| t.canonical_uri().to_string())
@@ -572,7 +572,7 @@ fn non_standard_partition_set_writes_consistently_and_imports_back() {
             // Quads restricted to the set's partitions are the flat output.
             for format in [Format::NQuads, Format::TriG] {
                 assert_eq!(
-                    sorted(&written(&fx, &fx.instance, regime, format, skolem)),
+                    sorted(&written(&fx, &fx.instance, inference, format, skolem)),
                     sorted(&flat),
                     "{ctx} {format:?}"
                 );
@@ -589,7 +589,7 @@ fn non_standard_partition_set_writes_consistently_and_imports_back() {
 
 #[test]
 fn quads_union_equals_flat_isa_and_mixins_output() {
-    let fx = regimes_fixture();
+    let fx = inferences_fixture();
     let all_partitions: BTreeMap<TypePartition, GraphName> = TypePartition::ALL
         .iter()
         .map(|p| {
@@ -606,7 +606,7 @@ fn quads_union_equals_flat_isa_and_mixins_output() {
         let flat = written(
             &fx,
             &fx.instance,
-            TypeRegime::IS_A_AND_MIXINS,
+            TypeInference::IS_A_AND_MIXINS,
             Format::NTriples,
             skolem,
         );
