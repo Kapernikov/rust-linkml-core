@@ -9,5 +9,5 @@ name = "linkml_core_py"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = "0.25.0"
+pyo3 = "0.29.3"
 runtime = { package = "linkml_runtime", path = "../runtime", features = ["python"] }

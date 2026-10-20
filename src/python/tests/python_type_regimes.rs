@@ -14,13 +14,13 @@ fn data_path(name: &str) -> PathBuf {
 
 #[test]
 fn type_regimes_via_python() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let sys_modules = sys.getattr("modules").unwrap();
-        let sys_modules = sys_modules.downcast::<PyDict>().unwrap();
+        let sys_modules = sys_modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
@@ -265,13 +265,13 @@ for regime in (lr.TypeRegime.ASSERTED, lr.TypeRegime.IS_A, lr.TypeRegime.IS_A_AN
 /// Importer failures reach Python as typed exceptions carrying their fields.
 #[test]
 fn import_errors_are_typed_python_exceptions() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let sys_modules = sys.getattr("modules").unwrap();
-        let sys_modules = sys_modules.downcast::<PyDict>().unwrap();
+        let sys_modules = sys_modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
@@ -367,8 +367,8 @@ fn rust_regimes_and_partitions_convert_to_python() {
     use linkml_runtime::schema_rdf::{TypePartition, TypeRegime};
     use linkml_runtime_python::{PyTypePartition, PyTypeRegime};
 
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let regime = Py::new(py, PyTypeRegime::from(TypeRegime::IS_A)).unwrap();

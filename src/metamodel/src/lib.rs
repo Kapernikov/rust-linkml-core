@@ -333,8 +333,9 @@ impl<'py> IntoPyObject<'py> for PvFormulaOptions {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for PvFormulaOptions {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for PvFormulaOptions {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(s) = ob.extract::<&str>() {
             match s {
                 "CODE" => Ok(PvFormulaOptions::CODE),
@@ -402,8 +403,9 @@ impl<'py> IntoPyObject<'py> for PresenceEnum {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for PresenceEnum {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for PresenceEnum {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(s) = ob.extract::<&str>() {
             match s {
                 "UNCOMMITTED" => Ok(PresenceEnum::UNCOMMITTED),
@@ -477,8 +479,9 @@ impl<'py> IntoPyObject<'py> for RelationalRoleEnum {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for RelationalRoleEnum {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for RelationalRoleEnum {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(s) = ob.extract::<&str>() {
             match s {
                 "SUBJECT" => Ok(RelationalRoleEnum::SUBJECT),
@@ -550,8 +553,9 @@ impl<'py> IntoPyObject<'py> for AliasPredicateEnum {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for AliasPredicateEnum {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for AliasPredicateEnum {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(s) = ob.extract::<&str>() {
             match s {
                 "EXACT_SYNONYM" | "EXACTSYNONYM" => Ok(AliasPredicateEnum::EXACTSYNONYM),
@@ -626,8 +630,9 @@ impl<'py> IntoPyObject<'py> for ObligationLevelEnum {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for ObligationLevelEnum {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for ObligationLevelEnum {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(s) = ob.extract::<&str>() {
             match s {
                 "REQUIRED" => Ok(ObligationLevelEnum::REQUIRED),
@@ -666,7 +671,7 @@ pub type AnyValue = Anything;
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Extension {
     #[cfg_attr(feature = "serde", serde(alias = "tag"))]
     pub extension_tag: uriorcurie,
@@ -715,8 +720,9 @@ impl<'py> IntoPyObject<'py> for Box<Extension> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Extension> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Extension> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Extension>() {
             return Ok(Box::new(val));
         }
@@ -809,8 +815,9 @@ impl From<Extension> for ExtensionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for ExtensionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for ExtensionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Annotation>() {
             return Ok(ExtensionOrSubtype::Annotation(val));
         }
@@ -848,8 +855,9 @@ impl<'py> IntoPyObject<'py> for Box<ExtensionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ExtensionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ExtensionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ExtensionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -899,7 +907,7 @@ impl serde_utils::InlinedPair for ExtensionOrSubtype {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Extensible {
     #[cfg_attr(
         feature = "serde",
@@ -937,8 +945,9 @@ impl<'py> IntoPyObject<'py> for Box<Extensible> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Extensible> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Extensible> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Extensible>() {
             return Ok(Box::new(val));
         }
@@ -1088,8 +1097,9 @@ impl From<ClassDefinition> for ExtensibleOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for ExtensibleOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for ExtensibleOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Element>() {
             return Ok(ExtensibleOrSubtype::Element(val));
         }
@@ -1245,8 +1255,9 @@ impl<'py> IntoPyObject<'py> for Box<ExtensibleOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ExtensibleOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ExtensibleOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ExtensibleOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -1285,7 +1296,7 @@ impl<'py> FromPyObject<'py> for Box<ExtensibleOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Annotatable {
     #[cfg_attr(
         feature = "serde",
@@ -1321,8 +1332,9 @@ impl<'py> IntoPyObject<'py> for Box<Annotatable> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Annotatable> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Annotatable> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Annotatable>() {
             return Ok(Box::new(val));
         }
@@ -1478,8 +1490,9 @@ impl From<ClassDefinition> for AnnotatableOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for AnnotatableOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for AnnotatableOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Annotation>() {
             return Ok(AnnotatableOrSubtype::Annotation(val));
         }
@@ -1645,8 +1658,9 @@ impl<'py> IntoPyObject<'py> for Box<AnnotatableOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AnnotatableOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AnnotatableOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnnotatableOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -1686,7 +1700,7 @@ impl<'py> FromPyObject<'py> for Box<AnnotatableOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Annotation {
     #[cfg_attr(
         feature = "serde",
@@ -1748,8 +1762,9 @@ impl<'py> IntoPyObject<'py> for Box<Annotation> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Annotation> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Annotation> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Annotation>() {
             return Ok(Box::new(val));
         }
@@ -1826,7 +1841,7 @@ impl serde_utils::InlinedPair for Annotation {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct UnitOfMeasure {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -1900,8 +1915,9 @@ impl<'py> IntoPyObject<'py> for Box<UnitOfMeasure> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<UnitOfMeasure> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<UnitOfMeasure> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<UnitOfMeasure>() {
             return Ok(Box::new(val));
         }
@@ -1921,6 +1937,14 @@ pub struct Anything(
 impl ::pyo3_stub_gen::PyStubType for Anything {
     fn type_output() -> ::pyo3_stub_gen::TypeInfo {
         ::pyo3_stub_gen::TypeInfo::any()
+    }
+}
+
+#[cfg(feature = "stubgen")]
+impl ::pyo3_stub_gen::runtime::PyRuntimeType for Anything {
+    fn runtime_type_object(py: pyo3::Python<'_>) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::PyAny>> {
+        // Anything maps to `object` at runtime, like PyAny.
+        Ok(py.get_type::<pyo3::types::PyAny>().into_any())
     }
 }
 
@@ -1945,8 +1969,9 @@ impl<'de> Deserialize<'de> for Anything {
 }
 
 #[cfg(all(feature = "pyo3", feature = "serde"))]
-impl<'py> FromPyObject<'py> for Anything {
-    fn extract_bound(obj: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Anything {
+    type Error = PyErr;
+    fn extract(obj: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         use pyo3::types::{PyAny, PyDict, PyList, PyTuple};
         use serde_value::Value;
 
@@ -1974,14 +1999,14 @@ impl<'py> FromPyObject<'py> for Anything {
             }
 
             // Sequences (list/tuple)
-            if let Ok(list) = o.downcast::<PyList>() {
+            if let Ok(list) = o.cast::<PyList>() {
                 let mut out = Vec::with_capacity(list.len());
                 for item in list.iter() {
                     out.push(py_to_value(&item)?);
                 }
                 return Ok(Value::Seq(out));
             }
-            if let Ok(t) = o.downcast::<PyTuple>() {
+            if let Ok(t) = o.cast::<PyTuple>() {
                 let mut out = Vec::with_capacity(t.len());
                 for item in t.iter() {
                     out.push(py_to_value(&item)?);
@@ -1990,7 +2015,7 @@ impl<'py> FromPyObject<'py> for Anything {
             }
 
             // Mappings (dict with string-like keys)
-            if let Ok(d) = o.downcast::<PyDict>() {
+            if let Ok(d) = o.cast::<PyDict>() {
                 let mut map = std::collections::BTreeMap::<Value, Value>::new();
                 for (k, v) in d.iter() {
                     // Only accept string-like keys for deterministic ordering
@@ -2010,7 +2035,7 @@ impl<'py> FromPyObject<'py> for Anything {
             Ok(Value::String(s))
         }
 
-        Ok(Anything(py_to_value(obj)?))
+        Ok(Anything(py_to_value(&obj)?))
     }
 }
 
@@ -2083,7 +2108,7 @@ impl std::fmt::Debug for Anything {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct CommonMetadata {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -2383,8 +2408,9 @@ impl<'py> IntoPyObject<'py> for Box<CommonMetadata> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<CommonMetadata> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<CommonMetadata> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<CommonMetadata>() {
             return Ok(Box::new(val));
         }
@@ -2534,8 +2560,9 @@ impl From<ClassDefinition> for CommonMetadataOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for CommonMetadataOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for CommonMetadataOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Element>() {
             return Ok(CommonMetadataOrSubtype::Element(val));
         }
@@ -2697,8 +2724,9 @@ impl<'py> IntoPyObject<'py> for Box<CommonMetadataOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<CommonMetadataOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<CommonMetadataOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<CommonMetadataOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -2744,8 +2772,9 @@ pub mod element_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for name_range {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for name_range {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<String>() {
                 return Ok(name_range::String(val));
             }
@@ -2787,8 +2816,9 @@ pub mod element_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for Box<name_range> {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for Box<name_range> {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<name_range>() {
                 return Ok(Box::new(val));
             }
@@ -2805,7 +2835,7 @@ pub mod element_utl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Element {
     pub name: String,
     #[cfg_attr(
@@ -3198,8 +3228,9 @@ impl<'py> IntoPyObject<'py> for Box<Element> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Element> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Element> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Element>() {
             return Ok(Box::new(val));
         }
@@ -3316,8 +3347,9 @@ impl From<ClassDefinition> for ElementOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for ElementOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for ElementOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<SchemaDefinition>() {
             return Ok(ElementOrSubtype::SchemaDefinition(val));
         }
@@ -3387,8 +3419,9 @@ impl<'py> IntoPyObject<'py> for Box<ElementOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ElementOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ElementOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ElementOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -3481,7 +3514,7 @@ impl serde_utils::InlinedPair for ElementOrSubtype {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct SchemaDefinition {
     pub id: uri,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -4061,8 +4094,9 @@ impl<'py> IntoPyObject<'py> for Box<SchemaDefinition> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<SchemaDefinition> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<SchemaDefinition> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<SchemaDefinition>() {
             return Ok(Box::new(val));
         }
@@ -4138,7 +4172,7 @@ impl serde_utils::InlinedPair for SchemaDefinition {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct AnonymousTypeExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -4245,8 +4279,9 @@ impl<'py> IntoPyObject<'py> for Box<AnonymousTypeExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AnonymousTypeExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AnonymousTypeExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousTypeExpression>() {
             return Ok(Box::new(val));
         }
@@ -4259,7 +4294,7 @@ impl<'py> FromPyObject<'py> for Box<AnonymousTypeExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct TypeDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(rename = "typeof"))]
@@ -4759,8 +4794,9 @@ impl<'py> IntoPyObject<'py> for Box<TypeDefinition> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<TypeDefinition> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<TypeDefinition> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<TypeDefinition>() {
             return Ok(Box::new(val));
         }
@@ -4831,7 +4867,7 @@ impl serde_utils::InlinedPair for TypeDefinition {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct SubsetDefinition {
     pub name: String,
     #[cfg_attr(
@@ -5224,8 +5260,9 @@ impl<'py> IntoPyObject<'py> for Box<SubsetDefinition> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<SubsetDefinition> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<SubsetDefinition> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<SubsetDefinition>() {
             return Ok(Box::new(val));
         }
@@ -5304,8 +5341,9 @@ pub mod definition_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for is_a_range {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for is_a_range {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<Definition>() {
                 return Ok(is_a_range::Definition(val));
             }
@@ -5353,8 +5391,9 @@ pub mod definition_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for Box<is_a_range> {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for Box<is_a_range> {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<is_a_range>() {
                 return Ok(Box::new(val));
             }
@@ -5375,8 +5414,9 @@ pub mod definition_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for mixins_range {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for mixins_range {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<Definition>() {
                 return Ok(mixins_range::Definition(val));
             }
@@ -5424,8 +5464,9 @@ pub mod definition_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for Box<mixins_range> {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for Box<mixins_range> {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<mixins_range>() {
                 return Ok(Box::new(val));
             }
@@ -5446,8 +5487,9 @@ pub mod definition_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for apply_to_range {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for apply_to_range {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<Definition>() {
                 return Ok(apply_to_range::Definition(val));
             }
@@ -5495,8 +5537,9 @@ pub mod definition_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for Box<apply_to_range> {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for Box<apply_to_range> {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<apply_to_range>() {
                 return Ok(Box::new(val));
             }
@@ -5515,7 +5558,7 @@ pub mod definition_utl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Definition {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -5951,8 +5994,9 @@ impl<'py> IntoPyObject<'py> for Box<Definition> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Definition> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Definition> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Definition>() {
             return Ok(Box::new(val));
         }
@@ -6045,8 +6089,9 @@ impl From<ClassDefinition> for DefinitionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for DefinitionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for DefinitionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<EnumDefinition>() {
             return Ok(DefinitionOrSubtype::EnumDefinition(val));
         }
@@ -6094,8 +6139,9 @@ impl<'py> IntoPyObject<'py> for Box<DefinitionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<DefinitionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<DefinitionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<DefinitionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -6154,7 +6200,7 @@ impl serde_utils::InlinedPair for DefinitionOrSubtype {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct AnonymousEnumExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -6255,8 +6301,9 @@ impl<'py> IntoPyObject<'py> for Box<AnonymousEnumExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AnonymousEnumExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AnonymousEnumExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousEnumExpression>() {
             return Ok(Box::new(val));
         }
@@ -6269,7 +6316,7 @@ impl<'py> FromPyObject<'py> for Box<AnonymousEnumExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct EnumDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -6784,8 +6831,9 @@ impl<'py> IntoPyObject<'py> for Box<EnumDefinition> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<EnumDefinition> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<EnumDefinition> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<EnumDefinition>() {
             return Ok(Box::new(val));
         }
@@ -6856,7 +6904,7 @@ impl serde_utils::InlinedPair for EnumDefinition {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct EnumBinding {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -7202,8 +7250,9 @@ impl<'py> IntoPyObject<'py> for Box<EnumBinding> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<EnumBinding> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<EnumBinding> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<EnumBinding>() {
             return Ok(Box::new(val));
         }
@@ -7216,7 +7265,7 @@ impl<'py> FromPyObject<'py> for Box<EnumBinding> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct MatchQuery {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -7250,8 +7299,9 @@ impl<'py> IntoPyObject<'py> for Box<MatchQuery> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<MatchQuery> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<MatchQuery> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<MatchQuery>() {
             return Ok(Box::new(val));
         }
@@ -7264,7 +7314,7 @@ impl<'py> FromPyObject<'py> for Box<MatchQuery> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ReachabilityQuery {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -7335,8 +7385,9 @@ impl<'py> IntoPyObject<'py> for Box<ReachabilityQuery> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ReachabilityQuery> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ReachabilityQuery> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ReachabilityQuery>() {
             return Ok(Box::new(val));
         }
@@ -7349,7 +7400,7 @@ impl<'py> FromPyObject<'py> for Box<ReachabilityQuery> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct StructuredAlias {
     pub literal_form: String,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -7697,8 +7748,9 @@ impl<'py> IntoPyObject<'py> for Box<StructuredAlias> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<StructuredAlias> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<StructuredAlias> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<StructuredAlias>() {
             return Ok(Box::new(val));
         }
@@ -7711,7 +7763,7 @@ impl<'py> FromPyObject<'py> for Box<StructuredAlias> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Expression {}
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -7805,8 +7857,9 @@ impl From<TypeDefinition> for ExpressionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for ExpressionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for ExpressionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<TypeExpression>() {
             return Ok(ExpressionOrSubtype::TypeExpression(val));
         }
@@ -7920,8 +7973,9 @@ impl<'py> IntoPyObject<'py> for Box<ExpressionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ExpressionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ExpressionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ExpressionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -7952,7 +8006,7 @@ impl<'py> FromPyObject<'py> for Box<ExpressionOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct TypeExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -8059,8 +8113,9 @@ impl<'py> IntoPyObject<'py> for Box<TypeExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<TypeExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<TypeExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<TypeExpression>() {
             return Ok(Box::new(val));
         }
@@ -8090,8 +8145,9 @@ impl From<TypeDefinition> for TypeExpressionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for TypeExpressionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for TypeExpressionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousTypeExpression>() {
             return Ok(TypeExpressionOrSubtype::AnonymousTypeExpression(val));
         }
@@ -8133,8 +8189,9 @@ impl<'py> IntoPyObject<'py> for Box<TypeExpressionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<TypeExpressionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<TypeExpressionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<TypeExpressionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -8152,7 +8209,7 @@ impl<'py> FromPyObject<'py> for Box<TypeExpressionOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct EnumExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -8253,8 +8310,9 @@ impl<'py> IntoPyObject<'py> for Box<EnumExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<EnumExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<EnumExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<EnumExpression>() {
             return Ok(Box::new(val));
         }
@@ -8290,8 +8348,9 @@ impl From<EnumExpression> for EnumExpressionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for EnumExpressionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for EnumExpressionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousEnumExpression>() {
             return Ok(EnumExpressionOrSubtype::AnonymousEnumExpression(val));
         }
@@ -8339,8 +8398,9 @@ impl<'py> IntoPyObject<'py> for Box<EnumExpressionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<EnumExpressionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<EnumExpressionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<EnumExpressionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -8358,7 +8418,7 @@ impl<'py> FromPyObject<'py> for Box<EnumExpressionOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct AnonymousExpression {
     #[cfg_attr(
         feature = "serde",
@@ -8684,8 +8744,9 @@ impl<'py> IntoPyObject<'py> for Box<AnonymousExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AnonymousExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AnonymousExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousExpression>() {
             return Ok(Box::new(val));
         }
@@ -8715,8 +8776,9 @@ impl From<AnonymousClassExpression> for AnonymousExpressionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for AnonymousExpressionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for AnonymousExpressionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousSlotExpression>() {
             return Ok(AnonymousExpressionOrSubtype::AnonymousSlotExpression(val));
         }
@@ -8758,8 +8820,9 @@ impl<'py> IntoPyObject<'py> for Box<AnonymousExpressionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AnonymousExpressionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AnonymousExpressionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousExpressionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -8777,7 +8840,7 @@ impl<'py> FromPyObject<'py> for Box<AnonymousExpressionOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct PathExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -9149,8 +9212,9 @@ impl<'py> IntoPyObject<'py> for Box<PathExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<PathExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<PathExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<PathExpression>() {
             return Ok(Box::new(val));
         }
@@ -9163,7 +9227,7 @@ impl<'py> FromPyObject<'py> for Box<PathExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct SlotExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -9361,8 +9425,9 @@ impl<'py> IntoPyObject<'py> for Box<SlotExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<SlotExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<SlotExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<SlotExpression>() {
             return Ok(Box::new(val));
         }
@@ -9392,8 +9457,9 @@ impl From<SlotDefinition> for SlotExpressionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for SlotExpressionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for SlotExpressionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousSlotExpression>() {
             return Ok(SlotExpressionOrSubtype::AnonymousSlotExpression(val));
         }
@@ -9435,8 +9501,9 @@ impl<'py> IntoPyObject<'py> for Box<SlotExpressionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<SlotExpressionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<SlotExpressionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<SlotExpressionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -9454,7 +9521,7 @@ impl<'py> FromPyObject<'py> for Box<SlotExpressionOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct AnonymousSlotExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -9951,8 +10018,9 @@ impl<'py> IntoPyObject<'py> for Box<AnonymousSlotExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AnonymousSlotExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AnonymousSlotExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousSlotExpression>() {
             return Ok(Box::new(val));
         }
@@ -9965,7 +10033,7 @@ impl<'py> FromPyObject<'py> for Box<AnonymousSlotExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 #[derive(Merge)]
 pub struct SlotDefinition {
     #[merge(strategy = overwrite_except_none)]
@@ -10884,8 +10952,9 @@ impl<'py> IntoPyObject<'py> for Box<SlotDefinition> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<SlotDefinition> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<SlotDefinition> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<SlotDefinition>() {
             return Ok(Box::new(val));
         }
@@ -10962,7 +11031,7 @@ impl serde_utils::InlinedPair for SlotDefinition {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ClassExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -11026,8 +11095,9 @@ impl<'py> IntoPyObject<'py> for Box<ClassExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ClassExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ClassExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ClassExpression>() {
             return Ok(Box::new(val));
         }
@@ -11057,8 +11127,9 @@ impl From<ClassDefinition> for ClassExpressionOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for ClassExpressionOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for ClassExpressionOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousClassExpression>() {
             return Ok(ClassExpressionOrSubtype::AnonymousClassExpression(val));
         }
@@ -11100,8 +11171,9 @@ impl<'py> IntoPyObject<'py> for Box<ClassExpressionOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ClassExpressionOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ClassExpressionOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ClassExpressionOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -11119,7 +11191,7 @@ impl<'py> FromPyObject<'py> for Box<ClassExpressionOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct AnonymousClassExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -11487,8 +11559,9 @@ impl<'py> IntoPyObject<'py> for Box<AnonymousClassExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AnonymousClassExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AnonymousClassExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AnonymousClassExpression>() {
             return Ok(Box::new(val));
         }
@@ -11501,7 +11574,7 @@ impl<'py> FromPyObject<'py> for Box<AnonymousClassExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ClassDefinition {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -12086,8 +12159,9 @@ impl<'py> IntoPyObject<'py> for Box<ClassDefinition> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ClassDefinition> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ClassDefinition> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ClassDefinition>() {
             return Ok(Box::new(val));
         }
@@ -12158,7 +12232,7 @@ impl serde_utils::InlinedPair for ClassDefinition {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ClassLevelRule {}
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -12174,8 +12248,9 @@ impl From<ClassRule> for ClassLevelRuleOrSubtype {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for ClassLevelRuleOrSubtype {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for ClassLevelRuleOrSubtype {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ClassRule>() {
             return Ok(ClassLevelRuleOrSubtype::ClassRule(val));
         }
@@ -12211,8 +12286,9 @@ impl<'py> IntoPyObject<'py> for Box<ClassLevelRuleOrSubtype> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ClassLevelRuleOrSubtype> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ClassLevelRuleOrSubtype> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ClassLevelRuleOrSubtype>() {
             return Ok(Box::new(val));
         }
@@ -12228,7 +12304,7 @@ impl<'py> FromPyObject<'py> for Box<ClassLevelRuleOrSubtype> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ClassRule {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -12587,8 +12663,9 @@ impl<'py> IntoPyObject<'py> for Box<ClassRule> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ClassRule> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ClassRule> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ClassRule>() {
             return Ok(Box::new(val));
         }
@@ -12609,8 +12686,9 @@ pub mod array_expression_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for maximum_number_dimensions_range {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for maximum_number_dimensions_range {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<Anything>() {
                 return Ok(maximum_number_dimensions_range::Anything(val));
             }
@@ -12658,8 +12736,9 @@ pub mod array_expression_utl {
     }
 
     #[cfg(feature = "pyo3")]
-    impl<'py> FromPyObject<'py> for Box<maximum_number_dimensions_range> {
-        fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+    impl<'a, 'py> FromPyObject<'a, 'py> for Box<maximum_number_dimensions_range> {
+        type Error = PyErr;
+        fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
             if let Ok(val) = ob.extract::<maximum_number_dimensions_range>() {
                 return Ok(Box::new(val));
             }
@@ -12676,7 +12755,7 @@ pub mod array_expression_utl {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ArrayExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -13023,8 +13102,9 @@ impl<'py> IntoPyObject<'py> for Box<ArrayExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ArrayExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ArrayExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ArrayExpression>() {
             return Ok(Box::new(val));
         }
@@ -13037,7 +13117,7 @@ impl<'py> FromPyObject<'py> for Box<ArrayExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct DimensionExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -13383,8 +13463,9 @@ impl<'py> IntoPyObject<'py> for Box<DimensionExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<DimensionExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<DimensionExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<DimensionExpression>() {
             return Ok(Box::new(val));
         }
@@ -13397,7 +13478,7 @@ impl<'py> FromPyObject<'py> for Box<DimensionExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct PatternExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -13738,8 +13819,9 @@ impl<'py> IntoPyObject<'py> for Box<PatternExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<PatternExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<PatternExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<PatternExpression>() {
             return Ok(Box::new(val));
         }
@@ -13752,7 +13834,7 @@ impl<'py> FromPyObject<'py> for Box<PatternExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ImportExpression {
     pub import_from: uriorcurie,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -14099,8 +14181,9 @@ impl<'py> IntoPyObject<'py> for Box<ImportExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ImportExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ImportExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ImportExpression>() {
             return Ok(Box::new(val));
         }
@@ -14113,7 +14196,7 @@ impl<'py> FromPyObject<'py> for Box<ImportExpression> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Setting {
     pub setting_key: ncname,
     pub setting_value: String,
@@ -14143,8 +14226,9 @@ impl<'py> IntoPyObject<'py> for Box<Setting> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Setting> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Setting> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Setting>() {
             return Ok(Box::new(val));
         }
@@ -14220,7 +14304,7 @@ impl serde_utils::InlinedPair for Setting {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Prefix {
     pub prefix_prefix: ncname,
     pub prefix_reference: uri,
@@ -14250,8 +14334,9 @@ impl<'py> IntoPyObject<'py> for Box<Prefix> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Prefix> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Prefix> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Prefix>() {
             return Ok(Box::new(val));
         }
@@ -14327,7 +14412,7 @@ impl serde_utils::InlinedPair for Prefix {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct LocalName {
     pub local_name_source: ncname,
     pub local_name_value: String,
@@ -14357,8 +14442,9 @@ impl<'py> IntoPyObject<'py> for Box<LocalName> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<LocalName> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<LocalName> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<LocalName>() {
             return Ok(Box::new(val));
         }
@@ -14434,7 +14520,7 @@ impl serde_utils::InlinedPair for LocalName {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct Example {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -14479,8 +14565,9 @@ impl<'py> IntoPyObject<'py> for Box<Example> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<Example> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<Example> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<Example>() {
             return Ok(Box::new(val));
         }
@@ -14493,7 +14580,7 @@ impl<'py> FromPyObject<'py> for Box<Example> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct AltDescription {
     #[cfg_attr(feature = "serde", serde(alias = "source"))]
     pub alt_description_source: String,
@@ -14525,8 +14612,9 @@ impl<'py> IntoPyObject<'py> for Box<AltDescription> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<AltDescription> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<AltDescription> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<AltDescription>() {
             return Ok(Box::new(val));
         }
@@ -14603,7 +14691,7 @@ impl serde_utils::InlinedPair for AltDescription {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct PermissibleValue {
     pub text: String,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -14977,8 +15065,9 @@ impl<'py> IntoPyObject<'py> for Box<PermissibleValue> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<PermissibleValue> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<PermissibleValue> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<PermissibleValue>() {
             return Ok(Box::new(val));
         }
@@ -15049,7 +15138,7 @@ impl serde_utils::InlinedPair for PermissibleValue {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct UniqueKey {
     pub unique_key_name: String,
     #[cfg_attr(feature = "serde", serde(default))]
@@ -15388,8 +15477,9 @@ impl<'py> IntoPyObject<'py> for Box<UniqueKey> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<UniqueKey> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<UniqueKey> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<UniqueKey>() {
             return Ok(Box::new(val));
         }
@@ -15460,7 +15550,7 @@ impl serde_utils::InlinedPair for UniqueKey {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct TypeMapping {
     #[cfg_attr(feature = "serde", serde(alias = "framework"))]
     pub framework_key: String,
@@ -15801,8 +15891,9 @@ impl<'py> IntoPyObject<'py> for Box<TypeMapping> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<TypeMapping> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<TypeMapping> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<TypeMapping>() {
             return Ok(Box::new(val));
         }
@@ -15874,7 +15965,7 @@ impl serde_utils::InlinedPair for TypeMapping {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "stubgen", gen_stub_pyclass)]
-#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all))]
+#[cfg_attr(feature = "pyo3", pyclass(subclass, get_all, set_all, from_py_object))]
 pub struct ExtraSlotsExpression {
     #[cfg_attr(feature = "serde", serde(default))]
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
@@ -15912,8 +16003,9 @@ impl<'py> IntoPyObject<'py> for Box<ExtraSlotsExpression> {
 }
 
 #[cfg(feature = "pyo3")]
-impl<'py> FromPyObject<'py> for Box<ExtraSlotsExpression> {
-    fn extract_bound(ob: &pyo3::Bound<'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
+impl<'a, 'py> FromPyObject<'a, 'py> for Box<ExtraSlotsExpression> {
+    type Error = PyErr;
+    fn extract(ob: pyo3::Borrowed<'a, 'py, pyo3::types::PyAny>) -> pyo3::PyResult<Self> {
         if let Ok(val) = ob.extract::<ExtraSlotsExpression>() {
             return Ok(Box::new(val));
         }

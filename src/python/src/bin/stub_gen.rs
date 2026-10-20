@@ -20,10 +20,11 @@ fn check_stubs(stub: &pyo3_stub_gen::StubInfo) -> pyo3_stub_gen::Result<()> {
     for (name, module) in &stub.modules {
         let normalized_name = name.replace('-', "_");
         let path = normalized_name.replace('.', "/");
-        let dest = if module.submodules.is_empty() {
-            stub.python_root.join(format!("{path}.pyi"))
-        } else {
+        // Mixed layout: pyo3-stub-gen writes `<module>/__init__.pyi`.
+        let dest = if stub.is_mixed_layout {
             stub.python_root.join(&path).join("__init__.pyi")
+        } else {
+            stub.python_root.join(format!("{path}.pyi"))
         };
 
         let expected = module.to_string();

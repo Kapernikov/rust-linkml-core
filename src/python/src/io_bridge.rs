@@ -16,7 +16,7 @@ const DEFAULT_CHUNK_SIZE: usize = 256 * 1024;
 
 /// Reader that pulls bytes from a Python file-like object.
 pub struct PyReader {
-    obj: PyObject,
+    obj: Py<PyAny>,
     chunk_size: usize,
     buf: Vec<u8>,
     buf_pos: usize,
@@ -24,7 +24,7 @@ pub struct PyReader {
 }
 
 impl PyReader {
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         Self {
             obj,
             chunk_size: DEFAULT_CHUNK_SIZE,
@@ -42,11 +42,11 @@ impl PyReader {
             self.buf_pos = 0;
             return Ok(());
         }
-        let result: PyResult<Vec<u8>> = Python::with_gil(|py| {
+        let result: PyResult<Vec<u8>> = Python::attach(|py| {
             let bound = self.obj.bind(py);
             let res = bound.call_method1("read", (self.chunk_size,))?;
             // Accept both bytes and bytearray.
-            if let Ok(b) = res.downcast::<PyBytes>() {
+            if let Ok(b) = res.cast::<PyBytes>() {
                 Ok(b.as_bytes().to_vec())
             } else {
                 let raw: Vec<u8> = res.extract()?;
@@ -76,11 +76,11 @@ impl PyReader {
 /// Each `write` call acquires the GIL; for streaming writes the caller
 /// should wrap this in a `BufWriter` to amortize.
 pub struct PyWriter {
-    obj: PyObject,
+    obj: Py<PyAny>,
 }
 
 impl PyWriter {
-    pub fn new(obj: PyObject) -> Self {
+    pub fn new(obj: Py<PyAny>) -> Self {
         Self { obj }
     }
 }
@@ -90,7 +90,7 @@ impl std::io::Write for PyWriter {
         if buf.is_empty() {
             return Ok(0);
         }
-        let result: PyResult<usize> = Python::with_gil(|py| {
+        let result: PyResult<usize> = Python::attach(|py| {
             let bound = self.obj.bind(py);
             let py_bytes = PyBytes::new(py, buf);
             // Python's IOBase.write() can return None (text mode) or the
@@ -108,7 +108,7 @@ impl std::io::Write for PyWriter {
     }
 
     fn flush(&mut self) -> IoResult<()> {
-        let result: PyResult<()> = Python::with_gil(|py| {
+        let result: PyResult<()> = Python::attach(|py| {
             let bound = self.obj.bind(py);
             // flush is optional on Python file-likes.
             if bound.hasattr("flush").unwrap_or(false) {

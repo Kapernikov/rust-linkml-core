@@ -20,13 +20,13 @@ fn data_path(name: &str) -> PathBuf {
 
 #[test]
 fn diff_and_patch_via_python() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
@@ -167,13 +167,13 @@ assert patched_valid.value.as_python() == valid_container.as_python()
 /// keeps answering when the whole-list one has gone positional.
 #[test]
 fn identity_labels_and_list_segments_via_python() {
-    pyo3::prepare_freethreaded_python();
-    Python::with_gil(|py| {
+    Python::initialize();
+    Python::attach(|py| {
         let module = PyModule::new(py, "linkml_runtime").unwrap();
         runtime_module(&module).unwrap();
         let sys = py.import("sys").unwrap();
         let modules = sys.getattr("modules").unwrap();
-        let sys_modules = modules.downcast::<PyDict>().unwrap();
+        let sys_modules = modules.cast::<PyDict>().unwrap();
         sys_modules.set_item("linkml_runtime", module).unwrap();
 
         let locals = PyDict::new(py);
