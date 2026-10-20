@@ -1306,8 +1306,11 @@ impl From<ValidationResult> for PyValidationResult {
 #[cfg_attr(feature = "stubgen", gen_stub_pymethods)]
 #[pymethods]
 impl PyValidationResult {
+    // Named explicitly: the stub generator would otherwise print the raw
+    // identifier `r#type`, which is not valid Python.
     #[getter]
-    fn r#type(&self) -> String {
+    #[pyo3(name = "type")]
+    fn problem_type(&self) -> String {
         self.inner.problem_type.label().to_string()
     }
 
