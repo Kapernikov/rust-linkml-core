@@ -1,7 +1,7 @@
 #![cfg(feature = "ttl")]
 
-//! Type regimes in the writers: the flat writers keep the partitions their
-//! regime names, the quad writers route each partition to its graph, and the
+//! Type inference in the writers: the flat writers keep the partitions their
+//! inference names, the quad writers route each partition to its graph, and the
 //! schema triples publish the matching subclass edges.
 
 use linkml_meta::SchemaDefinition;
@@ -9,7 +9,7 @@ use linkml_runtime::rdf_export::{
     export_ntriples_many, export_turtle_many, RdfOutputFormat, RdfStreamWriter,
 };
 use linkml_runtime::schema_rdf::{
-    schema_triples, SchemaRdfOptions, SchemaRdfProfile, TypePartition, TypeRegime, RDF_TYPE,
+    schema_triples, SchemaRdfOptions, SchemaRdfProfile, TypeInference, TypePartition, RDF_TYPE,
     SESAME_DIRECT_SUBCLASS_OF, SESAME_DIRECT_TYPE,
 };
 use linkml_runtime::turtle::{turtle_to_string, write_ntriples, write_turtle, WriteOptions};
@@ -115,7 +115,7 @@ fn fixture() -> Fixture {
 
 type Spo = (String, String, String);
 
-fn flat(f: &Fixture, regime: TypeRegime, skolem: bool) -> BTreeSet<Spo> {
+fn flat(f: &Fixture, inference: TypeInference, skolem: bool) -> BTreeSet<Spo> {
     let mut buf = Vec::new();
     write_ntriples(
         &f.instance,
@@ -123,7 +123,7 @@ fn flat(f: &Fixture, regime: TypeRegime, skolem: bool) -> BTreeSet<Spo> {
         &f.schema,
         &f.conv,
         &mut buf,
-        &WriteOptions::flat(regime).with_skolem(skolem),
+        &WriteOptions::flat(inference).with_skolem(skolem),
     )
     .unwrap();
     NTriplesParser::new()
@@ -162,12 +162,12 @@ fn names(list: &[&str]) -> BTreeSet<String> {
     list.iter().map(|n| iri(n)).collect()
 }
 
-/// Golden output of the writer before type regimes existed (skolem, sorted;
+/// Golden output of the writer before type inference existed (skolem, sorted;
 /// captured from the pre-change writer). `Asserted` must stay identical to it.
 const ASSERTED_GOLDEN: &str = include_str!("data/type_regimes_asserted_golden.nt");
 
 #[test]
-fn asserted_is_the_pre_regime_output() {
+fn asserted_is_the_pre_inference_output() {
     let f = fixture();
     let mut buf = Vec::new();
     write_ntriples(
@@ -189,13 +189,13 @@ fn asserted_is_the_pre_regime_output() {
 }
 
 #[test]
-fn flat_writer_honours_the_regime() {
+fn flat_writer_honours_the_inference() {
     let f = fixture();
     let s1 = "<https://example.com/type-regimes/s1>";
     let m1 = "<https://example.com/type-regimes/m1>";
-    let asserted = flat(&f, TypeRegime::ASSERTED, true);
-    let is_a = flat(&f, TypeRegime::IS_A, true);
-    let mixins = flat(&f, TypeRegime::IS_A_AND_MIXINS, true);
+    let asserted = flat(&f, TypeInference::ASSERTED, true);
+    let is_a = flat(&f, TypeInference::IS_A, true);
+    let mixins = flat(&f, TypeInference::IS_A_AND_MIXINS, true);
 
     assert_eq!(types_of(&asserted, s1, &rdf_type()), names(&["Signal"]));
     assert!(types_of(&asserted, s1, &direct_type()).is_empty());
@@ -244,7 +244,7 @@ fn flat_writer_honours_the_regime() {
         assert!(set.iter().all(|(_, p, _)| !p.ends_with("typeURI>")));
     }
 
-    // Each regime only adds to the previous one.
+    // Each inference only adds to the previous one.
     assert!(asserted.is_subset(&is_a));
     assert!(is_a.is_subset(&mixins));
 
@@ -257,14 +257,14 @@ fn flat_writer_honours_the_regime() {
 }
 
 #[test]
-fn turtle_string_follows_the_regime() {
+fn turtle_string_follows_the_inference() {
     let f = fixture();
     let ttl = turtle_to_string(
         &f.instance,
         &f.sv,
         &f.schema,
         &f.conv,
-        &WriteOptions::flat(TypeRegime::IS_A_AND_MIXINS),
+        &WriteOptions::flat(TypeInference::IS_A_AND_MIXINS),
     )
     .unwrap();
     assert!(ttl.contains("directType"), "{ttl}");
@@ -326,13 +326,13 @@ fn mapping(parts: &[(TypePartition, &str)]) -> WriteOptions {
 #[test]
 fn quad_graph_equals_flat_output_of_its_partitions() {
     let f = fixture();
-    for &regime in TypeRegime::NAMED {
-        // All of the regime's partitions share one graph.
-        let options = mapping(&regime.partitions().map(|p| (p, "g")).collect::<Vec<_>>());
-        let expected = flat(&f, regime, true);
+    for &inference in TypeInference::NAMED {
+        // All of the inference's partitions share one graph.
+        let options = mapping(&inference.partitions().map(|p| (p, "g")).collect::<Vec<_>>());
+        let expected = flat(&f, inference, true);
         for quads in [nquads(&f, &options), trig(&f, &options)] {
             assert_eq!(quads.len(), 1);
-            assert_eq!(quads[&graph("g").into_string()], expected, "{regime:?}");
+            assert_eq!(quads[&graph("g").into_string()], expected, "{inference:?}");
         }
     }
 }
@@ -346,12 +346,12 @@ fn quad_partitions_go_to_separate_graphs() {
         (TypePartition::Mixin, "mixin"),
         (TypePartition::Direct, "direct"),
     ]);
-    let all = flat(&f, TypeRegime::IS_A_AND_MIXINS, true);
+    let all = flat(&f, TypeInference::IS_A_AND_MIXINS, true);
     for quads in [nquads(&f, &options), trig(&f, &options)] {
         let union: BTreeSet<Spo> = quads.values().flatten().cloned().collect();
         assert_eq!(union, all);
         let own = &quads[&graph("own").into_string()];
-        assert_eq!(*own, flat(&f, TypeRegime::ASSERTED, true));
+        assert_eq!(*own, flat(&f, TypeInference::ASSERTED, true));
         assert!(quads[&graph("is_a").into_string()]
             .iter()
             .all(|(_, p, _)| *p == rdf_type()));
@@ -368,9 +368,9 @@ fn quad_partitions_go_to_separate_graphs() {
     // Partitions missing from the map are not written; two may share a graph.
     let partial = mapping(&[(TypePartition::Own, "g"), (TypePartition::Direct, "g")]);
     let quads = nquads(&f, &partial);
-    let mut expected = flat(&f, TypeRegime::ASSERTED, true);
+    let mut expected = flat(&f, TypeInference::ASSERTED, true);
     expected.extend(
-        flat(&f, TypeRegime::IS_A, true)
+        flat(&f, TypeInference::IS_A, true)
             .into_iter()
             .filter(|(_, p, _)| *p == direct_type()),
     );
@@ -443,10 +443,14 @@ fn designates_type_on_rdf_type_is_rejected() {
     check(write_trig(&f.instance, &f.sv, &f.schema, &f.conv, &mut buf, &options).unwrap_err());
 }
 
-fn schema_edges(f: &Fixture, regime: TypeRegime, predicate: &str) -> BTreeSet<(String, String)> {
+fn schema_edges(
+    f: &Fixture,
+    inference: TypeInference,
+    predicate: &str,
+) -> BTreeSet<(String, String)> {
     let triples = schema_triples(
         &f.sv,
-        &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_regime(regime),
+        &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_inference(inference),
     );
     triples
         .triples
@@ -461,18 +465,18 @@ fn edges(list: &[(&str, &str)]) -> BTreeSet<(String, String)> {
 }
 
 #[test]
-fn schema_triples_publish_the_regime_edges() {
+fn schema_triples_publish_the_inference_edges() {
     let f = fixture();
     let sub = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
 
     // Asserted: direct is_a only, no directSubClassOf.
-    let asserted = schema_edges(&f, TypeRegime::ASSERTED, sub);
+    let asserted = schema_edges(&f, TypeInference::ASSERTED, sub);
     assert!(asserted.contains(&(iri("Signal"), iri("Asset"))));
     assert!(!asserted.contains(&(iri("MainSignal"), iri("Thing"))));
-    assert!(schema_edges(&f, TypeRegime::ASSERTED, SESAME_DIRECT_SUBCLASS_OF).is_empty());
+    assert!(schema_edges(&f, TypeInference::ASSERTED, SESAME_DIRECT_SUBCLASS_OF).is_empty());
 
     // IsA: transitive closure, no mixin edges, no self edges.
-    let closure = schema_edges(&f, TypeRegime::IS_A, sub);
+    let closure = schema_edges(&f, TypeInference::IS_A, sub);
     for pair in [
         ("MainSignal", "Signal"),
         ("MainSignal", "Asset"),
@@ -489,7 +493,7 @@ fn schema_triples_publish_the_regime_edges() {
     assert!(!closure.contains(&(iri("SelfMixin"), iri("SelfMixin"))));
 
     // Direct edges: immediate superclass only.
-    let direct = schema_edges(&f, TypeRegime::IS_A, SESAME_DIRECT_SUBCLASS_OF);
+    let direct = schema_edges(&f, TypeInference::IS_A, SESAME_DIRECT_SUBCLASS_OF);
     assert!(direct.is_superset(&edges(&[
         ("MainSignal", "Signal"),
         ("Signal", "Asset"),
@@ -501,7 +505,7 @@ fn schema_triples_publish_the_regime_edges() {
 
     // IsAAndMixins: mixins are superclasses, and the nearer is_a/mixin edges
     // are the direct ones.
-    let with_mixins = schema_edges(&f, TypeRegime::IS_A_AND_MIXINS, sub);
+    let with_mixins = schema_edges(&f, TypeInference::IS_A_AND_MIXINS, sub);
     for pair in [
         ("Signal", "Located"),
         ("Signal", "Placed"),
@@ -515,27 +519,31 @@ fn schema_triples_publish_the_regime_edges() {
     }
     assert!(with_mixins.is_superset(&closure));
     assert!(with_mixins.iter().all(|(s, o)| s != o));
-    let direct_mixins = schema_edges(&f, TypeRegime::IS_A_AND_MIXINS, SESAME_DIRECT_SUBCLASS_OF);
+    let direct_mixins = schema_edges(
+        &f,
+        TypeInference::IS_A_AND_MIXINS,
+        SESAME_DIRECT_SUBCLASS_OF,
+    );
     assert!(direct_mixins.contains(&(iri("Signal"), iri("Located"))));
     assert!(!direct_mixins.contains(&(iri("Signal"), iri("Placed"))));
     assert!(!direct_mixins.contains(&(iri("MainSignal"), iri("Located"))));
 }
 
 /// OWL restriction blank nodes hang off their class with `rdfs:subClassOf`.
-/// The regimes only change the edges between *named* classes: every
-/// restriction triple is the same in every regime (none lost, none
+/// The inferences only change the edges between *named* classes: every
+/// restriction triple is the same in every inference (none lost, none
 /// duplicated), restrictions are never closed over as if they were classes
 /// (a class does not inherit its ancestors' restriction nodes — it already
 /// carries its own for every induced slot, with `slot_usage` applied), and a
 /// restriction is never a `sesame:directSubClassOf` object.
 #[test]
-fn schema_regimes_leave_owl_restrictions_alone() {
+fn schema_inferences_leave_owl_restrictions_alone() {
     let f = fixture();
     let sub = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
-    let non_class_edges = |regime: TypeRegime| -> BTreeSet<String> {
+    let non_class_edges = |inference: TypeInference| -> BTreeSet<String> {
         schema_triples(
             &f.sv,
-            &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_regime(regime),
+            &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_inference(inference),
         )
         .triples
         .iter()
@@ -548,7 +556,7 @@ fn schema_regimes_leave_owl_restrictions_alone() {
         .map(|t| t.to_string())
         .collect()
     };
-    let asserted = non_class_edges(TypeRegime::ASSERTED);
+    let asserted = non_class_edges(TypeInference::ASSERTED);
     let restriction_edges: Vec<&String> = asserted
         .iter()
         .filter(|t| t.contains(&format!("<{sub}> _:")))
@@ -557,28 +565,28 @@ fn schema_regimes_leave_owl_restrictions_alone() {
         !restriction_edges.is_empty(),
         "fixture must carry OWL restrictions for this test to mean anything"
     );
-    for regime in [TypeRegime::IS_A, TypeRegime::IS_A_AND_MIXINS] {
+    for inference in [TypeInference::IS_A, TypeInference::IS_A_AND_MIXINS] {
         assert_eq!(
-            non_class_edges(regime),
+            non_class_edges(inference),
             asserted,
-            "{regime:?}: restriction / non-class triples differ from Asserted"
+            "{inference:?}: restriction / non-class triples differ from Asserted"
         );
         let all = schema_triples(
             &f.sv,
-            &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_regime(regime),
+            &SchemaRdfOptions::new(SchemaRdfProfile::Discovery).with_inference(inference),
         );
         for t in &all.triples {
             let p = t.predicate.as_str();
             if p == sub || p == SESAME_DIRECT_SUBCLASS_OF {
                 assert!(
                     t.subject.is_named_node(),
-                    "{regime:?}: a restriction node was treated as a class: {t}"
+                    "{inference:?}: a restriction node was treated as a class: {t}"
                 );
             }
             if p == SESAME_DIRECT_SUBCLASS_OF {
                 assert!(
                     t.object.is_named_node(),
-                    "{regime:?}: a restriction is a direct superclass: {t}"
+                    "{inference:?}: a restriction is a direct superclass: {t}"
                 );
             }
         }
@@ -593,7 +601,7 @@ fn blank_nodes<'a>(terms: impl Iterator<Item = &'a String>) -> BTreeSet<String> 
 #[test]
 fn many_exporters_label_blank_nodes_uniquely_across_instances() {
     let f = fixture();
-    let one = flat(&f, TypeRegime::ASSERTED, false);
+    let one = flat(&f, TypeInference::ASSERTED, false);
     let per_instance = blank_nodes(one.iter().flat_map(|(s, _, o)| [s, o])).len();
     assert!(per_instance > 0);
     let two = || vec![f.instance.clone(), f.instance.clone()];
@@ -691,14 +699,14 @@ fn many_exporters_label_blank_nodes_uniquely_across_instances() {
 fn schema_edges_follow_partition_membership() {
     let f = fixture();
     let sub = "http://www.w3.org/2000/01/rdf-schema#subClassOf";
-    let no_direct: TypeRegime = [TypePartition::Own, TypePartition::IsA]
+    let no_direct: TypeInference = [TypePartition::Own, TypePartition::IsA]
         .into_iter()
         .collect();
     let closure = schema_edges(&f, no_direct, sub);
-    assert_eq!(closure, schema_edges(&f, TypeRegime::IS_A, sub));
+    assert_eq!(closure, schema_edges(&f, TypeInference::IS_A, sub));
     assert!(schema_edges(&f, no_direct, SESAME_DIRECT_SUBCLASS_OF).is_empty());
     // A set without Own still publishes the asserted hierarchy.
-    let mixin_only = TypeRegime::from(TypePartition::Mixin);
+    let mixin_only = TypeInference::from(TypePartition::Mixin);
     let edges_m = schema_edges(&f, mixin_only, sub);
     assert!(edges_m.contains(&(iri("Signal"), iri("Asset"))));
     assert!(edges_m.contains(&(iri("Signal"), iri("Located"))));
@@ -760,7 +768,7 @@ fn write_options_are_validated_per_writer() {
         &f.sv,
         &f.schema,
         &f.conv,
-        &WriteOptions::flat(TypeRegime::empty())
+        &WriteOptions::flat(TypeInference::empty())
     )
     .is_err());
     // The flat writers refuse a named graph; the quad writers take it.
@@ -805,7 +813,7 @@ fn quad_writers_can_route_a_partition_to_the_default_graph() {
         .map(|q| q.unwrap())
         .collect();
     for quads in [nq, tg] {
-        let own = flat(&f, TypeRegime::ASSERTED, true);
+        let own = flat(&f, TypeInference::ASSERTED, true);
         let (default, named): (Vec<_>, Vec<_>) = quads
             .iter()
             .partition(|q| q.graph_name == GraphName::DefaultGraph);
@@ -861,7 +869,7 @@ fn type_partitions_does_not_list_direct() {
     assert_eq!(parts[0].0, TypePartition::Own);
     assert!(parts.iter().all(|(p, _)| *p != TypePartition::Direct));
     // The writer still emits the directType when the options route it.
-    let direct = flat(&f, TypeRegime::from(TypePartition::Direct), true);
+    let direct = flat(&f, TypeInference::from(TypePartition::Direct), true);
     assert!(!direct.is_empty());
     assert!(direct.iter().all(|(_, p, _)| *p == direct_type()));
 }
@@ -941,7 +949,7 @@ fn iri_lookalikes_inside_literals_survive_turtle_and_trig() {
 fn stream_writer_keeps_blank_nodes_distinct_in_every_format() {
     let f = fixture();
     let per_instance = {
-        let one = flat(&f, TypeRegime::ASSERTED, false);
+        let one = flat(&f, TypeInference::ASSERTED, false);
         blank_nodes(one.iter().flat_map(|(s, _, o)| [s, o])).len()
     };
     assert!(per_instance > 0);

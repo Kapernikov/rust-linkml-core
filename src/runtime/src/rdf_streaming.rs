@@ -24,7 +24,7 @@ use linkml_schemaview::identifier::Identifier;
 use linkml_schemaview::schemaview::{SchemaView, SlotInlineMode};
 use linkml_schemaview::Converter;
 
-use crate::schema_rdf::{type_family, TypeRegime, SESAME_DIRECT_TYPE};
+use crate::schema_rdf::{type_family, TypeInference, SESAME_DIRECT_TYPE};
 use crate::triple_source::TripleSource;
 use crate::turtle_import::{harvest_subject, resolve_class, HarvestContext, ImportError};
 use crate::{LinkMLInstance, ValidationResult};
@@ -70,7 +70,7 @@ fn collect_root_subjects<T: TripleSource>(
             .get_class(&Identifier::new(name), conv)
             .map_err(ImportError::SchemaError)?
             .ok_or_else(|| ImportError::UnknownClass(name.to_string()))?;
-        let family = type_family(&cv, TypeRegime::IS_A_AND_MIXINS)?;
+        let family = type_family(&cv, TypeInference::IS_A_AND_MIXINS)?;
         let family_keys: HashSet<String> = family
             .iter()
             .map(|c| c.canonical_uri().to_string())

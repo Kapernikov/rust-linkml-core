@@ -59,9 +59,9 @@ __all__ = [
     "TypeConflictError",
     "TypeDefinition",
     "TypeExpression",
+    "TypeInference",
     "TypeMapping",
     "TypePartition",
-    "TypeRegime",
     "UniqueKey",
     "UnitOfMeasure",
     "ValidationResult",
@@ -2931,9 +2931,9 @@ class LinkMLInstance:
     def unknown_fields(self) -> dict: ...
     def validation_issues(self) -> builtins.list[ValidationResult]: ...
     def as_python(self) -> typing.Any: ...
-    def as_turtle(self, *, skolem: builtins.bool = False, regime: TypeRegime = TypeRegime.ASSERTED) -> builtins.str:
+    def as_turtle(self, *, skolem: builtins.bool = False, inference: TypeInference = TypeInference.ASSERTED) -> builtins.str:
         r"""
-        This instance as Turtle. `regime` picks which type triples are
+        This instance as Turtle. `inference` picks which type triples are
         written; Turtle cannot carry graph names.
         """
     def as_nquads(self, partition_graphs: typing.Mapping[TypePartition, typing.Optional[builtins.str]], *, skolem: builtins.bool = False) -> builtins.str:
@@ -5233,6 +5233,80 @@ class TypeExpression:
     def all_of(self, value: typing.Optional[typing.Sequence[AnonymousTypeExpression]]) -> None: ...
     def __new__(cls, pattern: typing.Optional[builtins.str] = None, structured_pattern: typing.Optional[PatternExpression] = None, unit: typing.Optional[UnitOfMeasure] = None, implicit_prefix: typing.Optional[builtins.str] = None, equals_string: typing.Optional[builtins.str] = None, equals_string_in: typing.Optional[typing.Sequence[builtins.str]] = None, equals_number: typing.Optional[builtins.int] = None, minimum_value: typing.Optional[typing.Any] = None, maximum_value: typing.Optional[typing.Any] = None, none_of: typing.Optional[builtins.list[AnonymousTypeExpression]] = None, exactly_one_of: typing.Optional[builtins.list[AnonymousTypeExpression]] = None, any_of: typing.Optional[builtins.list[AnonymousTypeExpression]] = None, all_of: typing.Optional[builtins.list[AnonymousTypeExpression]] = None) -> TypeExpression: ...
 
+@typing.final
+class TypeInference:
+    r"""
+    Which type triples the RDF writers emit: a set of `TypePartition`s; see
+    `linkml_runtime::schema_rdf::TypeInference`. Use the named inferences
+    `TypeInference.ASSERTED`, `TypeInference.IS_A`, `TypeInference.IS_A_AND_MIXINS`,
+    build one from a `TypePartition` or an iterable of them, or
+    `TypeInference.parse("{own,is_a}")`. Supports `|` (union), `&` (intersection),
+    `<=` (subset), `in`, `len()` and iteration over its partitions.
+    """
+    ASSERTED: TypeInference
+    r"""
+    Only the instance's own class.
+    """
+    IS_A: TypeInference
+    r"""
+    Own class, transitive is_a ancestors, and sesame:directType.
+    """
+    IS_A_AND_MIXINS: TypeInference
+    r"""
+    As IS_A, with mixins counted as superclasses.
+    """
+    def __new__(cls, partitions: TypePartition | typing.Iterable[TypePartition]) -> TypeInference:
+        r"""
+        The inference made of exactly the given partition, or of the partitions
+        of the given iterable.
+        """
+    @staticmethod
+    def parse(s: builtins.str) -> TypeInference:
+        r"""
+        Parse `str(inference)` output: `asserted`, `is_a`, `is_a_and_mixins`, or a
+        braced comma-separated partition list such as `{own,is_a}` (any order,
+        repeats and whitespace allowed; `{}` is the empty set). Raises
+        `ValueError` on anything else.
+        """
+    def __str__(self) -> builtins.str: ...
+    def __repr__(self) -> builtins.str: ...
+    def __or__(self, other: TypeInference | TypePartition) -> TypeInference:
+        r"""
+        The union with an inference or a single partition.
+        """
+    def __ror__(self, other: TypeInference | TypePartition) -> TypeInference:
+        r"""
+        The union with an inference or a single partition (reflected).
+        """
+    def __and__(self, other: TypeInference | TypePartition) -> TypeInference:
+        r"""
+        The partitions common to this inference and an inference or a single
+        partition.
+        """
+    def __rand__(self, other: TypeInference | TypePartition) -> TypeInference:
+        r"""
+        The partitions common to this inference and an inference or a single
+        partition (reflected).
+        """
+    def __le__(self, other: TypeInference) -> builtins.bool:
+        r"""
+        Whether every partition of this inference is in `other`.
+        """
+    def __len__(self) -> builtins.int:
+        r"""
+        The number of partitions in the set.
+        """
+    def __iter__(self) -> typing.Iterator[TypePartition]:
+        r"""
+        Iterate the partitions in declaration order.
+        """
+    def __eq__(self, other: typing.Any) -> builtins.bool: ...
+    def __hash__(self) -> builtins.int: ...
+    def __contains__(self, partition: TypePartition) -> builtins.bool:
+        r"""
+        Whether the partition is in the set.
+        """
+
 class TypeMapping:
     @property
     def framework_key(self) -> builtins.str: ...
@@ -5418,80 +5492,6 @@ class TypePartition:
         Parse `str(partition)` output: `own`, `is_a`, `mixin` or `direct`. Raises `ValueError` on anything else.
         """
     def __repr__(self) -> builtins.str: ...
-
-@typing.final
-class TypeRegime:
-    r"""
-    Which type triples the RDF writers emit: a set of `TypePartition`s; see
-    `linkml_runtime::schema_rdf::TypeRegime`. Use the named regimes
-    `TypeRegime.ASSERTED`, `TypeRegime.IS_A`, `TypeRegime.IS_A_AND_MIXINS`,
-    build one from a `TypePartition` or an iterable of them, or
-    `TypeRegime.parse("{own,is_a}")`. Supports `|` (union), `&` (intersection),
-    `<=` (subset), `in`, `len()` and iteration over its partitions.
-    """
-    ASSERTED: TypeRegime
-    r"""
-    Only the instance's own class.
-    """
-    IS_A: TypeRegime
-    r"""
-    Own class, transitive is_a ancestors, and sesame:directType.
-    """
-    IS_A_AND_MIXINS: TypeRegime
-    r"""
-    As IS_A, with mixins counted as superclasses.
-    """
-    def __new__(cls, partitions: TypePartition | typing.Iterable[TypePartition]) -> TypeRegime:
-        r"""
-        The regime made of exactly the given partition, or of the partitions
-        of the given iterable.
-        """
-    @staticmethod
-    def parse(s: builtins.str) -> TypeRegime:
-        r"""
-        Parse `str(regime)` output: `asserted`, `is_a`, `is_a_and_mixins`, or a
-        braced comma-separated partition list such as `{own,is_a}` (any order,
-        repeats and whitespace allowed; `{}` is the empty set). Raises
-        `ValueError` on anything else.
-        """
-    def __str__(self) -> builtins.str: ...
-    def __repr__(self) -> builtins.str: ...
-    def __or__(self, other: TypeRegime | TypePartition) -> TypeRegime:
-        r"""
-        The union with a regime or a single partition.
-        """
-    def __ror__(self, other: TypeRegime | TypePartition) -> TypeRegime:
-        r"""
-        The union with a regime or a single partition (reflected).
-        """
-    def __and__(self, other: TypeRegime | TypePartition) -> TypeRegime:
-        r"""
-        The partitions common to this regime and a regime or a single
-        partition.
-        """
-    def __rand__(self, other: TypeRegime | TypePartition) -> TypeRegime:
-        r"""
-        The partitions common to this regime and a regime or a single
-        partition (reflected).
-        """
-    def __le__(self, other: TypeRegime) -> builtins.bool:
-        r"""
-        Whether every partition of this regime is in `other`.
-        """
-    def __len__(self) -> builtins.int:
-        r"""
-        The number of partitions in the set.
-        """
-    def __iter__(self) -> typing.Iterator[TypePartition]:
-        r"""
-        Iterate the partitions in declaration order.
-        """
-    def __eq__(self, other: typing.Any) -> builtins.bool: ...
-    def __hash__(self) -> builtins.int: ...
-    def __contains__(self, partition: TypePartition) -> builtins.bool:
-        r"""
-        Whether the partition is in the set.
-        """
 
 class UniqueKey:
     @property
@@ -5739,7 +5739,7 @@ def export_nquads(instances: typing.Any, schema_view: SchemaView, writer: typing
     default graph).
     """
 
-def export_ntriples(instances: typing.Any, schema_view: SchemaView, writer: typing.Any, *, skolem: builtins.bool = False, regime: TypeRegime = TypeRegime.ASSERTED) -> None:
+def export_ntriples(instances: typing.Any, schema_view: SchemaView, writer: typing.Any, *, skolem: builtins.bool = False, inference: TypeInference = TypeInference.ASSERTED) -> None:
     r"""
     Write LinkML instances as N-Triples into a Python file-like object.
     """
@@ -5751,7 +5751,7 @@ def export_trig(instances: typing.Any, schema_view: SchemaView, writer: typing.A
     default graph).
     """
 
-def export_turtle(instances: typing.Any, schema_view: SchemaView, writer: typing.Any, *, skolem: builtins.bool = False, regime: TypeRegime = TypeRegime.ASSERTED) -> None:
+def export_turtle(instances: typing.Any, schema_view: SchemaView, writer: typing.Any, *, skolem: builtins.bool = False, inference: TypeInference = TypeInference.ASSERTED) -> None:
     r"""
     Write LinkML instances as Turtle into a Python file-like object.
     

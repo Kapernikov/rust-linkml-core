@@ -34,7 +34,7 @@ use oxrdf::{
 use oxttl::{NQuadsSerializer, NTriplesSerializer, TriGSerializer, TurtleSerializer};
 
 use crate::rdf_export::{RdfOutputFormat, RdfStreamWriter};
-use crate::schema_rdf::{TypePartition, TypeRegime, RDF_TYPE, SESAME_DIRECT_TYPE};
+use crate::schema_rdf::{TypeInference, TypePartition, RDF_TYPE, SESAME_DIRECT_TYPE};
 use crate::LinkMLInstance;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -61,11 +61,11 @@ pub struct WriteOptions {
 }
 
 impl WriteOptions {
-    /// Write every partition of `regime` into the default graph. This is what
+    /// Write every partition of `inference` into the default graph. This is what
     /// the flat writers need.
-    pub fn flat(regime: TypeRegime) -> Self {
+    pub fn flat(inference: TypeInference) -> Self {
         Self::quads(
-            regime
+            inference
                 .partitions()
                 .map(|p| (p, GraphName::DefaultGraph))
                 .collect(),
@@ -114,9 +114,9 @@ impl WriteOptions {
 }
 
 impl Default for WriteOptions {
-    /// [`WriteOptions::flat`] of [`TypeRegime::ASSERTED`], without skolem IRIs.
+    /// [`WriteOptions::flat`] of [`TypeInference::ASSERTED`], without skolem IRIs.
     fn default() -> Self {
-        Self::flat(TypeRegime::ASSERTED)
+        Self::flat(TypeInference::ASSERTED)
     }
 }
 
@@ -371,7 +371,7 @@ fn identifier_node(
 }
 
 /// Receives every triple the walk produces, tagged with the [`TypePartition`]
-/// it belongs to. The flat writers keep the partitions their regime names; the
+/// it belongs to. The flat writers keep the partitions their inference names; the
 /// quad writers route each one to its graph.
 trait TripleSink {
     /// Whether triples of `partition` are kept at all. Lets the walk skip
@@ -452,7 +452,7 @@ fn rdf_type_node() -> NamedNode {
 
 /// A `designates_type` slot mapped onto `rdf:type` would write the designator
 /// value as a second, unrelated type of the node and collide with the type
-/// regimes. Refuse it rather than guess.
+/// inferences. Refuse it rather than guess.
 fn reject_type_designator_on_rdf_type(cv: &ClassView, conv: &Converter) -> IoResult<()> {
     for slot in cv.slots() {
         if slot.definition().designates_type.unwrap_or(false)

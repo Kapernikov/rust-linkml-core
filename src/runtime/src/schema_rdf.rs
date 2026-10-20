@@ -279,19 +279,19 @@
 //! [`slot_predicate_iri`] does the same for slot predicates. Having the
 //! decision made independently in two places is how it silently drifts.
 //!
-//! # Type regimes and subclass edges
+//! # Type inference and subclass edges
 //!
-//! [`SchemaRdfOptions::regime`] decides which class hierarchy is published.
+//! [`SchemaRdfOptions::inference`] decides which class hierarchy is published.
 //! The direct `is_a` edge of each class is always an `rdfs:subClassOf`;
-//! [`subclass_edges`] adds one for every further class in the regime's
+//! [`subclass_edges`] adds one for every further class in the inference's
 //! `rdf:type` partitions (the transitive closure for `IS_A`, plus mixins for
-//! `IS_A_AND_MIXINS`), and a regime containing `Direct` adds one
+//! `IS_A_AND_MIXINS`), and an inference containing `Direct` adds one
 //! `sesame:directSubClassOf` per [`direct_subclass_edges`] pair. The instance
 //! writer writes the matching `rdf:type` / `sesame:directType` triples, so a
 //! query for `?s a <Class>` over instance data and the schema agree.
 //!
 //! The inferred schema is the strict transitive closure of the subclass edges
-//! over named classes (plus mixins where the regime says so). It is not RDFS
+//! over named classes (plus mixins where the inference says so). It is not RDFS
 //! entailment: nothing is reflexive, no `rdfs:Resource` or `owl:Thing` edge is
 //! added, and no domain/range or property inference is performed.
 //!
@@ -415,8 +415,8 @@ pub struct SchemaRdfOptions {
     /// The vocabulary to express the schema in.
     pub profile: SchemaRdfProfile,
     /// Which subclass edges to publish (see [`subclass_edges`] and
-    /// [`direct_subclass_edges`]). The default is [`TypeRegime::ASSERTED`].
-    pub regime: TypeRegime,
+    /// [`direct_subclass_edges`]). The default is [`TypeInference::ASSERTED`].
+    pub inference: TypeInference,
 }
 
 impl SchemaRdfOptions {
@@ -424,13 +424,13 @@ impl SchemaRdfOptions {
     pub fn new(profile: SchemaRdfProfile) -> Self {
         Self {
             profile,
-            regime: TypeRegime::ASSERTED,
+            inference: TypeInference::ASSERTED,
         }
     }
 
-    /// The same options under another type regime.
-    pub fn with_regime(mut self, regime: TypeRegime) -> Self {
-        self.regime = regime;
+    /// The same options under another type inference.
+    pub fn with_inference(mut self, inference: TypeInference) -> Self {
+        self.inference = inference;
         self
     }
 }
@@ -509,7 +509,7 @@ pub use linkml_schemaview::enumview::permissible_value_iri;
 /// partition: it is the fixed RDF4J/GraphDB vocabulary, not configurable.
 pub const SESAME_DIRECT_TYPE: &str = "http://www.openrdf.org/schema/sesame#directType";
 /// `sesame:directSubClassOf`: a class's immediate superclass (RDF4J / GraphDB
-/// vocabulary). The schema triples use exactly this predicate when the regime
+/// vocabulary). The schema triples use exactly this predicate when the inference
 /// contains `Direct`: it is the fixed RDF4J/GraphDB vocabulary, not
 /// configurable.
 pub const SESAME_DIRECT_SUBCLASS_OF: &str = "http://www.openrdf.org/schema/sesame#directSubClassOf";
@@ -517,48 +517,48 @@ pub const SESAME_DIRECT_SUBCLASS_OF: &str = "http://www.openrdf.org/schema/sesam
 /// Which type triples are written for an instance, and which subclass edges
 /// for the schema.
 ///
-/// A regime is a set of [`TypePartition`]s: the writer keeps exactly the
+/// An inference is a set of [`TypePartition`]s: the writer keeps exactly the
 /// triples whose partition the set [`contains`](Self::contains), and the
 /// schema edges follow the same membership. Any of the 16 sets is a valid
-/// regime; [`ASSERTED`](Self::ASSERTED), [`IS_A`](Self::IS_A) and
+/// inference; [`ASSERTED`](Self::ASSERTED), [`IS_A`](Self::IS_A) and
 /// [`IS_A_AND_MIXINS`](Self::IS_A_AND_MIXINS) are the named ones.
 ///
-/// Displays as its name when it equals a named regime (`asserted`, `is_a`,
+/// Displays as its name when it equals a named inference (`asserted`, `is_a`,
 /// `is_a_and_mixins`); every other set displays as its partitions in
 /// declaration order, comma-separated in braces (`{own,is_a}`, `{is_a}`, and
 /// `{}` for the empty set). [`FromStr`] reads both spellings back, so every
-/// set round-trips. Only braced text is a partition list, so the regime name
+/// set round-trips. Only braced text is a partition list, so the inference name
 /// `is_a` and the partition name `is_a` never collide.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeRegime(u8);
+pub struct TypeInference(u8);
 
-impl TypeRegime {
+impl TypeInference {
     /// Only the instance's own class. Schema: the direct `is_a` edges only.
-    pub const ASSERTED: TypeRegime = TypeRegime::empty().with(TypePartition::Own);
+    pub const ASSERTED: TypeInference = TypeInference::empty().with(TypePartition::Own);
     /// The own class, every transitive `is_a` ancestor, and
     /// `sesame:directType`. Schema: transitively closed `rdfs:subClassOf`
     /// plus `sesame:directSubClassOf`.
-    pub const IS_A: TypeRegime = TypeRegime::ASSERTED
+    pub const IS_A: TypeInference = TypeInference::ASSERTED
         .with(TypePartition::IsA)
         .with(TypePartition::Direct);
     /// As [`IS_A`](Self::IS_A), and mixins count as superclasses too.
-    pub const IS_A_AND_MIXINS: TypeRegime = TypeRegime::IS_A.with(TypePartition::Mixin);
-    /// The three named regimes, in order: [`ASSERTED`](Self::ASSERTED),
+    pub const IS_A_AND_MIXINS: TypeInference = TypeInference::IS_A.with(TypePartition::Mixin);
+    /// The three named inferences, in order: [`ASSERTED`](Self::ASSERTED),
     /// [`IS_A`](Self::IS_A), [`IS_A_AND_MIXINS`](Self::IS_A_AND_MIXINS).
-    pub const NAMED: &'static [TypeRegime] = &[
-        TypeRegime::ASSERTED,
-        TypeRegime::IS_A,
-        TypeRegime::IS_A_AND_MIXINS,
+    pub const NAMED: &'static [TypeInference] = &[
+        TypeInference::ASSERTED,
+        TypeInference::IS_A,
+        TypeInference::IS_A_AND_MIXINS,
     ];
 
     /// The set with no partition: writes no triple at all.
     pub const fn empty() -> Self {
-        TypeRegime(0)
+        TypeInference(0)
     }
 
     /// This set plus `p`.
     pub const fn with(self, p: TypePartition) -> Self {
-        TypeRegime(self.0 | p.bit())
+        TypeInference(self.0 | p.bit())
     }
 
     /// Whether `p` is in the set.
@@ -567,17 +567,17 @@ impl TypeRegime {
     }
 
     /// The partitions in either set.
-    pub const fn union(self, other: TypeRegime) -> Self {
-        TypeRegime(self.0 | other.0)
+    pub const fn union(self, other: TypeInference) -> Self {
+        TypeInference(self.0 | other.0)
     }
 
     /// The partitions in both sets.
-    pub const fn intersection(self, other: TypeRegime) -> Self {
-        TypeRegime(self.0 & other.0)
+    pub const fn intersection(self, other: TypeInference) -> Self {
+        TypeInference(self.0 & other.0)
     }
 
     /// Whether every partition of `self` is in `other`.
-    pub const fn is_subset(self, other: TypeRegime) -> bool {
+    pub const fn is_subset(self, other: TypeInference) -> bool {
         self.0 & !other.0 == 0
     }
 
@@ -590,36 +590,36 @@ impl TypeRegime {
     }
 }
 
-impl Default for TypeRegime {
-    /// [`TypeRegime::ASSERTED`].
+impl Default for TypeInference {
+    /// [`TypeInference::ASSERTED`].
     fn default() -> Self {
-        TypeRegime::ASSERTED
+        TypeInference::ASSERTED
     }
 }
 
-impl From<TypePartition> for TypeRegime {
+impl From<TypePartition> for TypeInference {
     fn from(p: TypePartition) -> Self {
-        TypeRegime::empty().with(p)
+        TypeInference::empty().with(p)
     }
 }
 
-impl FromIterator<TypePartition> for TypeRegime {
+impl FromIterator<TypePartition> for TypeInference {
     fn from_iter<I: IntoIterator<Item = TypePartition>>(iter: I) -> Self {
         iter.into_iter()
-            .fold(TypeRegime::empty(), |acc, p| acc.with(p))
+            .fold(TypeInference::empty(), |acc, p| acc.with(p))
     }
 }
 
-impl fmt::Display for TypeRegime {
-    /// The name of a named regime, else the braced partition list.
+impl fmt::Display for TypeInference {
+    /// The name of a named inference, else the braced partition list.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if *self == TypeRegime::ASSERTED {
+        if *self == TypeInference::ASSERTED {
             return f.write_str("asserted");
         }
-        if *self == TypeRegime::IS_A {
+        if *self == TypeInference::IS_A {
             return f.write_str("is_a");
         }
-        if *self == TypeRegime::IS_A_AND_MIXINS {
+        if *self == TypeInference::IS_A_AND_MIXINS {
             return f.write_str("is_a_and_mixins");
         }
         f.write_str("{")?;
@@ -633,8 +633,8 @@ impl fmt::Display for TypeRegime {
     }
 }
 
-impl FromStr for TypeRegime {
-    type Err = ParseTypeRegimeError;
+impl FromStr for TypeInference {
+    type Err = ParseTypeInferenceError;
 
     /// Accepts `asserted`, `is_a`, `is_a_and_mixins`, or a braced,
     /// comma-separated list of partition names (`{own,is_a}`). The list may
@@ -644,18 +644,18 @@ impl FromStr for TypeRegime {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
         match s {
-            "asserted" => return Ok(TypeRegime::ASSERTED),
-            "is_a" => return Ok(TypeRegime::IS_A),
-            "is_a_and_mixins" => return Ok(TypeRegime::IS_A_AND_MIXINS),
+            "asserted" => return Ok(TypeInference::ASSERTED),
+            "is_a" => return Ok(TypeInference::IS_A),
+            "is_a_and_mixins" => return Ok(TypeInference::IS_A_AND_MIXINS),
             _ => {}
         }
         let inner = s
             .strip_prefix('{')
             .and_then(|rest| rest.strip_suffix('}'))
-            .ok_or_else(|| ParseTypeRegimeError(s.to_string()))?
+            .ok_or_else(|| ParseTypeInferenceError(s.to_string()))?
             .trim();
         if inner.is_empty() {
-            return Ok(TypeRegime::empty());
+            return Ok(TypeInference::empty());
         }
         inner
             .split(',')
@@ -664,15 +664,15 @@ impl FromStr for TypeRegime {
     }
 }
 
-/// A string that is not a type regime or partition name.
+/// A string that is not a type inference or partition name.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParseTypeRegimeError(String);
+pub struct ParseTypeInferenceError(String);
 
-impl fmt::Display for ParseTypeRegimeError {
+impl fmt::Display for ParseTypeInferenceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "unknown type regime or partition {:?}; expected one of \
+            "unknown type inference or partition {:?}; expected one of \
              asserted, is_a, is_a_and_mixins, or a braced list of partition \
              names (own, is_a, mixin, direct) such as {{own,is_a}}",
             self.0
@@ -680,7 +680,7 @@ impl fmt::Display for ParseTypeRegimeError {
     }
 }
 
-impl std::error::Error for ParseTypeRegimeError {}
+impl std::error::Error for ParseTypeInferenceError {}
 
 /// A disjoint slice of an instance's type triples. Every triple the writer
 /// emits about types belongs to exactly one partition; everything else it
@@ -727,7 +727,7 @@ impl fmt::Display for TypePartition {
 }
 
 impl FromStr for TypePartition {
-    type Err = ParseTypeRegimeError;
+    type Err = ParseTypeInferenceError;
 
     /// The inverse of [`Display`](fmt::Display).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -736,7 +736,7 @@ impl FromStr for TypePartition {
             "is_a" => Ok(TypePartition::IsA),
             "mixin" => Ok(TypePartition::Mixin),
             "direct" => Ok(TypePartition::Direct),
-            other => Err(ParseTypeRegimeError(other.to_string())),
+            other => Err(ParseTypeInferenceError(other.to_string())),
         }
     }
 }
@@ -792,41 +792,47 @@ pub fn type_partitions(cv: &ClassView) -> Result<Vec<(TypePartition, ClassView)>
     Ok(out)
 }
 
-/// The `rdf:type` objects of an instance of `cv` under `regime`: the `Own`,
-/// `IsA` and `Mixin` entries of [`type_partitions`] whose partition `regime`
+/// The `rdf:type` objects of an instance of `cv` under `inference`: the `Own`,
+/// `IsA` and `Mixin` entries of [`type_partitions`] whose partition `inference`
 /// contains, `cv` first when it contains `Own`.
-pub fn rdf_types(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>, SchemaViewError> {
+pub fn rdf_types(
+    cv: &ClassView,
+    inference: TypeInference,
+) -> Result<Vec<ClassView>, SchemaViewError> {
     Ok(type_partitions(cv)?
         .into_iter()
-        .filter(|(p, _)| regime.contains(*p))
+        .filter(|(p, _)| inference.contains(*p))
         .map(|(_, c)| c)
         .collect())
 }
 
 /// The inverse of [`rdf_types`]: every class whose instances have `cv` among
-/// their `rdf_types` under `regime`, `cv` itself first when `regime` contains
+/// their `rdf_types` under `inference`, `cv` itself first when `inference` contains
 /// `Own`. Defined through
 /// [`rdf_types`], so the writer and a query planner answering `?s a C`
 /// cannot disagree.
-pub fn type_family(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>, SchemaViewError> {
-    let candidates = if regime.contains(TypePartition::IsA) || regime.contains(TypePartition::Mixin)
-    {
-        cv.get_descendants(true, regime.contains(TypePartition::Mixin))?
-    } else {
-        Vec::new()
-    };
+pub fn type_family(
+    cv: &ClassView,
+    inference: TypeInference,
+) -> Result<Vec<ClassView>, SchemaViewError> {
+    let candidates =
+        if inference.contains(TypePartition::IsA) || inference.contains(TypePartition::Mixin) {
+            cv.get_descendants(true, inference.contains(TypePartition::Mixin))?
+        } else {
+            Vec::new()
+        };
     let key = class_key(cv);
     let mut seen: HashSet<String> = HashSet::new();
     seen.insert(key.clone());
     let mut out = Vec::new();
-    if regime.contains(TypePartition::Own) {
+    if inference.contains(TypePartition::Own) {
         out.push(cv.clone());
     }
     for cand in candidates {
         if !seen.insert(class_key(&cand)) {
             continue;
         }
-        if rdf_types(&cand, regime)?
+        if rdf_types(&cand, inference)?
             .iter()
             .any(|t| class_key(t) == key)
         {
@@ -836,14 +842,14 @@ pub fn type_family(cv: &ClassView, regime: TypeRegime) -> Result<Vec<ClassView>,
     Ok(out)
 }
 
-/// The `(sub, super)` pairs published as `rdfs:subClassOf` under `regime`.
+/// The `(sub, super)` pairs published as `rdfs:subClassOf` under `inference`.
 ///
 /// The schema's direct `is_a` edges, always, plus `(c, t)` for every `t` in
-/// `rdf_types(c, regime)` other than `c`. Self-edges are never listed; sorted
+/// `rdf_types(c, inference)` other than `c`. Self-edges are never listed; sorted
 /// by class name pair, without duplicates.
 pub fn subclass_edges(
     sv: &SchemaView,
-    regime: TypeRegime,
+    inference: TypeInference,
 ) -> Result<Vec<(ClassView, ClassView)>, SchemaViewError> {
     let mut out = Vec::new();
     for cv in sv.class_views()? {
@@ -853,7 +859,7 @@ pub fn subclass_edges(
                 out.push((cv.clone(), parent));
             }
         }
-        for t in rdf_types(&cv, regime)? {
+        for t in rdf_types(&cv, inference)? {
             if class_key(&t) != key {
                 out.push((cv.clone(), t));
             }
@@ -864,17 +870,17 @@ pub fn subclass_edges(
 }
 
 /// The `(sub, super)` pairs published as `sesame:directSubClassOf` under
-/// `regime`, by RDF4J's definition over [`subclass_edges`]: `super` is a
+/// `inference`, by RDF4J's definition over [`subclass_edges`]: `super` is a
 /// superclass of `sub` and no third class lies strictly between them.
-/// Empty unless `regime` contains `Direct`. Sorted by class name pair.
+/// Empty unless `inference` contains `Direct`. Sorted by class name pair.
 pub fn direct_subclass_edges(
     sv: &SchemaView,
-    regime: TypeRegime,
+    inference: TypeInference,
 ) -> Result<Vec<(ClassView, ClassView)>, SchemaViewError> {
-    if !regime.contains(TypePartition::Direct) {
+    if !inference.contains(TypePartition::Direct) {
         return Ok(Vec::new());
     }
-    let closure = subclass_edges(sv, regime)?;
+    let closure = subclass_edges(sv, inference)?;
     let pairs: HashSet<(String, String)> = closure
         .iter()
         .map(|(a, b)| (class_key(a), class_key(b)))
@@ -925,7 +931,7 @@ pub fn schema_triples(sv: &SchemaView, options: &SchemaRdfOptions) -> SchemaTrip
         skipped: Vec::new(),
     };
 
-    builder.classes_and_slots(sv, &conv, options.regime);
+    builder.classes_and_slots(sv, &conv, options.inference);
     builder.enums(sv, &conv);
 
     // Deterministic and duplicate-free: a slot reached through several classes
@@ -1261,11 +1267,11 @@ impl Builder {
         }
     }
 
-    /// `rdfs:subClassOf` and `sesame:directSubClassOf` for `regime`. A class
+    /// `rdfs:subClassOf` and `sesame:directSubClassOf` for `inference`. A class
     /// whose IRI will not expand is skipped and recorded.
-    fn regime_edges(&mut self, sv: &SchemaView, conv: &Converter, regime: TypeRegime) {
-        let closure = subclass_edges(sv, regime);
-        let direct = direct_subclass_edges(sv, regime);
+    fn inference_edges(&mut self, sv: &SchemaView, conv: &Converter, inference: TypeInference) {
+        let closure = subclass_edges(sv, inference);
+        let direct = direct_subclass_edges(sv, inference);
         for (predicate, edges) in [
             (RDFS_SUBCLASS_OF, closure),
             (SESAME_DIRECT_SUBCLASS_OF, direct),
@@ -1296,12 +1302,12 @@ impl Builder {
         }
     }
 
-    fn classes_and_slots(&mut self, sv: &SchemaView, conv: &Converter, regime: TypeRegime) {
+    fn classes_and_slots(&mut self, sv: &SchemaView, conv: &Converter, inference: TypeInference) {
         let class_views = match sv.class_views() {
             Ok(views) => views,
             Err(_) => return,
         };
-        self.regime_edges(sv, conv, regime);
+        self.inference_edges(sv, conv, inference);
 
         for cv in &class_views {
             let Some(class_id) = instance_type_iri(cv, conv) else {
