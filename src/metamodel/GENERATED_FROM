@@ -8,6 +8,8 @@ meta_yaml = src/schemaview/tests/data/meta.yaml
 # To reproduce: apply these generator changes on top of linkml/main,
 # then run ./regen.sh. They need not be merged; naming them is enough.
 # Newest first:
-# 9939180d4 feat(rustgen): target PyO3 0.29 and pyo3-stub-gen 0.23  (linkml/linkml branch rustgen-pyo3-0.29, PR not yet opened)
-# e7015ec5c fix(rustgen): preserve LinkML slot name on the wire for escaped fields  (linkml/linkml#3919)
-# 0e8b0cb3a fix(rustgen): include concrete base class in its *OrSubtype enum  (linkml/linkml#3919)
+# 9939180d4 feat(rustgen): target PyO3 0.29 and pyo3-stub-gen 0.23  (linkml/linkml#4154)
+# 2f2383815 fix(rustgen): preserve LinkML slot name on the wire for escaped fields  (linkml/linkml#3919)
+# f404b2461 fix(rustgen): include concrete base class in its *OrSubtype enum  (linkml/linkml#3662)
+# Applying #3919 after #3662 conflicts only in tests/linkml/test_generators/test_rustgen.py
+# (both add tests at the same spot); keep both sides.
