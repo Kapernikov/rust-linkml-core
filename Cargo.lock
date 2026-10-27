@@ -1017,16 +1017,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
-name = "libyml"
-version = "0.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3302702afa434ffa30847a83305f0a69d6abd74293b6554c18ec85c7ef30c980"
-dependencies = [
- "anyhow",
- "version_check",
-]
-
-[[package]]
 name = "linkml_meta"
 version = "0.0.0"
 dependencies = [
@@ -1037,7 +1027,7 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_path_to_error",
- "serde_yml",
+ "serde_yaml_ng",
 ]
 
 [[package]]
@@ -1059,8 +1049,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
- "serde_yaml",
- "serde_yml",
+ "serde_yaml_ng",
  "tempfile",
 ]
 
@@ -1076,7 +1065,7 @@ dependencies = [
  "schemaview",
  "serde_json",
  "serde_path_to_error",
- "serde_yml",
+ "serde_yaml_ng",
 ]
 
 [[package]]
@@ -1094,8 +1083,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
- "serde_yaml",
- "serde_yml",
+ "serde_yaml_ng",
  "tempfile",
 ]
 
@@ -2179,7 +2167,7 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_path_to_error",
- "serde_yml",
+ "serde_yaml_ng",
  "thiserror 1.0.69",
 ]
 
@@ -2304,31 +2292,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_yaml"
-version = "0.9.34+deprecated"
+name = "serde_yaml_ng"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
 dependencies = [
  "indexmap",
  "itoa",
  "ryu",
  "serde",
  "unsafe-libyaml",
-]
-
-[[package]]
-name = "serde_yml"
-version = "0.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59e2dd588bf1597a252c3b920e0143eb99b0f76e4e082f4c92ce34fbc9e71ddd"
-dependencies = [
- "indexmap",
- "itoa",
- "libyml",
- "memchr",
- "ryu",
- "serde",
- "version_check",
 ]
 
 [[package]]

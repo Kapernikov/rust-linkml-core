@@ -1879,7 +1879,7 @@ pub fn load_yaml_str(
     class: &ClassView,
     conv: &Converter,
 ) -> std::result::Result<LoadResult, Box<dyn std::error::Error>> {
-    let value: serde_yaml::Value = serde_yaml::from_str(data)?;
+    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(data)?;
     let json = serde_json::to_value(value)?;
     Ok(LinkMLInstance::from_json(
         json,

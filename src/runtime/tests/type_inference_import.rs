@@ -17,7 +17,7 @@ fn import(body: &str, roots: &[&str]) -> Result<Vec<(String, LinkMLInstance)>, I
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data/type_regimes_import_schema.yaml");
     let schema: linkml_meta::SchemaDefinition =
-        serde_yaml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        serde_yaml_ng::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schemas([&schema]);
@@ -190,7 +190,7 @@ fn extras_are_not_unknown_fields_or_warnings() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/data/type_regimes_import_schema.yaml");
     let schema: linkml_meta::SchemaDefinition =
-        serde_yaml::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        serde_yaml_ng::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schemas([&schema]);

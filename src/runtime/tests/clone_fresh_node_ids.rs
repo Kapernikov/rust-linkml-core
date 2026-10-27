@@ -23,7 +23,7 @@ classes:
 "#;
 
 fn load() -> (SchemaView, linkml_schemaview::Converter) {
-    let schema: linkml_meta::SchemaDefinition = serde_yaml::from_str(SCHEMA_YAML).unwrap();
+    let schema: linkml_meta::SchemaDefinition = serde_yaml_ng::from_str(SCHEMA_YAML).unwrap();
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schemas([&schema]);

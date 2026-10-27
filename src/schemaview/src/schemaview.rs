@@ -583,13 +583,13 @@ impl SchemaView {
 
     /// Serialize this view into a YAML snapshot string.
     pub fn to_snapshot_yaml(&self) -> Result<String, SchemaViewError> {
-        serde_yml::to_string(&self.to_snapshot())
+        serde_yaml_ng::to_string(&self.to_snapshot())
             .map_err(|e| SchemaViewError::Serialization(e.to_string()))
     }
 
     /// Deserialize a `SchemaView` from a YAML snapshot string.
     pub fn from_snapshot_yaml(data: &str) -> Result<Self, SchemaViewError> {
-        let snapshot: SchemaViewSnapshot = serde_yml::from_str(data)
+        let snapshot: SchemaViewSnapshot = serde_yaml_ng::from_str(data)
             .map_err(|e| SchemaViewError::Deserialization(e.to_string()))?;
         SchemaView::from_snapshot(snapshot)
     }
@@ -748,7 +748,7 @@ impl SchemaView {
     /// use linkml_meta::SchemaDefinition;
     ///
     /// let mut sv = SchemaView::new();
-    /// let schema: SchemaDefinition = serde_yml::from_str(
+    /// let schema: SchemaDefinition = serde_yaml_ng::from_str(
     ///     "id: https://example.org/schema\nname: ExampleSchema\n",
     /// )
     /// .unwrap();

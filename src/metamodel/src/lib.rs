@@ -21,7 +21,7 @@ use serde::{de::IntoDeserializer, Deserialize, Serialize};
 use serde_path_to_error;
 use serde_value::Value;
 #[cfg(feature = "serde")]
-use serde_yml as _;
+use serde_yaml_ng as _;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 

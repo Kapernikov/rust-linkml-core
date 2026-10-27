@@ -88,10 +88,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if ext == "json" {
             serde_json::to_writer_pretty(&mut writer, &deltas)?;
         } else {
-            serde_yaml::to_writer(&mut writer, &deltas)?;
+            serde_yaml_ng::to_writer(&mut writer, &deltas)?;
         }
     } else {
-        serde_yaml::to_writer(&mut writer, &deltas)?;
+        serde_yaml_ng::to_writer(&mut writer, &deltas)?;
     }
     writer.write_all(b"\n")?;
     Ok(())
