@@ -179,7 +179,7 @@ impl PySchemaView {
         let mut sv = SchemaView::new();
         if let Some(obj) = source {
             let (text, uri) = py_filelike_or_string_to_string(obj)?;
-            let deser = serde_yml::Deserializer::from_str(&text);
+            let deser = yaml_serde::Deserializer::from_str(&text);
             let schema: SchemaDefinition = serde_path_to_error::deserialize(deser)
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             sv.add_schema_with_import_ref(schema, uri.map(|u| ("".to_owned(), u)))
@@ -212,7 +212,7 @@ impl PySchemaView {
 
     /// Parse a YAML/JSON schema string and add it to the view.
     fn add_schema_str(&mut self, data: &str) -> PyResult<bool> {
-        let deser = serde_yml::Deserializer::from_str(data);
+        let deser = yaml_serde::Deserializer::from_str(data);
         let schema: SchemaDefinition = serde_path_to_error::deserialize(deser)
             .map_err(|e| PyException::new_err(e.to_string()))?;
         if let Some(inner) = std::sync::Arc::get_mut(&mut self.inner) {
@@ -275,7 +275,7 @@ impl PySchemaView {
         schema_id: &str,
         uri: &str,
     ) -> PyResult<()> {
-        let deser = serde_yml::Deserializer::from_str(data);
+        let deser = yaml_serde::Deserializer::from_str(data);
         let schema: SchemaDefinition = serde_path_to_error::deserialize(deser)
             .map_err(|e| PyException::new_err(e.to_string()))?;
         if let Some(inner) = std::sync::Arc::get_mut(&mut self.inner) {

@@ -10,7 +10,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 linkml_meta = { path = "../metamodel" }
-serde_yml = "0.0.12"
+yaml_serde = "0.10"
 itertools = "0.14.0"
 serde_path_to_error = "0.1.17"
 thiserror = "1"

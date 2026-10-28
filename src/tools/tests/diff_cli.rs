@@ -39,10 +39,10 @@ fn cli_diff_and_patch_personinfo() {
         .arg(&out);
     cmd.assert().success();
 
-    let out_data: serde_yaml::Value =
-        serde_yaml::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-    let tgt_data: serde_yaml::Value =
-        serde_yaml::from_str(&std::fs::read_to_string(&tgt).unwrap()).unwrap();
+    let out_data: yaml_serde::Value =
+        yaml_serde::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let tgt_data: yaml_serde::Value =
+        yaml_serde::from_str(&std::fs::read_to_string(&tgt).unwrap()).unwrap();
     assert_eq!(out_data, tgt_data);
 }
 

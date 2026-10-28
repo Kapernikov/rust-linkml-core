@@ -1,15 +1,15 @@
 use linkml_meta::SchemaDefinition;
-use serde_yml;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use yaml_serde;
 
 pub fn from_yaml(path: &Path) -> Result<SchemaDefinition, Box<dyn Error>> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
 
-    let schema = serde_yml::Deserializer::from_reader(reader);
+    let schema = yaml_serde::Deserializer::from_reader(reader);
     let result: Result<SchemaDefinition, _> = serde_path_to_error::deserialize(schema);
 
     Ok(result?)
@@ -19,7 +19,7 @@ pub fn from_yaml(path: &Path) -> Result<SchemaDefinition, Box<dyn Error>> {
 pub fn from_uri(uri: &str) -> Result<SchemaDefinition, Box<dyn Error>> {
     let r = reqwest::blocking::get(uri)?;
     let reader = r.text()?;
-    let schema = serde_yml::Deserializer::from_str(&reader);
+    let schema = yaml_serde::Deserializer::from_str(&reader);
     let result: Result<SchemaDefinition, _> = serde_path_to_error::deserialize(schema);
     Ok(result?)
 }

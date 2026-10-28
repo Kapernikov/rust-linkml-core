@@ -13,7 +13,7 @@ use linkml_schemaview::identifier::converter_from_schemas;
 use linkml_schemaview::schemaview::SchemaView;
 
 fn schema_and_conv(yaml: &str) -> (SchemaView, linkml_schemaview::Converter) {
-    let schema: linkml_meta::SchemaDefinition = serde_yaml::from_str(yaml).unwrap();
+    let schema: linkml_meta::SchemaDefinition = yaml_serde::from_str(yaml).unwrap();
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schemas([&schema]);

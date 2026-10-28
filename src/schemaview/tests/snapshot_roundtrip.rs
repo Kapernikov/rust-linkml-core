@@ -25,8 +25,8 @@ slots:
 
 #[test]
 fn schemaview_snapshot_roundtrip() {
-    let primary = serde_yml::from_str(PRIMARY_SCHEMA).expect("parse primary schema");
-    let secondary = serde_yml::from_str(SECONDARY_SCHEMA).expect("parse secondary schema");
+    let primary = yaml_serde::from_str(PRIMARY_SCHEMA).expect("parse primary schema");
+    let secondary = yaml_serde::from_str(SECONDARY_SCHEMA).expect("parse secondary schema");
 
     let mut sv = SchemaView::new();
     sv.add_schema(primary).expect("add primary schema");
@@ -44,7 +44,7 @@ fn schemaview_snapshot_roundtrip() {
     let snapshot = sv.to_snapshot();
     assert_eq!(snapshot.format_version, SCHEMAVIEW_SNAPSHOT_VERSION);
 
-    let yaml = serde_yml::to_string(&snapshot).expect("serialize snapshot");
+    let yaml = yaml_serde::to_string(&snapshot).expect("serialize snapshot");
     let restored = SchemaView::from_snapshot_yaml(&yaml).expect("restore schema view");
 
     assert!(restored.get_unresolved_schemas().is_empty());

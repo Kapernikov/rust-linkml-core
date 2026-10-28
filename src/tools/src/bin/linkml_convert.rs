@@ -233,7 +233,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             for item in instances {
                 let value = item?;
                 writeln!(writer, "---")?;
-                serde_yaml::to_writer(&mut writer, &value.to_json())?;
+                yaml_serde::to_writer(&mut writer, &value.to_json())?;
                 count += 1;
             }
         }
