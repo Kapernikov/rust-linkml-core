@@ -95,10 +95,10 @@ fn write_value(
         if ext == "json" {
             serde_json::to_writer_pretty(&mut writer, &json)?;
         } else {
-            serde_yaml_ng::to_writer(&mut writer, &json)?;
+            yaml_serde::to_writer(&mut writer, &json)?;
         }
     } else {
-        serde_yaml_ng::to_writer(&mut writer, &json)?;
+        yaml_serde::to_writer(&mut writer, &json)?;
     }
     writer.write_all(b"\n")?;
     // Explicit: the partial-application path leaves via `process::exit`, which
@@ -158,10 +158,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if ext == "json" {
             serde_json::from_str(&delta_text)?
         } else {
-            serde_yaml_ng::from_str(&delta_text)?
+            yaml_serde::from_str(&delta_text)?
         }
     } else {
-        serde_yaml_ng::from_str(&delta_text)?
+        yaml_serde::from_str(&delta_text)?
     };
     let (patched, trace) = patch(
         &src,

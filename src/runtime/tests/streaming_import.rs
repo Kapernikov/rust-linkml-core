@@ -31,7 +31,7 @@ classes:
         identifier: true
       name:
 "#;
-    let schema: linkml_meta::SchemaDefinition = serde_yaml_ng::from_str(schema_yaml).unwrap();
+    let schema: linkml_meta::SchemaDefinition = yaml_serde::from_str(schema_yaml).unwrap();
     let mut sv = SchemaView::new();
     sv.add_schema(schema.clone()).unwrap();
     let conv = converter_from_schemas([&schema]);
